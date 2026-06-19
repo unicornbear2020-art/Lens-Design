@@ -1,0 +1,18498 @@
+const FULL_FRAME_SENSOR = {
+  width: 36,
+  height: 24,
+  diagonal: Math.hypot(36, 24)
+};
+
+const SONY_E_FLANGE_DISTANCE = 18;
+const DIAGRAM_SIZE = {
+  width: 940,
+  height: 480
+};
+
+const DEFAULT_PRESET_KEY = "zeissBiotar50F14Us1786916Ex2";
+const OLD_MISLEADING_ZEISS_PRESET_KEYS = [
+  "zeissTessar",
+  "zeissPlanar",
+  "zeissSonnar",
+  "zeissBiogon",
+  "zeissDistagon",
+  "zeissHologon",
+  "zeissTopogon",
+  "zeissTeleTessar",
+  "zeissVarioSonnar",
+  "zeissVarioTessar",
+  "zeissSuperachromat"
+];
+
+const SPECTRAL_LINES = {
+  C: { name: "C red", wavelengthNm: 656.3, color: "red" },
+  d: { name: "d yellow/green", wavelengthNm: 587.6, color: "green" },
+  F: { name: "F blue", wavelengthNm: 486.1, color: "blue" }
+};
+
+const POLYCHROMATIC_WEIGHTS = {
+  C: { wavelengthNm: 656.3, weight: 0.25 },
+  d: { wavelengthNm: 587.6, weight: 0.5 },
+  F: { wavelengthNm: 486.1, weight: 0.25 }
+};
+
+const POLYCHROMATIC_WEIGHT_PRESETS = {
+  balanced: { name: "Balanced RGB", weights: { C: 0.25, d: 0.5, F: 0.25 } },
+  greenHeavy: { name: "Green-heavy visual", weights: { C: 0.15, d: 0.7, F: 0.15 } },
+  blueHeavy: { name: "Blue-heavy test", weights: { C: 0.15, d: 0.25, F: 0.6 } },
+  redHeavy: { name: "Red-heavy test", weights: { C: 0.6, d: 0.25, F: 0.15 } },
+  custom: { name: "Custom", weights: null }
+};
+
+const COATING_PRESETS = {
+  uncoated: {
+    name: "Uncoated",
+    type: "fresnel",
+    note: "Uses normal-incidence Fresnel reflection per surface."
+  },
+  singleCoated: {
+    name: "Single coated",
+    reflectance: {
+      C: 0.018,
+      d: 0.015,
+      F: 0.02
+    },
+    note: "Approximate single-layer coating."
+  },
+  multiCoated: {
+    name: "Multi-coated",
+    reflectance: {
+      C: 0.006,
+      d: 0.004,
+      F: 0.007
+    },
+    note: "Approximate broadband multi-coating."
+  },
+  advancedMultiCoated: {
+    name: "Advanced multi-coated",
+    reflectance: {
+      C: 0.003,
+      d: 0.002,
+      F: 0.004
+    },
+    note: "Approximate high-performance broadband coating."
+  }
+};
+
+const DEFAULT_TOLERANCE_SETTINGS = {
+  enabled: false,
+  radiusToleranceMm: 0.1,
+  thicknessToleranceMm: 0.05,
+  airGapToleranceMm: 0.05,
+  diameterToleranceMm: 0.05,
+  refractiveIndexTolerance: 0.0002,
+  abbeTolerance: 0.2,
+  decenterToleranceMm: 0.02,
+  tiltToleranceDegrees: 0.03,
+  monteCarloRuns: 25,
+  seed: 12345,
+  maxRmsSpotRadius: 0.05,
+  minMtf40: 0.3,
+  maxRmsOpdWaves: 0.25,
+  minStrehl: 0.8,
+  enableRmsCriterion: true,
+  enableMtfCriterion: true,
+  enableOpdCriterion: false,
+  enableStrehlCriterion: false,
+  histogramMetric: "rmsSpotRadius",
+  wavelengthMode: "d"
+};
+
+const DEFAULT_OPTIMIZER_VARIABLES = {
+  r1: true,
+  r2: true,
+  thickness: false,
+  gapAfter: true,
+  diameter: false,
+  glass: false,
+  customVd: false
+};
+
+const GLASS_CATALOG = {
+  custom: {
+    name: "Custom",
+    type: "custom"
+  },
+  bk7: {
+    name: "BK7-like crown",
+    nd: 1.5168,
+    vd: 64.2,
+    family: "Crown"
+  },
+  f2: {
+    name: "F2-like flint",
+    nd: 1.62,
+    vd: 36.4,
+    family: "Flint"
+  },
+  sf10: {
+    name: "SF10-like dense flint",
+    nd: 1.728,
+    vd: 28.5,
+    family: "Dense flint"
+  },
+  fusedSilica: {
+    name: "Fused silica-like",
+    nd: 1.4585,
+    vd: 67.8,
+    family: "Low index / low dispersion"
+  },
+  highIndexCrown: {
+    name: "High-index crown-like",
+    nd: 1.7,
+    vd: 50,
+    family: "High-index crown"
+  }
+};
+
+const RAY_TRACE_FIELDS = [
+  { key: "center", name: "Centre field", angle: 0 },
+  { key: "mid", name: "Mid field", angle: 10 },
+  { key: "corner", name: "Corner field", angle: 20 }
+];
+
+const MTF_READOUT_FREQUENCIES = [10, 20, 40, 80];
+
+const LENS_TYPES = {
+  biconvex: "Biconvex",
+  planoConvex: "Plano-Convex",
+  positiveMeniscus: "Positive Meniscus",
+  negativeMeniscus: "Negative Meniscus",
+  planoConcave: "Plano-Concave",
+  biconcave: "Biconcave"
+};
+
+const FIELD_STEPS = {
+  diameter: 1,
+  thickness: 0.5,
+  refractiveIndex: 0.005,
+  customNd: 0.005,
+  customVd: 1,
+  r1: 2,
+  r2: 2,
+  gapAfter: 1,
+  internalTransmissionPerMm: 0.001,
+  conicK: 0.1,
+  A4: 1e-6,
+  A6: 1e-9,
+  A8: 1e-12,
+  A10: 1e-15,
+  frontConicK: 0.1,
+  rearConicK: 0.1,
+  frontA4: 1e-6,
+  rearA4: 1e-6,
+  frontA6: 1e-9,
+  rearA6: 1e-9,
+  frontA8: 1e-12,
+  rearA8: 1e-12,
+  frontA10: 1e-15,
+  rearA10: 1e-15,
+  chipZoneWidthMm: 0.1,
+  minimumEdgeThicknessMm: 0.1,
+  minimumFlatLandMm: 0.05,
+  frontBevelFaceWidthMm: 0.05,
+  rearBevelFaceWidthMm: 0.05,
+  frontBevelAngleDeg: 1,
+  rearBevelAngleDeg: 1
+};
+
+const ASPHERE_TERMS = ["A4", "A6", "A8", "A10"];
+const ASPHERE_NUMERIC_FIELDS = [
+  "frontConicK",
+  "rearConicK",
+  "frontA4",
+  "rearA4",
+  "frontA6",
+  "rearA6",
+  "frontA8",
+  "rearA8",
+  "frontA10",
+  "rearA10"
+];
+const PATENT_DEFAULT_MISSING_AIR_GAP_MM = 0.1;
+const PATENT_APERTURE_MARGIN_RATIO = 0.08;
+const PATENT_APERTURE_MARGIN_MIN_MM = 0.5;
+const PATENT_MECHANICAL_MARGIN_RATIO = 0.04;
+const PATENT_MECHANICAL_MARGIN_MIN_MM = 0.5;
+const CEMENTED_GAP_EPSILON_MM = 0.000001;
+const DEFAULT_CHIP_ZONE_WIDTH_MM = 0.5;
+const DEFAULT_MINIMUM_EDGE_THICKNESS_MM = 0.2;
+const DEFAULT_MINIMUM_FLAT_LAND_MM = 0.2;
+const DEFAULT_BEVEL_ANGLE_DEG = 45;
+const PATENT_CLEAR_APERTURE_NUMERICAL_MARGIN_MM = 0.05;
+const DEFAULT_CEMENTED_INTERFACE_BEVEL_FACE_WIDTH_MM = 0.15;
+const DEFAULT_CEMENTED_INTERFACE_BEVEL_ANGLE_DEG = 45;
+const OPTICAL_SIDE_VIEW_DEFAULT_ZOOM = 1.3;
+
+const automaticBevelFaceWidthMm = (diameter) => (
+  diameter <= 25.4 ? 0.25 : diameter <= 50 ? 0.3 : 0.4
+);
+
+const PANEL_FIELD_STEPS = {
+  sagDiameter: 1,
+  sagHeight: 0.1,
+  apertureDiameter: 1,
+  apertureStopSurfaceNumber: 1,
+  apertureStopSurfaceOffsetMm: 0.5,
+  apertureStopDistanceFromSensorMm: 1,
+  apertureStopDistanceFromFrontMm: 1,
+  rayTraceRayCount: 2,
+  imageCircleFocalLength: 1,
+  imageCircleAngleDegrees: 0.5,
+  rayCircleMaxFieldAngleDegrees: 1,
+  rayCircleFieldStepDegrees: 0.5,
+  rayFanCustomFieldAngleDegrees: 1,
+  rayTrace3DFieldAngleDegrees: 1,
+  rayTrace3DSampleCount: 2,
+  stRayFanCustomFieldAngleDegrees: 1,
+  stRayFanRayCount: 2
+};
+
+const DEFAULT_ANALYSIS_SETTINGS = {
+  diagramViewMode: "optical",
+  productionSilhouetteSource: "generated",
+  showSvgReferenceOverlay: false,
+  patentDiameterSource: "auto",
+  cementedGroupDisplayMode: "individualManufacturing",
+  cementedInterfaceBevelMode: "estimated",
+  cementedInterfaceBevelFaceWidthMm: DEFAULT_CEMENTED_INTERFACE_BEVEL_FACE_WIDTH_MM,
+  cementedInterfaceBevelAngleDeg: DEFAULT_CEMENTED_INTERFACE_BEVEL_ANGLE_DEG,
+  minimumAirGapClearanceMm: 0.5,
+  apertureStopIndex: "frontGroup",
+  apertureStopMode: "auto",
+  apertureStopSurfaceNumber: 1,
+  apertureStopSurfaceOffsetMm: 0,
+  apertureStopDistanceFromSensorMm: 25,
+  apertureStopDistanceFromFrontMm: 0,
+  apertureDiameter: 25,
+  matchPatentFNumber: true,
+  rayTraceRayCount: 9,
+  spotDisplayMode: "rgb",
+  rayFanFieldPreset: "center",
+  rayFanCustomFieldAngleDegrees: 12,
+  rayFanWavelengthMode: "d",
+  mtfPlaneMode: "current",
+  enable3DRayTrace: true,
+  rayTrace3DFieldAngleDegrees: 10,
+  rayTrace3DOrientation: "tangential",
+  rayTrace3DSampleCount: 7,
+  rayTrace3DSampling: "grid",
+  rayTrace3DWavelengthMode: "d",
+  stRayFanFieldPreset: "mid",
+  stRayFanCustomFieldAngleDegrees: 12,
+  stRayFanWavelengthMode: "d",
+  stRayFanRayCount: 9,
+  stRayFanImagePlaneMode: "current",
+  stMtfWavelengthMode: "d",
+  diffractionMtfFieldKey: "center",
+  diffractionMtfWavelengthMode: "d",
+  wavefrontFieldKey: "center",
+  wavefrontWavelengthMode: "d",
+  waveOpticsFieldKey: "center",
+  waveOpticsWavelengthKey: "d",
+  polyMtfFieldKey: "center",
+  polyMtfWeightPreset: "balanced",
+  polyMtfWeights: { C: 0.25, d: 0.5, F: 0.25 }
+};
+
+const BIOTAR_50_F14_SVG_REFERENCE = {
+  href: "assets/biotar-5cm-f14-production.svg",
+  viewBox: { x: 0, y: 0, width: 172.54, height: 172.54 },
+  contentBounds: { x: 0.38, y: 18.07, width: 171.78, height: 136.4 },
+  visualFlipX: false,
+  label: "Visual SVG reference only",
+  sourceFile: "Carl Zeiss Jena Biotar 5cm f:1.4.svg"
+};
+
+const BIOTAR_50_F14_SVG_DIAMETER_PROFILE = {
+  source: "svgEstimated",
+  referenceSvg: "assets/biotar-5cm-f14-production.svg",
+  note: "Estimated from uploaded SVG silhouette proportions only. Patent radii, thicknesses, air gaps and glass data are unchanged.",
+  elements: [
+    { element: "L1", clearApertureDiameter: 36.0, mechanicalDiameter: 38.0, visualDiameter: 38.0 },
+    { element: "L2", clearApertureDiameter: 33.5, mechanicalDiameter: 35.5, visualDiameter: 35.5 },
+    { element: "L3", clearApertureDiameter: 33.5, mechanicalDiameter: 35.5, visualDiameter: 35.5 },
+    { element: "L4", clearApertureDiameter: 27.0, mechanicalDiameter: 29.0, visualDiameter: 29.0 },
+    { element: "L5", clearApertureDiameter: 27.0, mechanicalDiameter: 29.0, visualDiameter: 29.0 },
+    { element: "L6", clearApertureDiameter: 27.5, mechanicalDiameter: 29.5, visualDiameter: 29.5 }
+  ]
+};
+
+const WIDE_ANGLE_ANALYSIS_DEFAULTS = {
+  rayFanFieldPreset: "corner",
+  stRayFanFieldPreset: "corner",
+  diffractionMtfFieldKey: "corner",
+  wavefrontFieldKey: "corner",
+  waveOpticsFieldKey: "corner",
+  polyMtfFieldKey: "corner",
+  rayTrace3DFieldAngleDegrees: 20
+};
+
+const NORMAL_ANALYSIS_DEFAULTS = {
+  rayFanFieldPreset: "mid",
+  stRayFanFieldPreset: "mid",
+  diffractionMtfFieldKey: "mid",
+  wavefrontFieldKey: "mid",
+  waveOpticsFieldKey: "mid",
+  polyMtfFieldKey: "mid",
+  rayTrace3DFieldAngleDegrees: 10
+};
+
+const TELEPHOTO_ANALYSIS_DEFAULTS = {
+  rayFanFieldPreset: "center",
+  stRayFanFieldPreset: "mid",
+  diffractionMtfFieldKey: "center",
+  wavefrontFieldKey: "center",
+  waveOpticsFieldKey: "center",
+  polyMtfFieldKey: "center",
+  rayTrace3DFieldAngleDegrees: 6
+};
+
+const STORAGE_KEY = "lensDesigner.savedDesigns.v1";
+
+const UI_TEXT = {
+  eyebrow: "Optics Calculator",
+  title: "Lens Design",
+  classicPreset: "Classic design example",
+  lensControls: "Lens Controls",
+  lensControlsNote: "Lens 1 starts first, then follows the lens stack order.",
+  addLens: "Add Lens",
+  systemResult: "System Result",
+  valid: "valid",
+  effectiveFocalLength: "Effective focal length Feff",
+  backFocalDistance: "Back focal distance",
+  sonyFlange: "Sony E flange focal distance",
+  trackLength: "Track length",
+  fNumber: "Approx. f-number",
+  bfdVsSony: "BFD vs Sony E flange",
+  totalPower: "Total optical power",
+  diopters: "Equivalent diopters"
+};
+
+const LEARNING_TOOLTIPS = {
+  generic: "This part of the optical calculator affects how the lens is modeled, traced, or evaluated."
+};
+
+const numericValue = (value) => Number.parseFloat(value);
+const defaultVdForIndex = (n) => (n < 1.58 ? 60 : n < 1.68 ? 40 : 30);
+const likelyGlassKeyForIndex = (n) => {
+  if (Math.abs(n - 1.5168) < 0.012 || Math.abs(n - 1.517) < 0.012) return "bk7";
+  if (Math.abs(n - 1.62) < 0.035) return "f2";
+  if (Math.abs(n - 1.7) < 0.018 || Math.abs(n - 1.72) < 0.025 || Math.abs(n - 1.728) < 0.025) return "sf10";
+  return "custom";
+};
+
+const normalizeLensBevel = (lens, side, mechanicalDiameter) => {
+  const stored = lens[`${side}Bevel`] || {};
+  const enabledValue = lens[`${side}BevelEnabled`];
+  const faceWidthValue = numericValue(lens[`${side}BevelFaceWidthMm`]);
+  const angleValue = numericValue(lens[`${side}BevelAngleDeg`]);
+  const storedFaceWidth = numericValue(stored.faceWidthMm);
+  const storedAngle = numericValue(stored.angleDeg);
+  return {
+    enabled: enabledValue === undefined ? stored.enabled !== false : enabledValue === true,
+    faceWidthMm: Math.max(
+      0,
+      Number.isFinite(faceWidthValue)
+        ? faceWidthValue
+        : Number.isFinite(storedFaceWidth)
+          ? storedFaceWidth
+          : automaticBevelFaceWidthMm(mechanicalDiameter)
+    ),
+    angleDeg: Math.min(
+      89,
+      Math.max(
+        1,
+        Number.isFinite(angleValue)
+          ? angleValue
+          : Number.isFinite(storedAngle)
+            ? storedAngle
+            : DEFAULT_BEVEL_ANGLE_DEG
+      )
+    ),
+    source: stored.source || "estimated"
+  };
+};
+
+const normalizeLens = (lens) => {
+  const refractiveIndex = numericValue(lens.refractiveIndex);
+  const customNd = numericValue(lens.customNd);
+  const nd = Number.isFinite(customNd)
+    ? customNd
+    : Number.isFinite(refractiveIndex)
+      ? refractiveIndex
+      : GLASS_CATALOG.bk7.nd;
+  const customVd = numericValue(lens.customVd);
+  const glassKey = GLASS_CATALOG[lens.glassKey] ? lens.glassKey : "custom";
+  const internalTransmissionPerMm = numericValue(lens.internalTransmissionPerMm);
+  const asphereValues = Object.fromEntries(ASPHERE_NUMERIC_FIELDS.map((field) => {
+    const value = numericValue(lens[field]);
+    return [field, Number.isFinite(value) ? value : 0];
+  }));
+  const legacyDiameter = Math.max(0.1, numericValue(lens.diameter) || 40);
+  const patentClearApertures = [
+    numericValue(lens.patentFrontClearAperture),
+    numericValue(lens.patentRearClearAperture)
+  ].filter((value) => Number.isFinite(value) && value > 0);
+  const clearApertureDiameter = Math.max(
+    0.1,
+    numericValue(lens.clearApertureDiameter)
+      || (patentClearApertures.length ? Math.min(...patentClearApertures) : legacyDiameter)
+  );
+  const mechanicalDiameter = Math.max(
+    clearApertureDiameter,
+    numericValue(lens.mechanicalDiameter) || numericValue(lens.visualDiameter) || clearApertureDiameter
+  );
+  const chipZoneValue = numericValue(lens.chipZoneWidthMm);
+  const minimumEdgeValue = numericValue(lens.minimumEdgeThicknessMm);
+  const minimumFlatLandValue = numericValue(lens.minimumFlatLandMm);
+  const chipZoneWidthMm = Math.max(0, Number.isFinite(chipZoneValue) ? chipZoneValue : DEFAULT_CHIP_ZONE_WIDTH_MM);
+  const minimumEdgeThicknessMm = Math.max(
+    0,
+    Number.isFinite(minimumEdgeValue) ? minimumEdgeValue : DEFAULT_MINIMUM_EDGE_THICKNESS_MM
+  );
+  const minimumFlatLandMm = Math.max(
+    0,
+    Number.isFinite(minimumFlatLandValue) ? minimumFlatLandValue : DEFAULT_MINIMUM_FLAT_LAND_MM
+  );
+  const frontBevel = normalizeLensBevel(lens, "front", mechanicalDiameter);
+  const rearBevel = normalizeLensBevel(lens, "rear", mechanicalDiameter);
+
+  return {
+    ...lens,
+    diameter: clearApertureDiameter,
+    visualDiameter: mechanicalDiameter,
+    clearApertureDiameter,
+    mechanicalDiameter,
+    edgeThickness: Number.isFinite(numericValue(lens.edgeThickness)) ? numericValue(lens.edgeThickness) : null,
+    chipZoneWidthMm,
+    minimumEdgeThicknessMm,
+    minimumFlatLandMm,
+    frontBevel,
+    rearBevel,
+    frontBevelEnabled: frontBevel.enabled,
+    rearBevelEnabled: rearBevel.enabled,
+    frontBevelFaceWidthMm: frontBevel.faceWidthMm,
+    rearBevelFaceWidthMm: rearBevel.faceWidthMm,
+    frontBevelAngleDeg: frontBevel.angleDeg,
+    rearBevelAngleDeg: rearBevel.angleDeg,
+    manufacturingGeometrySource: lens.manufacturingGeometrySource || lens.diameterSource || "estimated",
+    apertureSource: ["patent", "rayEnvelope", "manual", "estimated", "svgEstimated", "patentMechanical"].includes(lens.apertureSource)
+      ? lens.apertureSource
+      : (numericValue(lens.patentFrontClearAperture) > 0 || numericValue(lens.patentRearClearAperture) > 0)
+        ? "patent"
+      : lens.patentSurfaceStart
+        ? "estimated"
+        : "manual",
+    glassKey,
+    customNd: nd,
+    customVd: Number.isFinite(customVd) && customVd > 0 ? customVd : defaultVdForIndex(nd),
+    refractiveIndex: Number.isFinite(refractiveIndex) ? refractiveIndex : nd,
+    frontCoatingKey: COATING_PRESETS[lens.frontCoatingKey] ? lens.frontCoatingKey : "multiCoated",
+    rearCoatingKey: COATING_PRESETS[lens.rearCoatingKey] ? lens.rearCoatingKey : "multiCoated",
+    internalTransmissionPerMm: Number.isFinite(internalTransmissionPerMm)
+      ? Math.min(1, Math.max(0, internalTransmissionPerMm))
+      : 0.997,
+    toleranceEnabled: lens.toleranceEnabled !== false,
+    radiusToleranceMm: lens.radiusToleranceMm ?? null,
+    thicknessToleranceMm: lens.thicknessToleranceMm ?? null,
+    airGapToleranceMm: lens.airGapToleranceMm ?? null,
+    refractiveIndexTolerance: lens.refractiveIndexTolerance ?? null,
+    decenterToleranceMm: lens.decenterToleranceMm ?? null,
+    tiltToleranceDegrees: lens.tiltToleranceDegrees ?? null,
+    decenterY: Number.isFinite(numericValue(lens.decenterY)) ? numericValue(lens.decenterY) : 0,
+    decenterZ: Number.isFinite(numericValue(lens.decenterZ)) ? numericValue(lens.decenterZ) : 0,
+    tiltY: Number.isFinite(numericValue(lens.tiltY)) ? numericValue(lens.tiltY) : 0,
+    tiltZ: Number.isFinite(numericValue(lens.tiltZ)) ? numericValue(lens.tiltZ) : 0,
+    frontAsphereEnabled: lens.frontAsphereEnabled === true,
+    rearAsphereEnabled: lens.rearAsphereEnabled === true,
+    ...asphereValues,
+    optimizerVariables: {
+      ...DEFAULT_OPTIMIZER_VARIABLES,
+      ...(lens.optimizerVariables || {})
+    }
+  };
+};
+
+const normalizePresetLens = (lens) => {
+  const refractiveIndex = numericValue(lens.refractiveIndex);
+  return normalizeLens({
+    ...lens,
+    glassKey: lens.glassKey || (Number.isFinite(refractiveIndex) ? likelyGlassKeyForIndex(refractiveIndex) : "bk7")
+  });
+};
+
+const PRESETS = {
+  custom: {
+    name: "Custom design",
+    note: "Edited lens stack with custom radii, spacing, or element types.",
+    sourceType: "custom",
+    prescriptionType: "element",
+    lenses: []
+  },
+  manual: {
+    name: "Manual starter",
+    note: "Two simple positive elements with a small air gap.",
+    sourceType: "educational",
+    prescriptionType: "element",
+    brand: "Other",
+    designType: "Normal",
+    lenses: [
+      { type: "biconvex", diameter: 50, thickness: 8, refractiveIndex: 1.5168, r1: 80, r2: -80, gapAfter: 6 },
+      { type: "biconvex", diameter: 35, thickness: 5, refractiveIndex: 1.6, r1: 62, r2: -62, gapAfter: 0 }
+    ]
+  },
+  petzval: {
+    name: "Petzval portrait",
+    note: "Fast portrait-lens inspired layout with a positive front doublet and separated rear group.",
+    sourceType: "educational",
+    prescriptionType: "element",
+    brand: "Other",
+    designType: "Ultra-fast",
+    analysisDefaults: TELEPHOTO_ANALYSIS_DEFAULTS,
+    lenses: [
+      { type: "biconvex", diameter: 64, thickness: 7, refractiveIndex: 1.517, r1: 82, r2: -58, gapAfter: 0.5 },
+      { type: "biconcave", diameter: 60, thickness: 3.5, refractiveIndex: 1.62, r1: -92, r2: 120, gapAfter: 26 },
+      { type: "positiveMeniscus", diameter: 50, thickness: 6, refractiveIndex: 1.517, r1: 58, r2: 96, gapAfter: 3 },
+      { type: "negativeMeniscus", diameter: 44, thickness: 3.2, refractiveIndex: 1.62, r1: 105, r2: 70, gapAfter: 0 }
+    ]
+  },
+  rapidRectilinear: {
+    name: "Rapid Rectilinear",
+    note: "Symmetrical pair of positive-negative groups for a classic rectilinear layout.",
+    sourceType: "educational",
+    prescriptionType: "element",
+    brand: "Other",
+    designType: "Normal",
+    analysisDefaults: NORMAL_ANALYSIS_DEFAULTS,
+    lenses: [
+      { type: "biconvex", diameter: 46, thickness: 5, refractiveIndex: 1.517, r1: 70, r2: -45, gapAfter: 0.5 },
+      { type: "biconcave", diameter: 42, thickness: 3, refractiveIndex: 1.62, r1: -48, r2: 96, gapAfter: 18 },
+      { type: "biconcave", diameter: 42, thickness: 3, refractiveIndex: 1.62, r1: -96, r2: 48, gapAfter: 0.5 },
+      { type: "biconvex", diameter: 46, thickness: 5, refractiveIndex: 1.517, r1: 45, r2: -70, gapAfter: 0 }
+    ]
+  },
+  doubleGauss: {
+    name: "Double Gauss",
+    note: "Six-element symmetrical Gauss-style example with positive outer elements and negative inner elements.",
+    sourceType: "educational",
+    prescriptionType: "element",
+    brand: "Other",
+    designType: "Normal",
+    analysisDefaults: NORMAL_ANALYSIS_DEFAULTS,
+    lenses: [
+      { type: "biconvex", diameter: 50, thickness: 5, refractiveIndex: 1.62, r1: 65, r2: -46, gapAfter: 2 },
+      { type: "biconcave", diameter: 45, thickness: 3, refractiveIndex: 1.7, r1: -52, r2: 95, gapAfter: 8 },
+      { type: "positiveMeniscus", diameter: 40, thickness: 4.5, refractiveIndex: 1.517, r1: 72, r2: 120, gapAfter: 14 },
+      { type: "positiveMeniscus", diameter: 40, thickness: 4.5, refractiveIndex: 1.517, r1: 58, r2: 112, gapAfter: 8 },
+      { type: "biconcave", diameter: 45, thickness: 3, refractiveIndex: 1.7, r1: -95, r2: 52, gapAfter: 2 },
+      { type: "biconvex", diameter: 50, thickness: 5, refractiveIndex: 1.62, r1: 46, r2: -65, gapAfter: 0 }
+    ]
+  }
+};
+
+const normalizePatentSurfaceValue = (value) => {
+  if (value === Infinity || value === "Infinity" || value === "infinity" || value === "∞") return Infinity;
+  if (value === null || value === undefined || value === "") return null;
+  const numeric = numericValue(value);
+  return Number.isFinite(numeric) ? numeric : null;
+};
+
+const normalizeSvgReference = (reference = null) => {
+  if (!reference) return null;
+  const viewBox = reference.viewBox || {};
+  const contentBounds = reference.contentBounds || reference.visibleBounds || null;
+  return {
+    href: reference.href || "",
+    viewBox: {
+      x: normalizePatentSurfaceValue(viewBox.x) ?? 0,
+      y: normalizePatentSurfaceValue(viewBox.y) ?? 0,
+      width: Math.max(1, normalizePatentSurfaceValue(viewBox.width) ?? 1),
+      height: Math.max(1, normalizePatentSurfaceValue(viewBox.height) ?? 1)
+    },
+    contentBounds: contentBounds ? {
+      x: normalizePatentSurfaceValue(contentBounds.x) ?? (normalizePatentSurfaceValue(viewBox.x) ?? 0),
+      y: normalizePatentSurfaceValue(contentBounds.y) ?? (normalizePatentSurfaceValue(viewBox.y) ?? 0),
+      width: Math.max(1, normalizePatentSurfaceValue(contentBounds.width) ?? (normalizePatentSurfaceValue(viewBox.width) ?? 1)),
+      height: Math.max(1, normalizePatentSurfaceValue(contentBounds.height) ?? (normalizePatentSurfaceValue(viewBox.height) ?? 1))
+    } : null,
+    visualFlipX: reference.visualFlipX === true,
+    label: reference.label || "Visual SVG reference only",
+    sourceFile: reference.sourceFile || ""
+  };
+};
+
+const normalizeDiameterProfile = (profile = null) => {
+  if (!profile) return null;
+  const elements = Array.isArray(profile.elements) ? profile.elements : [];
+  const allowedSources = ["svgEstimated", "patentMechanical", "estimated"];
+  return {
+    source: allowedSources.includes(profile.source) ? profile.source : "estimated",
+    referenceSvg: profile.referenceSvg || "",
+    note: profile.note || "",
+    elements: elements.map((element, index) => ({
+      element: element.element || `L${index + 1}`,
+      clearApertureDiameter: normalizePatentSurfaceValue(element.clearApertureDiameter),
+      mechanicalDiameter: Math.max(
+        normalizePatentSurfaceValue(element.clearApertureDiameter) ?? 0.1,
+        normalizePatentSurfaceValue(element.mechanicalDiameter) ?? normalizePatentSurfaceValue(element.visualDiameter) ?? 0.1
+      ),
+      visualDiameter: Math.max(
+        normalizePatentSurfaceValue(element.clearApertureDiameter) ?? 0.1,
+        normalizePatentSurfaceValue(element.visualDiameter) ?? normalizePatentSurfaceValue(element.mechanicalDiameter) ?? 0.1
+      )
+    }))
+  };
+};
+
+const createPatentPlaceholderSurfaces = (count = 1) => Array.from({ length: count }, (_, index) => ({
+  no: index + 1,
+  radius: null,
+  distanceToNext: null,
+  nAfter: null,
+  vdAfter: null,
+  isStop: false,
+  clearAperture: null,
+  apertureEstimated: true,
+  asphere: null
+}));
+
+const normalizePatentAsphere = (asphere = null) => {
+  if (!asphere) return null;
+  return {
+    enabled: asphere.enabled === true,
+    k: normalizePatentSurfaceValue(asphere.k) ?? 0,
+    A4: normalizePatentSurfaceValue(asphere.A4) ?? 0,
+    A6: normalizePatentSurfaceValue(asphere.A6) ?? 0,
+    A8: normalizePatentSurfaceValue(asphere.A8) ?? 0,
+    A10: normalizePatentSurfaceValue(asphere.A10) ?? 0
+  };
+};
+
+const normalizePatentSurface = (surface = {}, index = 0) => ({
+  no: Number.isFinite(numericValue(surface.no)) ? numericValue(surface.no) : index + 1,
+  radius: normalizePatentSurfaceValue(surface.radius),
+  distanceToNext: normalizePatentSurfaceValue(surface.distanceToNext),
+  nAfter: normalizePatentSurfaceValue(surface.nAfter),
+  vdAfter: normalizePatentSurfaceValue(surface.vdAfter),
+  mediumLabel: surface.mediumLabel || surface.glassLabel || surface.label || null,
+  spaceLabel: surface.spaceLabel || null,
+  interfaceType: surface.interfaceType || null,
+  isStop: surface.isStop === true,
+  clearAperture: normalizePatentSurfaceValue(surface.clearAperture),
+  apertureEstimated: surface.apertureEstimated !== false,
+  asphere: normalizePatentAsphere(surface.asphere)
+});
+
+const CANON_DREAM_LENS_NORMALIZED_SURFACES = [
+  { no: 1, radius: 1.461, distanceToNext: 0.117, nAfter: 1.79952, vdAfter: 42.3, mediumLabel: "Patent Glass 1" },
+  { no: 2, radius: 5.817, distanceToNext: 0.002, spaceLabel: "S1" },
+  { no: 3, radius: 0.923, distanceToNext: 0.103, nAfter: 1.67003, vdAfter: 47.2, mediumLabel: "Patent Glass 2" },
+  { no: 4, radius: 1.64, distanceToNext: 0.002, spaceLabel: "S2" },
+  { no: 5, radius: 0.543, distanceToNext: 0.244, nAfter: 1.6935, vdAfter: 53.4, mediumLabel: "Patent Glass 3" },
+  { no: 6, radius: -3.043, distanceToNext: 0.063, nAfter: 1.7552, vdAfter: 27.5, mediumLabel: "Patent Glass 4", interfaceType: "cemented" },
+  { no: 7, radius: 0.302, distanceToNext: 0.226, spaceLabel: "S3" },
+  { no: 8, radius: -0.462, distanceToNext: 0.04, nAfter: 1.5927, vdAfter: 35.4, mediumLabel: "Patent Glass 5" },
+  { no: 9, radius: 1.249, distanceToNext: 0.145, nAfter: 1.7859, vdAfter: 44.3, mediumLabel: "Patent Glass 6", interfaceType: "cemented" },
+  { no: 10, radius: -0.728, distanceToNext: 0.002, spaceLabel: "S4" },
+  { no: 11, radius: 1.213, distanceToNext: 0.116, nAfter: 1.7859, vdAfter: 44.3, mediumLabel: "Patent Glass 7" },
+  { no: 12, radius: -1.303, distanceToNext: null }
+];
+
+const scalePatentSurfacePrescription = (surfaces, targetFocalLengthMm, normalizedFocalLength = 1) => {
+  const scale = (normalizePatentSurfaceValue(targetFocalLengthMm) || 1)
+    / (normalizePatentSurfaceValue(normalizedFocalLength) || 1);
+  return surfaces.map((surface) => normalizePatentSurface({
+    ...surface,
+    radius: surface.radius === Infinity || surface.radius === -Infinity
+      ? surface.radius
+      : normalizePatentSurfaceValue(surface.radius) * scale,
+    distanceToNext: surface.distanceToNext === null || surface.distanceToNext === undefined
+      ? null
+      : normalizePatentSurfaceValue(surface.distanceToNext) * scale
+  }));
+};
+
+const makeCanonDreamLensSurfaces = (targetFocalLengthMm = 50) => (
+  scalePatentSurfacePrescription(CANON_DREAM_LENS_NORMALIZED_SURFACES, targetFocalLengthMm, 1)
+);
+
+const PATENT_SURFACE_PRESCRIPTION_DATA = {
+  zunow50F11Us2715354: {
+    patentDataStatus: "needsManualVerification",
+    sourcePatent: "US2715354",
+    example: "Patent table",
+    focalLength: 50,
+    apertureRatio: "1:1.1",
+    imageFormat: "36 x 24 mm",
+    note: "Patent table has been entered from the Google Patents/PDF OCR. Several symbols in the radii table are ambiguous, so this entry remains marked for manual verification. Clear apertures and mechanical diameters are not supplied by the patent and remain estimated.",
+    surfaces: [
+      { no: 1, radius: 35.8, distanceToNext: 8.35, nAfter: 1.67, vdAfter: 47.2 },
+      { no: 2, radius: 240, distanceToNext: 0.71 },
+      { no: 3, radius: 21, distanceToNext: 7.33, nAfter: 1.67, vdAfter: 47.2 },
+      { no: 4, radius: 51, distanceToNext: 4.5, nAfter: 1.5163, vdAfter: 64 },
+      { no: 5, radius: -330, distanceToNext: 1.45, nAfter: 1.74, vdAfter: 28.2 },
+      { no: 6, radius: 11.5, distanceToNext: 11.46 },
+      { no: 7, radius: Infinity, distanceToNext: 5.42, nAfter: 1.67, vdAfter: 47.2 },
+      { no: 8, radius: -23, distanceToNext: 0.71 },
+      { no: 9, radius: -20, distanceToNext: 0.78, nAfter: 1.5814, vdAfter: 40.8 },
+      { no: 10, radius: Infinity, distanceToNext: 8.52, nAfter: 1.6584, vdAfter: 50.8 },
+      { no: 11, radius: -16.7, distanceToNext: 0.67 },
+      { no: 12, radius: -16.3, distanceToNext: 1.2, nAfter: 1.5796, vdAfter: 53.9 },
+      { no: 13, radius: Infinity, distanceToNext: 6.5, nAfter: 1.6584, vdAfter: 50.8 },
+      { no: 14, radius: -23, distanceToNext: null }
+    ]
+  },
+  gaussF2Us4123144Ex1: {
+    patentDataStatus: "verified",
+    sourcePatent: "US4123144",
+    example: "Example 1",
+    focalLength: 100,
+    apertureRatio: "1:2",
+    backFocalLength: 59.21,
+    fieldAngleDeg: 22.5,
+    surfaces: [
+      { no: 1, radius: 48.88, distanceToNext: 8.89, nAfter: 1.62286, vdAfter: 60.08 },
+      { no: 2, radius: 182.96, distanceToNext: 0.38 },
+      { no: 3, radius: 36.92, distanceToNext: 15.11, nAfter: 1.58565, vdAfter: 46.17 },
+      { no: 4, radius: Infinity, distanceToNext: 2.31, nAfter: 1.67764, vdAfter: 31.97 },
+      { no: 5, radius: 23.06, distanceToNext: 9.14 },
+      { no: 6, radius: Infinity, distanceToNext: 13.36, isStop: true },
+      { no: 7, radius: -23.91, distanceToNext: 1.92, nAfter: 1.57046, vdAfter: 42.56 },
+      { no: 8, radius: Infinity, distanceToNext: 7.77, nAfter: 1.64128, vdAfter: 55.15 },
+      { no: 9, radius: -36.92, distanceToNext: 0.38 },
+      { no: 10, radius: 1063.24, distanceToNext: 6.73, nAfter: 1.62286, vdAfter: 60.08 },
+      { no: 11, radius: -48.88, distanceToNext: null }
+    ]
+  },
+  leicaSummilux50F14Us3291553: {
+    patentDataStatus: "verified",
+    sourcePatent: "US3291553A",
+    example: "Patent table",
+    focalLength: 50,
+    apertureRatio: "1:1.4",
+    note: "The patent gives reciprocal radii and axial distances for focal length 1.0; this preset scales those values to 50 mm. Clear apertures and mechanical diameters are not supplied by the patent and remain estimated.",
+    surfaces: [
+      { no: 1, radius: 39.993601, distanceToNext: 5.11, nAfter: 1.7919, vdAfter: 47.2 },
+      { no: 2, radius: 140.095265, distanceToNext: 2.86 },
+      { no: 3, radius: 21.006638, distanceToNext: 5.62, nAfter: 1.7919, vdAfter: 47.2 },
+      { no: 4, radius: 43.200276, distanceToNext: 0.725 },
+      { no: 5, radius: 57.843591, distanceToNext: 2.345, nAfter: 1.7685, vdAfter: 26.8 },
+      { no: 6, radius: 14.342675, distanceToNext: 10.625 },
+      { no: 7, radius: -18.446781, distanceToNext: 1.16, nAfter: 1.7231, vdAfter: 29.3 },
+      { no: 8, radius: -77.279753, distanceToNext: 3.38, nAfter: 1.7919, vdAfter: 47.2 },
+      { no: 9, radius: -23.99002, distanceToNext: 0.095 },
+      { no: 10, radius: 94.232944, distanceToNext: 6.76, nAfter: 1.7479, vdAfter: 44.7 },
+      { no: 11, radius: -14.97006, distanceToNext: 2.415, nAfter: 1.7205, vdAfter: 48 },
+      { no: 12, radius: -47.828582, distanceToNext: null }
+    ]
+  },
+  leicaSummicronC40F2De2222892Ex3: {
+    patentDataStatus: "verified",
+    sourcePatent: "DE2222892",
+    example: "Example 3 / claim 4 table",
+    focalLength: 40,
+    apertureRatio: "1:2",
+    fieldAngleDeg: 28.4,
+    note: "DE2222892 gives Example 3 as normalized focal length 1.0 data; this preset scales radii and axial distances by 40 for the labelled 40 mm example. The patent table uses e-line glass data; the app stores those values in its nd/Vd fields for this educational prescription. Clear apertures and mechanical diameters are not supplied by the patent and remain estimated.",
+    surfaces: [
+      { no: 1, radius: 23.9976, distanceToNext: 2.8, nAfter: 1.81527, vdAfter: 45.06 },
+      { no: 2, radius: 54.3276, distanceToNext: 0.03 },
+      { no: 3, radius: 12.9932, distanceToNext: 3.6996, nAfter: 1.81527, vdAfter: 45.06 },
+      { no: 4, radius: 25.7724, distanceToNext: 1.31, nAfter: 1.7918, vdAfter: 25.87 },
+      { no: 5, radius: 9.1196, distanceToNext: 9.6192 },
+      { no: 6, radius: -12.7992, distanceToNext: 1.41, nAfter: 1.64062, vdAfter: 35.09 },
+      { no: 7, radius: -26.2424, distanceToNext: 1.9, nAfter: 1.69232, vdAfter: 49.18 },
+      { no: 8, radius: -17.9808, distanceToNext: 0.03 },
+      { no: 9, radius: -7914.48, distanceToNext: 3.7996, nAfter: 1.64304, vdAfter: 59.85 },
+      { no: 10, radius: -22.8904, distanceToNext: null }
+    ]
+  },
+  canonDreamLens50F095JpSho39_10178: {
+    patentDataStatus: "verified",
+    sourcePatent: "特公昭39-10178",
+    example: "Patent example",
+    focalLength: 50,
+    apertureRatio: "1:0.95",
+    fieldAngleDeg: 45,
+    imageFormat: "36 x 24 mm",
+    diameterSource: "patentMechanical",
+    diameterNote: "Patent-reported external group diameters are used as mechanical / drawing references only. Ray tracing clear apertures remain independent estimates unless manually edited.",
+    diameterProfile: {
+      source: "patentMechanical",
+      note: "Group outer diameters from Japanese Patent 特公昭39-10178. These are mechanical / drawing reference diameters, not physical stop diameters or automatic ray-tracing clear apertures.",
+      elements: [
+        { element: "L1", mechanicalDiameter: 60.5, visualDiameter: 60.5 },
+        { element: "L2", mechanicalDiameter: 50.5, visualDiameter: 50.5 },
+        { element: "L3", mechanicalDiameter: 43, visualDiameter: 43 },
+        { element: "L4", mechanicalDiameter: 43, visualDiameter: 43 },
+        { element: "L5", mechanicalDiameter: 28, visualDiameter: 28 },
+        { element: "L6", mechanicalDiameter: 28, visualDiameter: 28 },
+        { element: "L7", mechanicalDiameter: 34.5, visualDiameter: 34.5 }
+      ]
+    },
+    source: {
+      patentId: "特公昭39-10178",
+      patentTitleJapanese: "高写力写真レンズ",
+      patentTitleEnglish: "High-Resolving-Power Photographic Lens",
+      applicant: "Canon Camera Co., Ltd.",
+      inventor: "Jiro Mukai",
+      filingDate: "1960-11-01",
+      publicationDate: "1964-06-10",
+      normalizedFocalLength: 1,
+      fNumber: 0.95,
+      fullFieldAngleDeg: 45,
+      elements: 7,
+      groups: 5,
+      sourceStatus: "Patent example",
+      glassStatus: "Patent provides nd and Vd; exact catalogue glass names not specified",
+      apertureStopStatus: "Region inferred from layout; exact stop coordinate and physical diameter not specified numerically"
+    },
+    note: "Canon’s ultra-fast 7-element, 5-group modified Gauss patent design. Derived from Japanese Patent 特公昭39-10178, filed in 1960 by Jiro Mukai. The optical prescription is normalized to f = 1.00 and scales to the selected target focal length. Glass is represented by patent nd/Vd data because catalogue glass designations are not explicitly given in the patent.",
+    surfaces: makeCanonDreamLensSurfaces(50)
+  },
+  zeissSonnar50F15Us2186621Ex1: {
+    patentDataStatus: "verified",
+    sourcePatent: "US2186621",
+    example: "Fig. 2 complete optical data",
+    focalLength: 50,
+    apertureRatio: "1:1.5",
+    note: "The patent gives the Fig. 2 optical data for focal length 100 mm; this preset scales all radii and axial distances by 0.5 for the labelled 50 mm example. Clear apertures and mechanical diameters are not supplied by the patent and remain estimated.",
+    surfaces: [
+      { no: 1, radius: 32.58, distanceToNext: 4.65, nAfter: 1.6689, vdAfter: 48.8 },
+      { no: 2, radius: 161.29, distanceToNext: 0.115 },
+      { no: 3, radius: 17.93, distanceToNext: 5.55, nAfter: 1.6689, vdAfter: 48.8 },
+      { no: 4, radius: 38.655, distanceToNext: 3.7, nAfter: 1.4645, vdAfter: 65.7 },
+      { no: 5, radius: Infinity, distanceToNext: 0.95, nAfter: 1.7219, vdAfter: 28.7 },
+      { no: 6, radius: 11.69, distanceToNext: 7.78 },
+      { no: 7, radius: 457, distanceToNext: 1.52, nAfter: 1.5325, vdAfter: 46.2 },
+      { no: 8, radius: 26.565, distanceToNext: 9.96, nAfter: 1.6689, vdAfter: 48.8 },
+      { no: 9, radius: -11.045, distanceToNext: 1.185, nAfter: 1.6043, vdAfter: 56.3 },
+      { no: 10, radius: -113.85, distanceToNext: 0.05 },
+      { no: 11, radius: 136.4, distanceToNext: 2.25, nAfter: 1.6389, vdAfter: 48.8 },
+      { no: 12, radius: Infinity, distanceToNext: null }
+    ]
+  },
+  zeissSonnarType50F14Us2600610Ex3: {
+    patentDataStatus: "verified",
+    sourcePatent: "US2600610",
+    example: "Example III",
+    focalLength: 50,
+    apertureRatio: "1:1.4",
+    fieldAngleDeg: 45,
+    imageFormat: "36 x 24 mm",
+    note: "US2600610 Example III describes a Bertele / Sonnar-type high-aperture three-component objective at focal length 100 mm. This preset scales all radii, glass thicknesses and air gaps by 0.5 for a 50 mm educational patent example. Refractive indices and Abbe numbers are unchanged. Clear apertures and mechanical diameters are not supplied by the patent and remain estimated.",
+    surfaces: [
+      { no: 1, radius: 41.8, distanceToNext: 4.6, nAfter: 1.717, vdAfter: 53.5 },
+      { no: 2, radius: 198.1, distanceToNext: 0.15 },
+      { no: 3, radius: 20.64, distanceToNext: 6.2, nAfter: 1.8055, vdAfter: 40.3 },
+      { no: 4, radius: 35.94, distanceToNext: 4.05, nAfter: 1.5005, vdAfter: 66 },
+      { no: 5, radius: -400, distanceToNext: 0.95, nAfter: 1.7283, vdAfter: 28.3 },
+      { no: 6, radius: -13.24, distanceToNext: 7.15 },
+      { no: 7, radius: -500, distanceToNext: 4, nAfter: 1.5231, vdAfter: 50.9 },
+      { no: 8, radius: -41, distanceToNext: 10.8, nAfter: 1.717, vdAfter: 47.9 },
+      { no: 9, radius: -12.475, distanceToNext: 1.9, nAfter: 1.651, vdAfter: 58.6 },
+      { no: 10, radius: -54.95, distanceToNext: null }
+    ]
+  },
+  zeissSonnar40F28Us3994576Ex1: {
+    patentDataStatus: "verified",
+    sourcePatent: "US3994576",
+    example: "Example 1",
+    focalLength: 40,
+    apertureRatio: "1:2.9",
+    backFocalLength: 25.364,
+    fieldAngleDeg: 25,
+    note: "The patent table is normalized to focal length 1.0; this preset scales all radii and axial distances by 40 for the labelled 40 mm example. Clear apertures and mechanical diameters are not supplied by the patent and remain estimated.",
+    surfaces: [
+      { no: 1, radius: 15.6, distanceToNext: 3.6, nAfter: 1.681 },
+      { no: 2, radius: 36.5812, distanceToNext: 0.056 },
+      { no: 3, radius: 14.06, distanceToNext: 2.8, nAfter: 1.72 },
+      { no: 4, radius: 28.1356, distanceToNext: 1.1376 },
+      { no: 5, radius: 94.1544, distanceToNext: 0.822, nAfter: 1.785 },
+      { no: 6, radius: 10.0868, distanceToNext: 4.0652 },
+      { no: 7, radius: 100.0068, distanceToNext: 1.15996, nAfter: 1.638 },
+      { no: 8, radius: 12.8, distanceToNext: 0 },
+      { no: 9, radius: 12.8, distanceToNext: 4.6386, nAfter: 1.744 },
+      { no: 10, radius: -45.4, distanceToNext: null }
+    ]
+  },
+  zeissBiotar50F14Us1786916Ex2: {
+    patentDataStatus: "verified",
+    sourcePatent: "US1786916",
+    example: "Example 2 / Fig. 2",
+    focalLength: 50,
+    apertureRatio: "1:1.4",
+    surfaces: [
+      { no: 1, radius: 41.8, distanceToNext: 5.375, nAfter: 1.64238, vdAfter: 48 },
+      { no: 2, radius: 160.5, distanceToNext: 0.825 },
+      { no: 3, radius: 22.4, distanceToNext: 7.775, nAfter: 1.62306, vdAfter: 56.9 },
+      { no: 4, radius: -575, distanceToNext: 2.525, nAfter: 1.57566, vdAfter: 41.2 },
+      { no: 5, radius: 14.15, distanceToNext: 9.45 },
+      { no: 6, radius: -19.25, distanceToNext: 2.525, nAfter: 1.6727, vdAfter: 32.2 },
+      { no: 7, radius: 25.25, distanceToNext: 10.61, nAfter: 1.64238, vdAfter: 48 },
+      { no: 8, radius: -26.6, distanceToNext: 0.485 },
+      { no: 9, radius: 53, distanceToNext: 6.95, nAfter: 1.64238, vdAfter: 48 },
+      { no: 10, radius: -60, distanceToNext: null }
+    ]
+  },
+  sonyZeissPlanar50F14Us20140071331Ex4: {
+    patentDataStatus: "verified",
+    sourcePatent: "US20140071331",
+    example: "Example 4",
+    focalLength: 51.5,
+    apertureRatio: "1:1.45",
+    backFocalLength: 36.098,
+    fieldAngleDeg: 23.39,
+    surfaces: [
+      { no: 1, radius: 60.388, distanceToNext: 6.04, nAfter: 1.834805, vdAfter: 42.7 },
+      { no: 2, radius: -214.645, distanceToNext: 0.37 },
+      { no: 3, radius: -156.603, distanceToNext: 1.3, nAfter: 1.592703, vdAfter: 35.5 },
+      { no: 4, radius: 35, distanceToNext: 3 },
+      {
+        no: 5,
+        radius: 28.547,
+        distanceToNext: 7.17,
+        nAfter: 1.851348,
+        vdAfter: 40.1,
+        asphere: { enabled: true, k: 0, A4: -1.05e-6, A6: -6.57e-10, A8: -1.73e-12, A10: 4.21e-15 }
+      },
+      { no: 6, radius: -503.384, distanceToNext: 1.2, nAfter: 1.61293, vdAfter: 37 },
+      { no: 7, radius: 25.007, distanceToNext: 14.509 },
+      { no: 8, radius: Infinity, distanceToNext: 6.333, isStop: true },
+      { no: 9, radius: -21.841, distanceToNext: 2.8, nAfter: 1.64769, vdAfter: 33.8 },
+      { no: 10, radius: 30.673, distanceToNext: 7.94, nAfter: 1.883, vdAfter: 40.8 },
+      { no: 11, radius: -47.908, distanceToNext: 0.2 },
+      { no: 12, radius: 247.339, distanceToNext: 2.13, nAfter: 1.69895, vdAfter: 30.1 },
+      { no: 13, radius: 38.671, distanceToNext: 7, nAfter: 1.768015, vdAfter: 49.2 },
+      {
+        no: 14,
+        radius: -50.305,
+        distanceToNext: null,
+        asphere: { enabled: true, k: -1.6554, A4: 5.10e-6, A6: -9.77e-10, A8: 2.06e-11, A10: -8.11e-15 }
+      }
+    ]
+  },
+  sonySonnarFe55F18Us20150092100Ex1: {
+    patentDataStatus: "verified",
+    sourcePatent: "US20150092100",
+    example: "Numerical Example 1",
+    focalLength: 53.61,
+    apertureRatio: "1:1.86",
+    fieldAngleDeg: 22.15,
+    note: "US20150092100 Numerical Example 1 is entered directly from Tables 1, 2 and 3. D7 and D9 use the infinite-focus values from Table 2. The sixth and eighth to eleventh surfaces are aspherical. Clear apertures and mechanical diameters are not supplied by the patent and remain estimated.",
+    surfaces: [
+      { no: 1, radius: -46.604, distanceToNext: 3.78, nAfter: 1.58144, vdAfter: 40.9 },
+      { no: 2, radius: 40.397, distanceToNext: 7.54, nAfter: 1.72916, vdAfter: 54.7 },
+      { no: 3, radius: -58.437, distanceToNext: 0.4 },
+      { no: 4, radius: 32.361, distanceToNext: 1.6, nAfter: 1.846663, vdAfter: 23.8 },
+      { no: 5, radius: 23.982, distanceToNext: 5.44, nAfter: 1.768015, vdAfter: 49.2 },
+      {
+        no: 6,
+        radius: 127.461,
+        distanceToNext: 2.78,
+        asphere: { enabled: true, k: 0, A4: 4.72026e-6, A6: -6.13511e-9, A8: 3.19538e-11, A10: -5.08717e-14 }
+      },
+      { no: 7, radius: Infinity, distanceToNext: 2.81, isStop: true },
+      {
+        no: 8,
+        radius: 229.883,
+        distanceToNext: 1,
+        nAfter: 1.487489,
+        vdAfter: 70.4,
+        asphere: { enabled: true, k: 0, A4: -1.53071e-5, A6: 5.95902e-8, A8: -1.03151e-10, A10: -1.18635e-13 }
+      },
+      {
+        no: 9,
+        radius: 21.728,
+        distanceToNext: 13.67,
+        asphere: { enabled: true, k: 0, A4: -1.66843e-5, A6: 5.20407e-8, A8: 3.77076e-12, A10: -6.66338e-13 }
+      },
+      {
+        no: 10,
+        radius: 43.205,
+        distanceToNext: 12,
+        nAfter: 1.592014,
+        vdAfter: 67,
+        asphere: { enabled: true, k: 0, A4: 4.5895e-6, A6: -1.29121e-8, A8: 7.03681e-11, A10: -6.07907e-13 }
+      },
+      {
+        no: 11,
+        radius: -44.134,
+        distanceToNext: 12.35,
+        asphere: { enabled: true, k: 0, A4: -3.28037e-6, A6: -2.72677e-8, A8: 9.31069e-11, A10: -5.99753e-13 }
+      },
+      { no: 12, radius: -18.057, distanceToNext: 1.2, nAfter: 1.69895, vdAfter: 30.1 },
+      { no: 13, radius: -39.016, distanceToNext: 11.78 },
+      { no: 14, radius: Infinity, distanceToNext: 2, nAfter: 1.516798, vdAfter: 64.2 },
+      { no: 15, radius: Infinity, distanceToNext: 1 },
+      { no: 16, radius: Infinity, distanceToNext: null }
+    ]
+  },
+  sonyFe24F14Wo2019073744Ex1: { patentDataStatus: "needsManualVerification", surfaces: createPatentPlaceholderSurfaces(1) },
+  sonyFe70200F4Us20150226945Ex1: { patentDataStatus: "needsManualVerification", surfaces: createPatentPlaceholderSurfaces(1) },
+  nikonLargeApertureWideAngleUs3576360: {
+    patentDataStatus: "needsManualVerification",
+    sourcePatent: "US3576360A",
+    example: "Embodiment 1 / Claim 2 table",
+    focalLength: 100,
+    apertureRatio: "1:1.4",
+    backFocalLength: 106.44,
+    fieldAngleDeg: 62,
+    note: "Embodiment 1 table has been entered from the patent PDF OCR. A few symbols in the OCR are ambiguous, so this entry remains marked for manual verification. Clear apertures and mechanical diameters are not supplied by the patent and remain estimated.",
+    surfaces: [
+      { no: 1, radius: -129.722, distanceToNext: 5.833, nAfter: 1.56883, vdAfter: 56 },
+      { no: 2, radius: -71.111, distanceToNext: 12.222 },
+      { no: 3, radius: -138.889, distanceToNext: 5.833, nAfter: 1.54814, vdAfter: 45.9 },
+      { no: 4, radius: -73.333, distanceToNext: 24.444 },
+      { no: 5, radius: -107.778, distanceToNext: 23.611, nAfter: 1.80411, vdAfter: 46.4 },
+      { no: 6, radius: -116.667, distanceToNext: 44.444, nAfter: 1.50137, vdAfter: 56.5 },
+      { no: 7, radius: -432.031, distanceToNext: 22.222 },
+      { no: 8, radius: -74.194, distanceToNext: 12.222, nAfter: 1.80411, vdAfter: 46.4 },
+      { no: 9, radius: -52.778, distanceToNext: 2.778, nAfter: 1.7847, vdAfter: 26.1 },
+      { no: 10, radius: -515.056, distanceToNext: 4.722 },
+      { no: 11, radius: -314.667, distanceToNext: 11.111, nAfter: 1.7725, vdAfter: 49.5 },
+      { no: 12, radius: -87.5, distanceToNext: 0.139 },
+      { no: 13, radius: -2777.778, distanceToNext: 10.556, nAfter: 1.7725, vdAfter: 49.5 },
+      { no: 14, radius: -151.25, distanceToNext: 0.139 },
+      { no: 15, radius: -291.669, distanceToNext: 9.444, nAfter: 1.713, vdAfter: 53.9 },
+      { no: 16, radius: -304.097, distanceToNext: null }
+    ]
+  },
+  nikonF12Us3738736: {
+    patentDataStatus: "verified",
+    sourcePatent: "US3738736A",
+    example: "Example 1",
+    focalLength: 100,
+    apertureRatio: "1:1.2",
+    backFocalLength: 75.7,
+    fieldAngleDeg: 46,
+    surfaces: [
+      { no: 1, radius: 129.845, distanceToNext: 10.08, nAfter: 1.79631, vdAfter: 40.8 },
+      { no: 2, radius: 1490.891, distanceToNext: 0.19 },
+      { no: 3, radius: 55.233, distanceToNext: 16.09, nAfter: 1.744, vdAfter: 44.9 },
+      { no: 4, radius: 116.279, distanceToNext: 2.91 },
+      { no: 5, radius: 168.605, distanceToNext: 2.91, nAfter: 1.68893, vdAfter: 31.1 },
+      { no: 6, radius: 35.252, distanceToNext: 34.5 },
+      { no: 7, radius: -35.271, distanceToNext: 2.13, nAfter: 1.7847, vdAfter: 26.1 },
+      { no: 8, radius: Infinity, distanceToNext: 16.86, nAfter: 1.74443, vdAfter: 49.4 },
+      { no: 9, radius: -55.039, distanceToNext: 0.19 },
+      { no: 10, radius: -348.837, distanceToNext: 11.82, nAfter: 1.72, vdAfter: 50.2 },
+      { no: 11, radius: -67.248, distanceToNext: 0.19 },
+      { no: 12, radius: 178.566, distanceToNext: 6.2, nAfter: 1.76684, vdAfter: 46.6 },
+      { no: 13, radius: -503.465, distanceToNext: null }
+    ]
+  },
+  olympusF12Us4099843: {
+    patentDataStatus: "verified",
+    sourcePatent: "US4099843A",
+    example: "Embodiment 1",
+    focalLength: 100,
+    apertureRatio: "1:1.2",
+    backFocalLength: 75.2,
+    fieldAngleDeg: 46,
+    surfaces: [
+      { no: 1, radius: 90.851, distanceToNext: 10.61, nAfter: 1.834, vdAfter: 37.19 },
+      { no: 2, radius: 546.619, distanceToNext: 0.19 },
+      { no: 3, radius: 55.369, distanceToNext: 11.25, nAfter: 1.8044, vdAfter: 39.62 },
+      { no: 4, radius: 95.056, distanceToNext: 4 },
+      { no: 5, radius: 158.146, distanceToNext: 2.61, nAfter: 1.7847, vdAfter: 26.22 },
+      { no: 6, radius: 36.59, distanceToNext: 34.02 },
+      { no: 7, radius: -33.822, distanceToNext: 2.88, nAfter: 1.84666, vdAfter: 23.9 },
+      { no: 8, radius: -82.077, distanceToNext: 13.17, nAfter: 1.734, vdAfter: 51.52 },
+      { no: 9, radius: -48.055, distanceToNext: 0.19 },
+      { no: 10, radius: -285.232, distanceToNext: 11.72, nAfter: 1.734, vdAfter: 51.52 },
+      { no: 11, radius: -64.922, distanceToNext: 0.19 },
+      { no: 12, radius: 157.079, distanceToNext: 6.73, nAfter: 1.734, vdAfter: 51.52 },
+      { no: 13, radius: -910.494, distanceToNext: null }
+    ]
+  }
+};
+
+const makePatentPreset = ({
+  key,
+  name,
+  sourcePatent,
+  example = "",
+  brand = "Other",
+  designType = "Normal",
+  analysisDefaults = NORMAL_ANALYSIS_DEFAULTS,
+  focalLength = null,
+  apertureRatio = null,
+  backFocalLength = null,
+  fieldAngleDeg = null,
+  imageFormat = null,
+  surfaceCount = 1,
+  diameterSource = null,
+  diameterReference = null,
+  diameterNote = "",
+  diameterProfile = null,
+  svgProductionReference = null
+}) => ({
+  key,
+  name,
+  sourcePatent,
+  example,
+  sourceType: "patent",
+  prescriptionType: "surface",
+  brand,
+  designType,
+  focalLength,
+  apertureRatio,
+  backFocalLength,
+  fieldAngleDeg,
+  imageFormat,
+  diameterSource,
+  diameterReference,
+  diameterNote,
+  diameterProfile,
+  note: "Patent-based example. Numeric surface table values have not been entered yet, so missing prescription fields are shown as warnings instead of being guessed.",
+  analysisDefaults,
+  svgProductionReference,
+  surfaces: createPatentPlaceholderSurfaces(surfaceCount),
+  patentDataStatus: "needsManualVerification"
+});
+
+const mergePatentSurfacePrescriptionData = (preset) => {
+  const prescriptionData = PATENT_SURFACE_PRESCRIPTION_DATA[preset.key];
+  if (!prescriptionData) return preset;
+  const patentDataStatus = prescriptionData.patentDataStatus || preset.patentDataStatus || "needsManualVerification";
+  return {
+    ...preset,
+    ...prescriptionData,
+    note: prescriptionData.note || (patentDataStatus === "verified"
+      ? "Surface radii, axial thicknesses, refractive indices, and dispersion values are patent-based. Clear apertures and mechanical diameters are estimated unless explicitly supplied."
+      : preset.note),
+    surfaces: (prescriptionData.surfaces || preset.surfaces || []).map(normalizePatentSurface),
+    patentDataStatus
+  };
+};
+
+const parseApertureNumber = (apertureRatio) => {
+  if (typeof apertureRatio === "number") return apertureRatio > 0 ? apertureRatio : NaN;
+  const match = String(apertureRatio || "").match(/1\s*:\s*([0-9.]+)/);
+  const value = match ? Number.parseFloat(match[1]) : Number.parseFloat(String(apertureRatio || "").replace(/[^\d.]/g, ""));
+  return Number.isFinite(value) && value > 0 ? value : NaN;
+};
+
+const estimatedPatentLensDiameter = (prescription = {}) => {
+  const clearApertures = (prescription.surfaces || [])
+    .map((surface) => normalizePatentSurfaceValue(surface.clearAperture))
+    .filter((value) => Number.isFinite(value) && value > 0);
+  if (clearApertures.length) return Math.max(...clearApertures);
+
+  const focalLength = normalizePatentSurfaceValue(prescription.focalLength);
+  const fNumber = parseApertureNumber(prescription.apertureRatio || prescription.fNumber);
+  if (Number.isFinite(focalLength) && focalLength > 5 && Number.isFinite(fNumber)) {
+    return Math.min(120, Math.max(12, focalLength / fNumber));
+  }
+
+  return 42;
+};
+
+const normalizePatentDiameterSource = (source, prescription = state.prescription) => {
+  if (source === "svgEstimated" && prescription?.diameterProfile?.source === "svgEstimated") return "svgEstimated";
+  if (source === "patentMechanical" && prescription?.diameterProfile?.source === "patentMechanical") return "patentMechanical";
+  if (source === "manual") return "manual";
+  return "auto";
+};
+
+const activePatentDiameterSource = (prescription = state.prescription) => (
+  normalizePatentDiameterSource((() => {
+    try {
+      return state?.patentDiameterSource || prescription?.diameterSource || prescription?.diameterProfile?.source;
+    } catch (error) {
+      return prescription?.diameterSource || prescription?.diameterProfile?.source;
+    }
+  })(), prescription)
+);
+
+const diameterProfileElementForIndex = (prescription, index) => {
+  const profile = normalizeDiameterProfile(prescription?.diameterProfile);
+  if (!profile?.elements?.length) return null;
+  return profile.elements[index] || profile.elements.find((element) => element.element === `L${index + 1}`) || null;
+};
+
+const applyPatentSurfaceAsphereToLens = (lens, side, asphere) => {
+  const normalizedAsphere = normalizePatentAsphere(asphere);
+  if (!normalizedAsphere?.enabled) return;
+  const prefix = side === "front" ? "front" : "rear";
+  lens[`${prefix}AsphereEnabled`] = true;
+  lens[`${prefix}ConicK`] = normalizedAsphere.k;
+  lens[`${prefix}A4`] = normalizedAsphere.A4;
+  lens[`${prefix}A6`] = normalizedAsphere.A6;
+  lens[`${prefix}A8`] = normalizedAsphere.A8;
+  lens[`${prefix}A10`] = normalizedAsphere.A10;
+};
+
+const patentSurfaceToLensType = (r1, r2) => {
+  if (Math.abs(r1 || 0) < 1e-9 && Math.abs(r2 || 0) < 1e-9) return "biconvex";
+  if ((r1 || 0) > 0 && (r2 || 0) < 0) return "biconvex";
+  if ((r1 || 0) < 0 && (r2 || 0) > 0) return "biconcave";
+  if ((r1 || 0) > 0 && (r2 || 0) > 0) return "positiveMeniscus";
+  if ((r1 || 0) < 0 && (r2 || 0) < 0) return "negativeMeniscus";
+  if (Math.abs(r1 || 0) < 1e-9 && (r2 || 0) < 0) return "planoConvex";
+  if ((r1 || 0) > 0 && Math.abs(r2 || 0) < 1e-9) return "planoConvex";
+  return "positiveMeniscus";
+};
+
+const surfaceRadiusForLens = (radius) => {
+  if (radius === Infinity || radius === -Infinity) return 0;
+  const value = normalizePatentSurfaceValue(radius);
+  return Number.isFinite(value) ? value : 0;
+};
+
+const patentRadiiNearlyEqual = (left, right, tolerance = 1e-7) => {
+  const leftValue = normalizePatentSurfaceValue(left);
+  const rightValue = normalizePatentSurfaceValue(right);
+  if (!Number.isFinite(leftValue) || !Number.isFinite(rightValue)) {
+    return leftValue === rightValue;
+  }
+  return Math.abs(leftValue - rightValue) <= tolerance * Math.max(1, Math.abs(leftValue), Math.abs(rightValue));
+};
+
+const normalizeZeroDistanceCementedInterfaces = (surfaces = []) => {
+  const normalized = surfaces.map((surface) => ({ ...surface }));
+  const rearToDuplicateFront = new Map();
+  const duplicateFrontToRear = new Map();
+
+  for (let index = 0; index < normalized.length - 1; index += 1) {
+    const current = normalized[index];
+    const next = normalized[index + 1];
+    const zeroDistance = Math.abs(normalizePatentSurfaceValue(current.distanceToNext) || 0) <= 1e-9;
+    if (
+      zeroDistance
+      && patentRadiiNearlyEqual(current.radius, next.radius)
+      && normalizePatentSurfaceValue(next.nAfter) > 1
+    ) {
+      current.zeroDistanceCementedDuplicateNextSurfaceNo = next.no;
+      current.zeroDistanceCementedNAfter = next.nAfter;
+      next.zeroDistanceSharedFrontSurface = true;
+      next.zeroDistanceSharedRearSurfaceNo = current.no;
+      rearToDuplicateFront.set(current.no, next.no);
+      duplicateFrontToRear.set(next.no, current.no);
+    }
+  }
+
+  return {
+    surfaces: normalized,
+    rearToDuplicateFront,
+    duplicateFrontToRear
+  };
+};
+
+const sphericalSagMagnitude = (radius, semiDiameter) => {
+  const R = Math.abs(surfaceRadiusForLens(radius));
+  const y = Math.abs(numericValue(semiDiameter) || 0);
+  if (!(R > 1e-9) || !(y > 0)) return 0;
+  if (y >= R) return Infinity;
+  return R - Math.sqrt(Math.max(0, R * R - y * y));
+};
+
+const drawableSemiDiameterForThickness = (baseSemiDiameter, front, rear, thickness) => {
+  const validRadii = [front.radius, rear.radius]
+    .map(surfaceRadiusForLens)
+    .filter((radius) => Number.isFinite(radius) && Math.abs(radius) > 1e-9)
+    .map(Math.abs);
+  const curvatureLimit = validRadii.length ? Math.min(...validRadii) * 0.985 : baseSemiDiameter;
+  const highLimit = Math.max(0.05, Math.min(baseSemiDiameter, curvatureLimit));
+  const maxSagBudget = Math.max(0.02, (numericValue(thickness) || 0.05) * 0.62);
+  const combinedSag = (semiDiameter) => (
+    sphericalSagMagnitude(front.radius, semiDiameter)
+    + sphericalSagMagnitude(rear.radius, semiDiameter)
+  );
+
+  if (combinedSag(highLimit) <= maxSagBudget) return highLimit;
+
+  let low = 0.05;
+  let high = highLimit;
+  for (let iteration = 0; iteration < 42; iteration += 1) {
+    const mid = (low + high) / 2;
+    if (combinedSag(mid) <= maxSagBudget) {
+      low = mid;
+    } else {
+      high = mid;
+    }
+  }
+  return Math.max(0.05, low);
+};
+
+const estimatedPatentElementDiameter = (baseDiameter, front, rear, thickness) => {
+  const statedApertures = [front.clearAperture, rear.clearAperture]
+    .map(normalizePatentSurfaceValue)
+    .filter((value) => Number.isFinite(value) && value > 0);
+  if (statedApertures.length) return Math.min(baseDiameter, ...statedApertures);
+
+  return Math.max(0.1, drawableSemiDiameterForThickness(baseDiameter / 2, front, rear, thickness) * 2);
+};
+
+const surfacePrescriptionToDerivedLenses = (prescription = {}) => {
+  const zeroDistanceNormalization = normalizeZeroDistanceCementedInterfaces(
+    (prescription.surfaces || []).map(normalizePatentSurface)
+  );
+  const surfaces = zeroDistanceNormalization.surfaces;
+  if (surfaces.length < 2) return [];
+
+  const baseDiameter = estimatedPatentLensDiameter(prescription);
+  const lenses = [];
+  for (let index = 0; index < surfaces.length - 1; index += 1) {
+    const front = surfaces[index];
+    const rear = surfaces[index + 1];
+    if (!(front.nAfter > 1) || !(front.distanceToNext > 0)) continue;
+
+    const r1 = surfaceRadiusForLens(front.radius);
+    const r2 = surfaceRadiusForLens(rear.radius);
+    const lensIndex = lenses.length;
+    const diameterSource = activePatentDiameterSource(prescription);
+    const profileElement = ["svgEstimated", "patentMechanical"].includes(diameterSource)
+      ? diameterProfileElementForIndex(prescription, lensIndex)
+      : null;
+    const profileClearDiameter = normalizePatentSurfaceValue(profileElement?.clearApertureDiameter);
+    const profileMechanicalDiameter = normalizePatentSurfaceValue(profileElement?.mechanicalDiameter);
+    const profileVisualDiameter = normalizePatentSurfaceValue(profileElement?.visualDiameter);
+    const diameter = Number.isFinite(profileClearDiameter) && profileClearDiameter > 0
+      ? profileClearDiameter
+      : estimatedPatentElementDiameter(baseDiameter, front, rear, front.distanceToNext);
+    const statedApertures = [front.clearAperture, rear.clearAperture]
+      .map(normalizePatentSurfaceValue)
+      .filter((value) => Number.isFinite(value) && value > 0);
+    const clearApertureDiameter = Number.isFinite(profileClearDiameter) && profileClearDiameter > 0
+      ? profileClearDiameter
+      : statedApertures.length ? Math.min(...statedApertures) : diameter;
+    const mechanicalDiameter = Number.isFinite(profileMechanicalDiameter) && profileMechanicalDiameter > 0
+      ? Math.max(clearApertureDiameter, profileMechanicalDiameter)
+      : Math.max(clearApertureDiameter, diameter);
+    const visualDiameter = Number.isFinite(profileVisualDiameter) && profileVisualDiameter > 0
+      ? Math.max(clearApertureDiameter, profileVisualDiameter)
+      : mechanicalDiameter;
+    const frontMediumBefore = front.zeroDistanceSharedFrontSurface && index > 0
+      ? surfaces[index - 1].nAfter
+      : index > 0 && surfaces[index - 1].nAfter > 1
+        ? surfaces[index - 1].nAfter
+        : 1;
+    const frontSharedCementedSurface = front.zeroDistanceSharedFrontSurface === true
+      || (frontMediumBefore > 1 && front.nAfter > 1);
+    const rearIsCementedToNextGlass = rear.nAfter > 1 || rear.zeroDistanceCementedNAfter > 1;
+    const hasFollowingSurface = index + 2 < surfaces.length;
+    const missingAirGap = !rearIsCementedToNextGlass
+      && hasFollowingSurface
+      && (rear.distanceToNext === null || rear.distanceToNext === undefined);
+    const gapAfter = rearIsCementedToNextGlass
+      ? 0
+      : missingAirGap
+        ? PATENT_DEFAULT_MISSING_AIR_GAP_MM
+        : Math.max(0, rear.distanceToNext || 0);
+    const lens = {
+      id: crypto.randomUUID(),
+      type: patentSurfaceToLensType(r1, r2),
+      diameter: clearApertureDiameter,
+      visualDiameter,
+      clearApertureDiameter,
+      mechanicalDiameter,
+      edgeThickness: null,
+      apertureSource: Number.isFinite(profileClearDiameter) && profileClearDiameter > 0
+        ? diameterSource
+        : statedApertures.length ? "patent" : "estimated",
+      diameterSource: profileElement ? diameterSource : statedApertures.length ? "patent" : "estimated",
+      diameterReference: profileElement ? prescription.diameterProfile?.referenceSvg || "" : "",
+      diameterNote: profileElement ? prescription.diameterProfile?.note || "" : "",
+      thickness: Math.max(0.05, front.distanceToNext),
+      glassKey: "custom",
+      customNd: front.nAfter,
+      customVd: front.vdAfter || defaultVdForIndex(front.nAfter),
+      refractiveIndex: front.nAfter,
+      patentGlassLabel: front.mediumLabel || null,
+      patentGlassNote: front.mediumLabel ? "Exact catalogue glass designation not specified in the patent." : "",
+      patentSpaceLabel: rear.spaceLabel || null,
+      r1,
+      r2,
+      gapAfter,
+      frontCoatingKey: "multiCoated",
+      rearCoatingKey: "multiCoated",
+      internalTransmissionPerMm: 0.997,
+      patentSurfaceStart: front.no,
+      patentSurfaceEnd: rear.no,
+      patentFrontClearAperture: Number.isFinite(front.clearAperture)
+        ? front.clearAperture
+        : profileElement ? profileClearDiameter : null,
+      patentRearClearAperture: Number.isFinite(rear.clearAperture)
+        ? rear.clearAperture
+        : profileElement ? profileClearDiameter : null,
+      patentFrontApertureEstimated: front.apertureEstimated !== false,
+      patentRearApertureEstimated: rear.apertureEstimated !== false,
+      patentFrontNBefore: frontMediumBefore,
+      patentFrontNAfter: front.nAfter,
+      patentRearNBefore: front.nAfter,
+      patentRearNAfter: rearIsCementedToNextGlass ? (rear.zeroDistanceCementedNAfter || rear.nAfter) : 1,
+      patentFrontSharedCementedSurface: frontSharedCementedSurface,
+      patentRearCementedToNextGlass: rearIsCementedToNextGlass,
+      patentZeroDistanceDuplicateFrontSurface: rear.zeroDistanceCementedDuplicateNextSurfaceNo || null,
+      patentZeroDistanceSharedRearSurface: front.zeroDistanceSharedRearSurfaceNo || null,
+      patentGapEstimated: missingAirGap
+    };
+    applyPatentSurfaceAsphereToLens(lens, "front", front.asphere);
+    applyPatentSurfaceAsphereToLens(lens, "rear", rear.asphere);
+    lenses.push(normalizeLens(lens));
+  }
+
+  if (lenses.length) lenses[lenses.length - 1].gapAfter = 0;
+  return lenses;
+};
+
+const PATENT_PRESET_DEFINITIONS = [
+  makePatentPreset({
+    key: "zunow50F11Us2715354",
+    name: "Zunow 50mm f/1.1 — US2715354",
+    sourcePatent: "US2715354",
+    brand: "Other",
+    designType: "Ultra-fast",
+    analysisDefaults: TELEPHOTO_ANALYSIS_DEFAULTS
+  }),
+  makePatentPreset({
+    key: "gaussF2Us4123144Ex1",
+    name: "Patent Gauss f/2 — US4123144 Example 1",
+    sourcePatent: "US4123144",
+    example: "Example 1",
+    brand: "Other",
+    designType: "Normal"
+  }),
+  makePatentPreset({
+    key: "leicaSummilux50F14Us3291553",
+    name: "Leica Summilux 50mm f/1.4 — US3291553A",
+    sourcePatent: "US3291553A",
+    brand: "Leica",
+    designType: "Ultra-fast",
+    analysisDefaults: TELEPHOTO_ANALYSIS_DEFAULTS
+  }),
+  makePatentPreset({
+    key: "leicaSummicronC40F2De2222892Ex3",
+    name: "Leica Summicron-C 40mm f/2 — DE2222892 Example 3",
+    sourcePatent: "DE2222892",
+    example: "Example 3",
+    brand: "Leica",
+    designType: "Normal"
+  }),
+  makePatentPreset({
+    key: "canonDreamLens50F095JpSho39_10178",
+    name: "Canon 50mm f/0.95 “Dream Lens” — 特公昭39-10178",
+    sourcePatent: "特公昭39-10178",
+    example: "High-Resolving-Power Photographic Lens",
+    brand: "Canon",
+    designType: "Ultra-fast",
+    analysisDefaults: {
+      ...TELEPHOTO_ANALYSIS_DEFAULTS,
+      patentDiameterSource: "patentMechanical",
+      apertureStopMode: "surfaceNumber",
+      apertureStopSurfaceNumber: 7,
+      apertureStopSurfaceOffsetMm: 5.65,
+      matchPatentFNumber: true
+    }
+  }),
+  makePatentPreset({
+    key: "zeissSonnar50F15Us2186621Ex1",
+    name: "Zeiss Sonnar 50mm f/1.5 — US2186621 Example 1",
+    sourcePatent: "US2186621",
+    example: "Example01P",
+    brand: "Zeiss",
+    designType: "Ultra-fast",
+    analysisDefaults: TELEPHOTO_ANALYSIS_DEFAULTS
+  }),
+  makePatentPreset({
+    key: "zeissSonnarType50F14Us2600610Ex3",
+    name: "Zeiss Sonnar-type 50mm f/1.4 — US2600610 Example III",
+    sourcePatent: "US2600610",
+    example: "Example III",
+    brand: "Zeiss",
+    designType: "Ultra-fast",
+    analysisDefaults: {
+      ...TELEPHOTO_ANALYSIS_DEFAULTS,
+      apertureStopMode: "surfaceNumber",
+      apertureStopSurfaceNumber: 6,
+      apertureStopSurfaceOffsetMm: 3.575,
+      matchPatentFNumber: true
+    }
+  }),
+  makePatentPreset({
+    key: "zeissSonnar40F28Us3994576Ex1",
+    name: "Zeiss Sonnar 40mm f/2.8 — US3994576 Example 1",
+    sourcePatent: "US3994576",
+    example: "Example01P",
+    brand: "Zeiss",
+    designType: "Normal"
+  }),
+  makePatentPreset({
+    key: DEFAULT_PRESET_KEY,
+    name: "Carl Zeiss Biotar 50mm f/1.4 — US1786916 Example 2",
+    sourcePatent: "US1786916",
+    example: "Example02P",
+    brand: "Zeiss",
+    designType: "Ultra-fast",
+    analysisDefaults: {
+      ...NORMAL_ANALYSIS_DEFAULTS,
+      apertureStopMode: "surfaceNumber",
+      apertureStopSurfaceNumber: 5,
+      apertureStopSurfaceOffsetMm: 4.725,
+      productionSilhouetteSource: "svgReference",
+      patentDiameterSource: "svgEstimated",
+      matchPatentFNumber: true
+    },
+    diameterSource: "svgEstimated",
+    diameterReference: "biotar-5cm-f14-production.svg",
+    diameterNote: "Estimated from uploaded SVG silhouette proportions only. Patent radii, thicknesses, air gaps and glass data are unchanged.",
+    diameterProfile: BIOTAR_50_F14_SVG_DIAMETER_PROFILE,
+    svgProductionReference: BIOTAR_50_F14_SVG_REFERENCE
+  }),
+  makePatentPreset({
+    key: "sonyZeissPlanar50F14Us20140071331Ex4",
+    name: "Sony Zeiss Planar 50mm f/1.4 ZA — US20140071331 Example 4",
+    sourcePatent: "US20140071331",
+    example: "Example04P",
+    brand: "Sony",
+    designType: "Normal"
+  }),
+  makePatentPreset({
+    key: "sonySonnarFe55F18Us20150092100Ex1",
+    name: "Sony Sonnar T* FE 55mm f/1.8 ZA — US20150092100 Example 1",
+    sourcePatent: "US20150092100",
+    example: "Example01P",
+    brand: "Sony",
+    designType: "Normal"
+  }),
+  makePatentPreset({
+    key: "sonyFe24F14Wo2019073744Ex1",
+    name: "Sony FE 24mm f/1.4 GM — WO2019-073744 Example 1",
+    sourcePatent: "WO2019-073744",
+    example: "Example01P",
+    brand: "Sony",
+    designType: "Wide angle",
+    analysisDefaults: WIDE_ANGLE_ANALYSIS_DEFAULTS
+  }),
+  makePatentPreset({
+    key: "sonyFe70200F4Us20150226945Ex1",
+    name: "Sony FE 70-200mm f/4 G OSS — US20150226945 Example 1",
+    sourcePatent: "US20150226945",
+    example: "Example01P",
+    brand: "Sony",
+    designType: "Zoom",
+    analysisDefaults: TELEPHOTO_ANALYSIS_DEFAULTS
+  }),
+  makePatentPreset({
+    key: "nikonLargeApertureWideAngleUs3576360",
+    name: "Nikon large aperture wide angle — US3576360A",
+    sourcePatent: "US3576360A",
+    brand: "Nikon",
+    designType: "Wide angle",
+    analysisDefaults: WIDE_ANGLE_ANALYSIS_DEFAULTS
+  }),
+  makePatentPreset({
+    key: "nikonF12Us3738736",
+    name: "Nikon f/1.2 lens — US3738736A",
+    sourcePatent: "US3738736A",
+    brand: "Nikon",
+    designType: "Ultra-fast",
+    analysisDefaults: TELEPHOTO_ANALYSIS_DEFAULTS
+  }),
+  makePatentPreset({
+    key: "olympusF12Us4099843",
+    name: "Olympus f/1.2 lens — US4099843A",
+    sourcePatent: "US4099843A",
+    brand: "Olympus",
+    designType: "Ultra-fast",
+    analysisDefaults: TELEPHOTO_ANALYSIS_DEFAULTS
+  })
+];
+
+PATENT_PRESET_DEFINITIONS.map(mergePatentSurfacePrescriptionData).forEach((preset) => {
+  PRESETS[preset.key] = preset;
+});
+
+OLD_MISLEADING_ZEISS_PRESET_KEYS.forEach((key) => {
+  delete PRESETS[key];
+});
+
+const PATENT_PRESET_KEYS = PATENT_PRESET_DEFINITIONS.map((preset) => preset.key);
+
+const normalizePrescription = (prescription = {}) => {
+  if (prescription.prescriptionType === "surface") {
+    return {
+      prescriptionType: "surface",
+      focalLength: normalizePatentSurfaceValue(prescription.focalLength),
+      apertureRatio: prescription.apertureRatio ?? null,
+      fNumber: normalizePatentSurfaceValue(prescription.fNumber),
+      backFocalLength: normalizePatentSurfaceValue(prescription.backFocalLength),
+      fieldAngleDeg: normalizePatentSurfaceValue(prescription.fieldAngleDeg),
+      imageFormat: prescription.imageFormat ?? null,
+      sourcePatent: prescription.sourcePatent ?? null,
+      example: prescription.example ?? null,
+      patentDataStatus: prescription.patentDataStatus ?? null,
+      diameterSource: prescription.diameterSource || null,
+      diameterReference: prescription.diameterReference || null,
+      diameterNote: prescription.diameterNote || "",
+      diameterProfile: normalizeDiameterProfile(prescription.diameterProfile),
+      surfaces: (prescription.surfaces || []).map(normalizePatentSurface)
+    };
+  }
+
+  if (prescription.prescriptionType === "visualOnly") {
+    const svgReference = normalizeSvgReference(
+      prescription.svgReference || prescription.visualLayout?.svgReference || null
+    );
+    return {
+      prescriptionType: "visualOnly",
+      focalLength: normalizePatentSurfaceValue(prescription.focalLength),
+      apertureRatio: prescription.apertureRatio ?? null,
+      sourceType: "visualReference",
+      linkedOpticalPresetKey: prescription.linkedOpticalPresetKey || null,
+      note: prescription.note || "",
+      svgReference,
+      visualLayout: {
+        elements: (prescription.visualLayout?.elements || []).map((element, index) => ({
+          id: element.id || `visual-${index + 1}`,
+          groupIndex: Number.isFinite(toNumber(element.groupIndex)) ? toNumber(element.groupIndex) : index,
+          label: element.label || `L${index + 1}`,
+          shape: element.shape || "meniscus",
+          width: Math.max(0.5, normalizePatentSurfaceValue(element.width) ?? normalizePatentSurfaceValue(element.thickness) ?? 4),
+          diameter: Math.max(5, normalizePatentSurfaceValue(element.diameter) ?? 28),
+          gapAfter: Math.max(0, normalizePatentSurfaceValue(element.gapAfter) ?? 0),
+          frontCurve: element.frontCurve || "convex-left",
+          rearCurve: element.rearCurve || "convex-right",
+          bevelSize: Math.max(0, normalizePatentSurfaceValue(element.bevelSize) ?? 0.25),
+          r1: normalizePatentSurfaceValue(element.r1) ?? 40,
+          r2: normalizePatentSurfaceValue(element.r2) ?? -40,
+          thickness: Math.max(0.5, normalizePatentSurfaceValue(element.thickness) ?? normalizePatentSurfaceValue(element.width) ?? 4)
+        })),
+        displayDirection: prescription.visualLayout?.displayDirection || "objectToImage",
+        visualOnly: prescription.visualLayout?.visualOnly !== false,
+        showRays: prescription.visualLayout?.showRays === true,
+        showSensor: prescription.visualLayout?.showSensor === true,
+        showFlange: prescription.visualLayout?.showFlange === true,
+        showBfd: prescription.visualLayout?.showBfd === true,
+        showFullFrameReference: prescription.visualLayout?.showFullFrameReference === true,
+        background: prescription.visualLayout?.background || "plain",
+        axisStyle: prescription.visualLayout?.axisStyle || "dashed",
+        svgReference,
+        stop: prescription.visualLayout?.stop ? {
+          afterElement: prescription.visualLayout.stop.afterElement || null,
+          diameter: Math.max(1, normalizePatentSurfaceValue(prescription.visualLayout.stop.diameter) ?? 20),
+          style: prescription.visualLayout.stop.style || "two-dashed-bars"
+        } : null
+      }
+    };
+  }
+
+  return {
+    prescriptionType: "element",
+    lenses: (prescription.lenses || []).map((lens) => normalizePresetLens({
+      id: lens.id || crypto.randomUUID(),
+      ...lens
+    }))
+  };
+};
+
+const clonePresetPrescription = (presetKey) => {
+  const preset = PRESETS[presetKey] || PRESETS[DEFAULT_PRESET_KEY];
+  if (preset.prescriptionType === "surface") {
+    return normalizePrescription({
+      prescriptionType: "surface",
+      focalLength: preset.focalLength,
+      apertureRatio: preset.apertureRatio,
+      backFocalLength: preset.backFocalLength,
+      fieldAngleDeg: preset.fieldAngleDeg,
+      imageFormat: preset.imageFormat,
+      sourcePatent: preset.sourcePatent,
+      example: preset.example,
+      patentDataStatus: preset.patentDataStatus,
+      diameterSource: preset.diameterSource || null,
+      diameterReference: preset.diameterReference || null,
+      diameterNote: preset.diameterNote || "",
+      diameterProfile: preset.diameterProfile || null,
+      surfaces: preset.surfaces || []
+    });
+  }
+
+  if (preset.prescriptionType === "visualOnly") {
+    return normalizePrescription({
+      prescriptionType: "visualOnly",
+      focalLength: preset.focalLength,
+      apertureRatio: preset.apertureRatio,
+      linkedOpticalPresetKey: preset.linkedOpticalPresetKey || null,
+      note: preset.note || "",
+      svgReference: preset.svgReference || preset.visualLayout?.svgReference || null,
+      visualLayout: preset.visualLayout || { elements: [] }
+    });
+  }
+
+  return normalizePrescription({
+    prescriptionType: "element",
+    lenses: preset.lenses || []
+  });
+};
+
+const visualLayoutToLenses = (prescription = {}) => (
+  prescription?.prescriptionType === "visualOnly" ? [] : []
+);
+
+const prescriptionToLenses = (prescription) => (
+  prescription?.prescriptionType === "element"
+    ? prescription.lenses.map((lens) => normalizeLens({ ...lens, id: lens.id || crypto.randomUUID() }))
+    : prescription?.prescriptionType === "visualOnly"
+      ? visualLayoutToLenses(prescription)
+      : surfacePrescriptionToDerivedLenses(prescription)
+);
+
+const clonePresetLenses = (presetKey) => prescriptionToLenses(clonePresetPrescription(presetKey));
+
+const loadSavedDesigns = () => {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+  } catch {
+    return [];
+  }
+};
+
+const state = {
+  language: "en",
+  preset: DEFAULT_PRESET_KEY,
+  prescription: clonePresetPrescription(DEFAULT_PRESET_KEY),
+  visualLayout: null,
+  lenses: clonePresetLenses(DEFAULT_PRESET_KEY),
+  history: [],
+  future: [],
+  designName: "",
+  selectedSavedDesignId: "",
+  savedDesigns: loadSavedDesigns(),
+  collapsedLensCards: {},
+  collapsedPanels: {
+    lensData: false,
+    apertureField: true,
+    rayTraceSpot: true,
+    rayFanAberrations: true,
+    mtfResolution: false,
+    coverageIllumination: true,
+    wavefrontDiagnostics: true,
+    debugTools: true,
+    optimizerBuild: true,
+    toleranceBuild: true,
+    sagittaUtility: true,
+    system: false,
+    lensControls: false,
+    spot: false,
+    mechanicalDiagnostics: true
+  },
+  diagramExpanded: false,
+  diagramZoom: 1,
+  diagramViewX: null,
+  diagramViewY: null,
+  showRealRays: true,
+  ...DEFAULT_ANALYSIS_SETTINGS,
+  ...(PRESETS[DEFAULT_PRESET_KEY]?.analysisDefaults || {}),
+  sagDiameter: 50,
+  sagHeight: 4,
+  imageCircleFocalLength: 50,
+  imageCircleAngleDegrees: 46.8,
+  imageCircleAngleType: "diagonal",
+  rayCircleMaxFieldAngleDegrees: 30,
+  rayCircleFieldStepDegrees: 1,
+  rayCircleWavelengthMode: "d",
+  showTransverseRayFan: true,
+  showLongitudinalAberration: true,
+  showDistortionCurve: true,
+  showFieldCurvature: true,
+  stRayFanAutoScaleY: true,
+  stRayFanSharedScaleY: false,
+  stRayFanCopyStatus: "",
+  stRayFanExportText: "",
+  waveOpticsGridSize: 32,
+  polyMtfGridSize: 32,
+  polyMtfShowIndividualCurves: false,
+  toleranceSettings: { ...DEFAULT_TOLERANCE_SETTINGS },
+  tolerancePreview: null,
+  toleranceResult: null,
+  toleranceCopyStatus: "",
+  toleranceExportText: "",
+  toleranceGeneratedWarning: "",
+  analysisCache: {},
+  analysisCacheRevision: 0,
+  optimizerEnabled: false,
+  optimizerStatus: "idle",
+  optimizerIterations: 100,
+  optimizerSeed: 12345,
+  optimizerStepScale: 1,
+  optimizerTargetFocalLength: 50,
+  optimizerTargetBfd: 18,
+  optimizerUseTargetFocalLength: true,
+  optimizerUseTargetBfd: false,
+  optimizerUseMtf: true,
+  optimizerUseSpotSize: true,
+  optimizerUseWavefront: false,
+  optimizerUseDistortion: false,
+  optimizerUseTransmission: false,
+  optimizerUseToleranceRobustness: false,
+  optimizerUseStBalance: false,
+  optimizerUseApertureDiameter: false,
+  optimizerAlgorithm: "hybrid",
+  optimizerMaxTrackLength: 160,
+  optimizerMinBfd: 0,
+  optimizerMaxDiameter: 120,
+  optimizerBaseline: null,
+  optimizerBest: null,
+  optimizerProgress: [],
+  optimizerRejectedCount: 0,
+  optimizerCurrentIteration: 0,
+  optimizerReportCsv: "",
+  optimizerCopyStatus: "",
+  optimizerWarnings: []
+};
+
+const DIAGRAM_VIEW_OPTIONS = [
+  { value: "optical", label: "Optical Ray View" },
+  { value: "patentLine", label: "Patent Line View" },
+  { value: "productionCutaway", label: "Production Cutaway View" }
+];
+
+const SUPPORTED_DIAGRAM_VIEW_MODES = [
+  ...DIAGRAM_VIEW_OPTIONS.map((option) => option.value),
+  "mechanical",
+  "debug"
+];
+
+const normalizeDiagramViewMode = (mode) => (
+  SUPPORTED_DIAGRAM_VIEW_MODES.includes(mode)
+    ? mode
+    : DEFAULT_ANALYSIS_SETTINGS.diagramViewMode
+);
+
+const isOpticalRayViewMode = (mode) => normalizeDiagramViewMode(mode) === "optical";
+const isPatentLineViewMode = (mode) => normalizeDiagramViewMode(mode) === "patentLine";
+const isProductionCutawayViewMode = (mode) => normalizeDiagramViewMode(mode) === "productionCutaway";
+const isDebugDiagramViewMode = (mode) => normalizeDiagramViewMode(mode) === "debug";
+const isMechanicalDiagnosticViewMode = (mode) => ["mechanical", "productionCutaway"].includes(normalizeDiagramViewMode(mode));
+const suppressInDiagramDiagnostics = (mode) => ["optical", "patentLine", "productionCutaway"].includes(normalizeDiagramViewMode(mode));
+
+const normalizeProductionSilhouetteSource = (source, preset = PRESETS[state.preset]) => {
+  const hasSvgReference = Boolean(getProductionSvgReferenceForPreset(preset));
+  if (hasSvgReference) return "svgReference";
+  return "generated";
+};
+
+const getProductionSvgReferenceForPreset = (preset = PRESETS[state.preset]) => {
+  if (!preset) return null;
+  return normalizeSvgReference(preset.svgProductionReference || preset.svgReference || null);
+};
+
+const renderProductionSilhouetteSourceControl = (preset = PRESETS[state.preset]) => {
+  if (!getProductionSvgReferenceForPreset(preset)?.href) return "";
+  return `<span class="diagram-source-badge">Uploaded SVG reference</span>`;
+};
+
+const tx = (key) => UI_TEXT[key] || key;
+const menuIntro = () => "";
+
+const invalidateAnalysisCache = () => {
+  state.analysisCache = {};
+  state.analysisCacheRevision = (state.analysisCacheRevision || 0) + 1;
+};
+
+const resetGeneratedAnalysisState = () => {
+  invalidateAnalysisCache();
+  state.tolerancePreview = null;
+  state.toleranceResult = null;
+  state.toleranceCopyStatus = "";
+  state.toleranceExportText = "";
+  state.toleranceGeneratedWarning = "";
+  state.stRayFanCopyStatus = "";
+  state.stRayFanExportText = "";
+};
+
+const applyAnalysisDefaults = (presetKey) => {
+  const presetDefaults = PRESETS[presetKey]?.analysisDefaults || {};
+  Object.assign(state, DEFAULT_ANALYSIS_SETTINGS, presetDefaults);
+  state.polyMtfWeights = normalizePolychromaticWeights(presetDefaults.polyMtfWeights || DEFAULT_ANALYSIS_SETTINGS.polyMtfWeights);
+};
+
+const cloneLensesForHistory = (lenses) => lenses.map((lens) => normalizeLens({ ...lens }));
+const clonePrescriptionForHistory = (prescription) => JSON.parse(JSON.stringify(normalizePrescription(prescription)));
+
+const setCurrentPrescription = (prescription) => {
+  state.prescription = normalizePrescription(prescription);
+  state.visualLayout = state.prescription.prescriptionType === "visualOnly"
+    ? state.prescription.visualLayout
+    : null;
+  state.lenses = prescriptionToLenses(state.prescription);
+};
+
+const loadPresetIntoState = (presetKey) => {
+  const safePresetKey = PRESETS[presetKey] ? presetKey : DEFAULT_PRESET_KEY;
+  state.preset = safePresetKey;
+  applyAnalysisDefaults(safePresetKey);
+  setCurrentPrescription(clonePresetPrescription(safePresetKey));
+  resetGeneratedAnalysisState();
+};
+
+const snapshotState = () => ({
+  preset: state.preset,
+  prescription: clonePrescriptionForHistory(state.prescription),
+  lenses: cloneLensesForHistory(state.lenses)
+});
+
+const restoreSnapshot = (snapshot) => {
+  state.preset = snapshot.preset;
+  if (snapshot.prescription) {
+    setCurrentPrescription(snapshot.prescription);
+  } else {
+    state.lenses = snapshot.lenses.map((lens) => normalizeLens({
+      id: lens.id || crypto.randomUUID(),
+      ...lens
+    }));
+    state.visualLayout = null;
+    state.prescription = normalizePrescription({
+      prescriptionType: "element",
+      lenses: state.lenses
+    });
+  }
+};
+
+const rememberState = () => {
+  state.history.push(snapshotState());
+  if (state.history.length > 80) state.history.shift();
+  state.future = [];
+};
+
+const persistSavedDesigns = () => {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state.savedDesigns));
+};
+
+const serializeDesign = () => state.lenses.map(({ id, ...lens }) => normalizeLens({ ...lens }));
+const serializePrescription = () => {
+  if (state.prescription?.prescriptionType === "surface" && (state.preset !== "custom" || state.lenses.length === 0)) {
+    return {
+      prescriptionType: "surface",
+      focalLength: state.prescription.focalLength,
+      apertureRatio: state.prescription.apertureRatio,
+      backFocalLength: state.prescription.backFocalLength,
+      fieldAngleDeg: state.prescription.fieldAngleDeg,
+      imageFormat: state.prescription.imageFormat,
+      sourcePatent: state.prescription.sourcePatent,
+      example: state.prescription.example,
+      patentDataStatus: state.prescription.patentDataStatus,
+      diameterSource: state.prescription.diameterSource || null,
+      diameterReference: state.prescription.diameterReference || null,
+      diameterNote: state.prescription.diameterNote || "",
+      diameterProfile: state.prescription.diameterProfile || null,
+      surfaces: state.prescription.surfaces.map((surface) => ({ ...surface }))
+    };
+  }
+
+  if (state.prescription?.prescriptionType === "visualOnly") {
+    return {
+      prescriptionType: "visualOnly",
+      focalLength: state.prescription.focalLength,
+      apertureRatio: state.prescription.apertureRatio,
+      linkedOpticalPresetKey: state.prescription.linkedOpticalPresetKey || null,
+      note: state.prescription.note || "",
+      svgReference: state.prescription.svgReference || state.visualLayout?.svgReference || null,
+      visualLayout: state.visualLayout || state.prescription.visualLayout
+    };
+  }
+
+  return {
+    prescriptionType: "element",
+    lenses: serializeDesign()
+  };
+};
+
+const saveCurrentDesign = ({ preferExisting = false } = {}) => {
+  const trimmedName = state.designName.trim();
+  const presetName = PRESETS[state.preset]?.name;
+  const name = trimmedName || (preferExisting && presetName ? presetName : `Design ${state.savedDesigns.length + 1}`);
+  const existingIndex = state.savedDesigns.findIndex((design) => design.name.toLowerCase() === name.toLowerCase());
+  const savedDesign = {
+    id: existingIndex >= 0 ? state.savedDesigns[existingIndex].id : crypto.randomUUID(),
+    name,
+    updatedAt: new Date().toISOString(),
+    preset: "custom",
+    sourcePreset: state.preset,
+    analysisSettings: {
+      diagramViewMode: state.diagramViewMode,
+      productionSilhouetteSource: state.productionSilhouetteSource,
+      showSvgReferenceOverlay: state.showSvgReferenceOverlay,
+      patentDiameterSource: state.patentDiameterSource,
+      cementedGroupDisplayMode: state.cementedGroupDisplayMode,
+      cementedInterfaceBevelMode: state.cementedInterfaceBevelMode,
+      cementedInterfaceBevelFaceWidthMm: state.cementedInterfaceBevelFaceWidthMm,
+      cementedInterfaceBevelAngleDeg: state.cementedInterfaceBevelAngleDeg,
+      minimumAirGapClearanceMm: state.minimumAirGapClearanceMm
+    },
+    prescription: serializePrescription(),
+    lenses: serializeDesign()
+  };
+
+  if (existingIndex >= 0) {
+    state.savedDesigns[existingIndex] = savedDesign;
+  } else {
+    state.savedDesigns.unshift(savedDesign);
+  }
+
+  state.designName = name;
+  state.selectedSavedDesignId = savedDesign.id;
+  state.preset = "custom";
+  persistSavedDesigns();
+  return savedDesign;
+};
+
+const loadDesign = (design) => {
+  state.preset = "custom";
+  state.diagramViewMode = DEFAULT_ANALYSIS_SETTINGS.diagramViewMode;
+  if (design.prescription) {
+    setCurrentPrescription(design.prescription);
+  } else {
+    state.lenses = (design.lenses || []).map((lens) => normalizeLens({
+      id: crypto.randomUUID(),
+      ...lens
+    }));
+    state.visualLayout = null;
+    state.prescription = normalizePrescription({
+      prescriptionType: "element",
+      lenses: state.lenses
+    });
+  }
+  if (design.analysisSettings) {
+    state.diagramViewMode = normalizeDiagramViewMode(design.analysisSettings.diagramViewMode);
+    state.productionSilhouetteSource = ["generated", "svgReference"].includes(design.analysisSettings.productionSilhouetteSource)
+      ? design.analysisSettings.productionSilhouetteSource
+      : DEFAULT_ANALYSIS_SETTINGS.productionSilhouetteSource;
+    state.showSvgReferenceOverlay = design.analysisSettings.showSvgReferenceOverlay === true;
+    state.patentDiameterSource = normalizePatentDiameterSource(
+      design.analysisSettings.patentDiameterSource,
+      state.prescription
+    );
+    state.cementedGroupDisplayMode = design.analysisSettings.cementedGroupDisplayMode === "individualManufacturing"
+      ? "individualManufacturing"
+      : "opticalLayout";
+    state.cementedInterfaceBevelMode = ["hidden", "estimated", "manual"].includes(design.analysisSettings.cementedInterfaceBevelMode)
+      ? design.analysisSettings.cementedInterfaceBevelMode
+      : "estimated";
+    state.cementedInterfaceBevelFaceWidthMm = Math.max(
+      0,
+      toNumber(design.analysisSettings.cementedInterfaceBevelFaceWidthMm)
+        || DEFAULT_CEMENTED_INTERFACE_BEVEL_FACE_WIDTH_MM
+    );
+    state.cementedInterfaceBevelAngleDeg = clamp(
+      toNumber(design.analysisSettings.cementedInterfaceBevelAngleDeg)
+        || DEFAULT_CEMENTED_INTERFACE_BEVEL_ANGLE_DEG,
+      1,
+      89
+    );
+    state.minimumAirGapClearanceMm = Math.max(
+      0,
+      Number.isFinite(toNumber(design.analysisSettings.minimumAirGapClearanceMm))
+        ? toNumber(design.analysisSettings.minimumAirGapClearanceMm)
+        : DEFAULT_ANALYSIS_SETTINGS.minimumAirGapClearanceMm
+    );
+  }
+  state.designName = design.name;
+  state.selectedSavedDesignId = design.id;
+  resetGeneratedAnalysisState();
+};
+
+const syncCustomElementPrescription = () => {
+  if (state.preset !== "custom") return;
+  if (state.prescription?.prescriptionType === "surface") return;
+  if (state.prescription?.prescriptionType === "visualOnly") return;
+  state.prescription = normalizePrescription({
+    prescriptionType: "element",
+    lenses: state.lenses
+  });
+};
+
+const roundedLensFieldValue = (field, value) => {
+  if (!Number.isFinite(value)) return 0;
+  if (ASPHERE_NUMERIC_FIELDS.includes(field)) return Number(value.toPrecision(12));
+  if (["refractiveIndex", "customNd", "internalTransmissionPerMm"].includes(field)) return Number(value.toFixed(4));
+  if (field === "customVd") return Number(value.toFixed(2));
+  return Number(value.toFixed(2));
+};
+
+const flipLensAsphereFields = (lens) => {
+  const original = normalizeLens(lens);
+  lens.frontAsphereEnabled = original.rearAsphereEnabled;
+  lens.rearAsphereEnabled = original.frontAsphereEnabled;
+  lens.frontConicK = original.rearConicK;
+  lens.rearConicK = original.frontConicK;
+  ASPHERE_TERMS.forEach((term) => {
+    const frontField = `front${term}`;
+    const rearField = `rear${term}`;
+    lens[frontField] = roundedLensFieldValue(frontField, -(toNumber(original[rearField]) || 0));
+    lens[rearField] = roundedLensFieldValue(rearField, -(toNumber(original[frontField]) || 0));
+  });
+};
+
+const applyManualLensDiameter = (lens, value) => {
+  const nextDiameter = Math.max(0.1, toNumber(value) || 0.1);
+  const previousClear = Math.max(0.1, toNumber(lens.clearApertureDiameter) || toNumber(lens.diameter) || nextDiameter);
+  const previousMechanical = Math.max(
+    previousClear,
+    toNumber(lens.mechanicalDiameter) || toNumber(lens.visualDiameter) || previousClear
+  );
+  const mechanicalMargin = Math.max(0, previousMechanical - previousClear);
+  lens.diameter = nextDiameter;
+  lens.clearApertureDiameter = nextDiameter;
+  lens.mechanicalDiameter = Math.max(nextDiameter, nextDiameter + mechanicalMargin);
+  lens.visualDiameter = lens.mechanicalDiameter;
+  lens.apertureSource = "manual";
+  lens.diameterSource = "manual";
+  lens.manufacturingGeometrySource = "manual";
+};
+
+const adjustLensField = (lensId, field, delta) => {
+  const lens = state.lenses.find((item) => item.id === lensId);
+  if (!lens) return false;
+
+  const step = FIELD_STEPS[field] ?? 1;
+  const current = toNumber(lens[field]) || 0;
+  let nextValue = current + delta * step;
+
+  if (["diameter", "mechanicalDiameter", "thickness"].includes(field)) nextValue = Math.max(step, nextValue);
+  if (["chipZoneWidthMm", "minimumEdgeThicknessMm", "minimumFlatLandMm", "frontBevelFaceWidthMm", "rearBevelFaceWidthMm"].includes(field)) {
+    nextValue = Math.max(0, nextValue);
+  }
+  if (["frontBevelAngleDeg", "rearBevelAngleDeg"].includes(field)) nextValue = clamp(nextValue, 1, 89);
+  if (["refractiveIndex", "customNd"].includes(field)) nextValue = Math.max(1.0001, nextValue);
+  if (field === "customVd") nextValue = Math.max(1, nextValue);
+  if (field === "gapAfter") nextValue = Math.max(0, nextValue);
+  if (field === "internalTransmissionPerMm") nextValue = clamp(nextValue, 0, 1);
+
+  if (field === "diameter") {
+    applyManualLensDiameter(lens, roundedLensFieldValue(field, nextValue));
+  } else {
+    lens[field] = roundedLensFieldValue(field, nextValue);
+  }
+  if (field === "mechanicalDiameter") {
+    lens.mechanicalDiameter = Math.max(toNumber(lens.clearApertureDiameter) || toNumber(lens.diameter) || 0.1, lens.mechanicalDiameter);
+    lens.visualDiameter = lens.mechanicalDiameter;
+    lens.manufacturingGeometrySource = "manual";
+  }
+  if (field === "customNd") lens.refractiveIndex = lens.customNd;
+  if (field === "refractiveIndex") lens.customNd = lens.refractiveIndex;
+  state.preset = "custom";
+  return true;
+};
+
+const adjustPanelField = (field, delta) => {
+  const step = PANEL_FIELD_STEPS[field] ?? 1;
+  const current = toNumber(state[field]) || 0;
+  let nextValue = current + delta * step;
+
+  if (field === "sagDiameter") nextValue = Math.max(step, nextValue);
+  if (field === "sagHeight") nextValue = Math.max(step, nextValue);
+  if (field === "apertureDiameter") nextValue = Math.max(step, nextValue);
+  if (field === "apertureStopSurfaceNumber") nextValue = Math.max(1, Math.round(nextValue));
+  if (field === "apertureStopSurfaceOffsetMm") nextValue = Math.max(0, nextValue);
+  if (field === "apertureStopDistanceFromSensorMm") nextValue = Math.max(0, nextValue);
+  if (field === "apertureStopDistanceFromFrontMm") nextValue = Math.max(0, nextValue);
+  if (field === "rayTraceRayCount") nextValue = clamp(Math.round(nextValue), 3, 31);
+  if (field === "imageCircleFocalLength") nextValue = Math.max(0.1, nextValue);
+  if (field === "imageCircleAngleDegrees") nextValue = clamp(nextValue, 0.1, 178.9);
+  if (field === "rayCircleMaxFieldAngleDegrees") nextValue = clamp(nextValue, 1, 70);
+  if (field === "rayCircleFieldStepDegrees") nextValue = clamp(nextValue, 0.5, 10);
+  if (field === "rayFanCustomFieldAngleDegrees") nextValue = clamp(nextValue, 0, 70);
+  if (field === "rayTrace3DFieldAngleDegrees") nextValue = clamp(nextValue, 0, 70);
+  if (field === "rayTrace3DSampleCount") nextValue = clamp(Math.round(nextValue), 3, 31);
+  if (field === "stRayFanCustomFieldAngleDegrees") nextValue = clamp(nextValue, 0, 70);
+  if (field === "stRayFanRayCount") nextValue = clamp(Math.round(nextValue), 3, 31);
+
+  state[field] = Number(nextValue.toFixed(["sagHeight", "apertureStopSurfaceOffsetMm", "apertureStopDistanceFromSensorMm", "apertureStopDistanceFromFrontMm", "imageCircleAngleDegrees", "imageCircleFocalLength", "rayCircleMaxFieldAngleDegrees", "rayCircleFieldStepDegrees", "rayFanCustomFieldAngleDegrees", "rayTrace3DFieldAngleDegrees", "stRayFanCustomFieldAngleDegrees"].includes(field) ? 2 : 0));
+  if (field === "apertureDiameter") state.matchPatentFNumber = false;
+  return true;
+};
+
+const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => ({
+  "&": "&amp;",
+  "<": "&lt;",
+  ">": "&gt;",
+  "\"": "&quot;",
+  "'": "&#039;"
+})[character]);
+
+const formatNumber = (value, digits = 3) => {
+  if (!Number.isFinite(value)) return "--";
+  const magnitude = Math.abs(value);
+  const decimals = magnitude >= 100 ? 1 : magnitude >= 10 ? 2 : digits;
+
+  return new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: decimals,
+    minimumFractionDigits: 0
+  }).format(value);
+};
+
+const toNumber = (value) => Number.parseFloat(value);
+const surfacePower = (radius) => Math.abs(radius) < 0.000001 ? 0 : 1 / radius;
+
+const getLensGlass = (lens) => {
+  const normalized = normalizeLens(lens);
+  const catalogGlass = GLASS_CATALOG[normalized.glassKey] || GLASS_CATALOG.custom;
+  const nd = catalogGlass.type === "custom"
+    ? toNumber(normalized.customNd)
+    : toNumber(catalogGlass.nd);
+  const vd = catalogGlass.type === "custom"
+    ? toNumber(normalized.customVd)
+    : toNumber(catalogGlass.vd);
+
+  return {
+    key: catalogGlass === GLASS_CATALOG.custom ? "custom" : normalized.glassKey,
+    name: catalogGlass.type === "custom" && normalized.patentGlassLabel
+      ? normalized.patentGlassLabel
+      : catalogGlass.name,
+    type: catalogGlass.type || "catalog",
+    family: catalogGlass.type === "custom" && normalized.patentGlassLabel
+      ? "Patent nd/Vd"
+      : catalogGlass.family || "Custom",
+    note: normalized.patentGlassNote || "",
+    nd: Number.isFinite(nd) && nd > 1 ? nd : 1.5168,
+    vd: Number.isFinite(vd) && vd > 0 ? vd : defaultVdForIndex(Number.isFinite(nd) ? nd : 1.5168)
+  };
+};
+
+const cauchyIndexForGlass = (glass, wavelengthNm) => {
+  const wavelength = toNumber(wavelengthNm);
+  if (!Number.isFinite(wavelength) || wavelength <= 0) return glass.nd;
+
+  const nFMinusNC = (glass.nd - 1) / glass.vd;
+  if (!(nFMinusNC > 0)) return glass.nd;
+
+  const cInv2 = 1 / (SPECTRAL_LINES.C.wavelengthNm ** 2);
+  const dInv2 = 1 / (SPECTRAL_LINES.d.wavelengthNm ** 2);
+  const fInv2 = 1 / (SPECTRAL_LINES.F.wavelengthNm ** 2);
+  const b = nFMinusNC / (fInv2 - cInv2);
+  const a = glass.nd - b * dInv2;
+  const index = a + b / (wavelength ** 2);
+
+  return Number.isFinite(index) && index > 1 ? index : glass.nd;
+};
+
+const getGlassIndexAtWavelength = (lens, wavelengthNm = SPECTRAL_LINES.d.wavelengthNm) => {
+  const glass = getLensGlass(lens);
+  const index = cauchyIndexForGlass(glass, wavelengthNm);
+  return Number.isFinite(index) && index > 1 ? index : glass.nd;
+};
+
+const getGlassLineIndices = (lens) => {
+  const glass = getLensGlass(lens);
+  const indices = Object.fromEntries(Object.entries(SPECTRAL_LINES).map(([lineKey, line]) => [
+    lineKey,
+    cauchyIndexForGlass(glass, line.wavelengthNm)
+  ]));
+
+  if (!(indices.F > glass.nd && glass.nd > indices.C)) {
+    const spread = Math.max(0.0001, (glass.nd - 1) / Math.max(glass.vd, 1));
+    indices.C = glass.nd - spread / 2;
+    indices.d = glass.nd;
+    indices.F = glass.nd + spread / 2;
+  }
+
+  return {
+    ...indices,
+    nd: glass.nd,
+    vd: glass.vd,
+    glassName: glass.name,
+    family: glass.family
+  };
+};
+
+const multiply = (left, right) => ({
+  a: left.a * right.a + left.b * right.c,
+  b: left.a * right.b + left.b * right.d,
+  c: left.c * right.a + left.d * right.c,
+  d: left.c * right.b + left.d * right.d
+});
+
+const translate = (distance) => ({ a: 1, b: distance, c: 0, d: 1 });
+
+const refract = (n1, n2, radius) => ({
+  a: 1,
+  b: 0,
+  c: Math.abs(radius) < 0.000001 ? 0 : (n1 - n2) / (radius * n2),
+  d: n1 / n2
+});
+
+const lensMatrix = (lens, wavelengthNm = SPECTRAL_LINES.d.wavelengthNm) => {
+  const n = getGlassIndexAtWavelength(lens, wavelengthNm);
+  const thickness = toNumber(lens.thickness);
+  const r1 = toNumber(lens.r1);
+  const r2 = toNumber(lens.r2);
+
+  return [
+    refract(1, n, r1),
+    translate(thickness),
+    refract(n, 1, r2)
+  ].reduce((matrix, operation) => multiply(operation, matrix), { a: 1, b: 0, c: 0, d: 1 });
+};
+
+const usesSurfaceParaxialCalculation = (lenses = []) => lenses.some((lens) => (
+  lens?.patentSurfaceStart !== undefined
+  || lens?.patentSurfaceEnd !== undefined
+  || lens?.patentFrontSharedCementedSurface === true
+  || lens?.patentRearCementedToNextGlass === true
+));
+
+const calculateSurfacePrescriptionMatrix = (lenses, results, wavelengthNm = SPECTRAL_LINES.d.wavelengthNm) => {
+  let matrix = { a: 1, b: 0, c: 0, d: 1 };
+
+  lenses.forEach((lens, index) => {
+    const result = results[index];
+    if (!result?.valid) return;
+
+    const n = getGlassIndexAtWavelength(lens, wavelengthNm);
+    const frontShared = lens.patentFrontSharedCementedSurface === true;
+    const rearCemented = lens.patentRearCementedToNextGlass === true;
+    const frontNBefore = frontShared && index > 0
+      ? getGlassIndexAtWavelength(lenses[index - 1], wavelengthNm)
+      : 1;
+    const rearNAfter = rearCemented && index < lenses.length - 1
+      ? getGlassIndexAtWavelength(lenses[index + 1], wavelengthNm)
+      : 1;
+
+    // Patent prescriptions can contain cemented glass-to-glass transitions and
+    // zero-distance duplicate surface rows. Skip the duplicate front surface and
+    // keep the actual rear glass-to-glass transition in sequence.
+    if (!frontShared) {
+      matrix = multiply(refract(frontNBefore, n, result.r1), matrix);
+    }
+
+    matrix = multiply(translate(Math.max(0, result.thickness || 0)), matrix);
+    matrix = multiply(refract(n, Number.isFinite(rearNAfter) && rearNAfter > 0 ? rearNAfter : 1, result.r2), matrix);
+
+    if (!rearCemented && index < lenses.length - 1) {
+      matrix = multiply(translate(Math.max(0, toNumber(lens.gapAfter) || 0)), matrix);
+    }
+  });
+
+  return matrix;
+};
+
+const calculateLens = (lens, wavelengthNm = SPECTRAL_LINES.d.wavelengthNm) => {
+  const diameter = toNumber(lens.diameter);
+  const thickness = toNumber(lens.thickness);
+  const n = getGlassIndexAtWavelength(lens, wavelengthNm);
+  const glass = getLensGlass(lens);
+  const lineIndices = getGlassLineIndices(lens);
+  const r1 = toNumber(lens.r1);
+  const r2 = toNumber(lens.r2);
+  const warnings = [];
+
+  if (!(diameter > 0)) warnings.push("Diameter must be greater than 0.");
+  if (!(thickness > 0)) warnings.push("Center thickness must be greater than 0.");
+  if (!(n > 1)) warnings.push("Refractive index must be greater than 1.");
+  if (!Number.isFinite(r1)) warnings.push("Front radius R1 must be a number. Use 0 for plano.");
+  if (!Number.isFinite(r2)) warnings.push("Rear radius R2 must be a number. Use 0 for plano.");
+
+  if (warnings.length) {
+    return {
+      valid: false,
+      warnings,
+      diameter,
+      thickness,
+      r1,
+      r2,
+      refractiveIndex: n,
+      nd: glass.nd,
+      vd: glass.vd,
+      glassName: glass.name,
+      family: glass.family,
+      lineIndices,
+      focalLength: NaN,
+      power: 0
+    };
+  }
+
+  const p1 = surfacePower(r1);
+  const p2 = surfacePower(r2);
+  const inverseFocalLength = (n - 1) * (p1 - p2 + ((n - 1) * thickness * p1 * p2) / n);
+  const focalLength = inverseFocalLength === 0 ? Infinity : 1 / inverseFocalLength;
+  const power = Number.isFinite(focalLength) && focalLength !== 0 ? 1 / focalLength : 0;
+
+  if (Math.abs(r1) < 0.000001 && Math.abs(r2) < 0.000001) {
+    warnings.push("Both surfaces are plano, so this element has no optical power.");
+  }
+
+  return {
+    valid: true,
+    warnings,
+    diameter,
+    thickness,
+    refractiveIndex: n,
+    nd: glass.nd,
+    vd: glass.vd,
+    glassName: glass.name,
+    family: glass.family,
+    lineIndices,
+    r1,
+    r2,
+    inverseFocalLength,
+    focalLength,
+    power,
+    diopters: Number.isFinite(focalLength) && focalLength !== 0 ? 1000 / focalLength : NaN
+  };
+};
+
+const calculateSystem = (lenses, wavelengthNm = SPECTRAL_LINES.d.wavelengthNm) => {
+  const results = lenses.map((lens) => calculateLens(lens, wavelengthNm));
+  const validCount = results.filter((result) => result.valid).length;
+  let matrix = { a: 1, b: 0, c: 0, d: 1 };
+
+  if (usesSurfaceParaxialCalculation(lenses)) {
+    matrix = calculateSurfacePrescriptionMatrix(lenses, results, wavelengthNm);
+  } else {
+    lenses.forEach((lens, index) => {
+      if (!results[index].valid) return;
+
+      matrix = multiply(lensMatrix(lens, wavelengthNm), matrix);
+
+      if (index < lenses.length - 1) {
+        const gapAfter = Math.max(0, toNumber(lens.gapAfter) || 0);
+        matrix = multiply(translate(gapAfter), matrix);
+      }
+    });
+  }
+
+  const effectiveFocalLength = Math.abs(matrix.c) < 0.000001 ? NaN : -1 / matrix.c;
+  const backFocalLength = Math.abs(matrix.c) < 0.000001 ? NaN : -matrix.a / matrix.c;
+  const totalPower = Number.isFinite(effectiveFocalLength) && effectiveFocalLength !== 0 ? 1 / effectiveFocalLength : 0;
+  const totalTrack = lenses.reduce((sum, lens, index) => {
+    const thickness = Math.max(0, toNumber(lens.thickness) || 0);
+    const gap = index < lenses.length - 1 ? Math.max(0, toNumber(lens.gapAfter) || 0) : 0;
+    return sum + thickness + gap;
+  }, 0);
+
+  return {
+    results,
+    validCount,
+    matrix,
+    totalPower,
+    totalTrack,
+    effectiveFocalLength,
+    backFocalLength,
+    diopters: Number.isFinite(effectiveFocalLength) ? 1000 / effectiveFocalLength : NaN
+  };
+};
+
+const getSpectralSystems = () => Object.fromEntries(Object.entries(SPECTRAL_LINES).map(([lineKey, line]) => [
+  lineKey,
+  {
+    ...calculateSystem(state.lenses, line.wavelengthNm),
+    lineKey,
+    line
+  }
+]));
+
+const getCoatingPreset = (coatingKey) => COATING_PRESETS[coatingKey] || COATING_PRESETS.multiCoated;
+
+const calculateSurfaceReflectance = (surface, spectralLineKey = "d") => {
+  const lineKey = SPECTRAL_LINES[spectralLineKey] ? spectralLineKey : "d";
+  const coating = getCoatingPreset(surface?.coatingKey);
+  const nBefore = toNumber(surface?.nBefore);
+  const nAfter = toNumber(surface?.nAfter);
+  let reflectance;
+
+  if (surface?.surfaceIndex === "stop" || Math.abs((nBefore || 0) - (nAfter || 0)) < 0.000001) {
+    return {
+      coatingKey: surface?.coatingKey || "--",
+      coatingName: surface?.coatingName || "--",
+      spectralLineKey: lineKey,
+      reflectance: 0,
+      transmission: 1
+    };
+  }
+
+  if (surface?.isCementedInterface === true) {
+    reflectance = (nBefore > 0 && nAfter > 0)
+      ? ((nBefore - nAfter) / (nBefore + nAfter)) ** 2
+      : 0;
+    return {
+      coatingKey: "cemented",
+      coatingName: "Cemented glass interface",
+      spectralLineKey: lineKey,
+      reflectance: clamp(reflectance, 0, 1),
+      transmission: 1 - clamp(reflectance, 0, 1)
+    };
+  }
+
+  if (coating.type === "fresnel") {
+    reflectance = (nBefore > 0 && nAfter > 0)
+      ? ((nBefore - nAfter) / (nBefore + nAfter)) ** 2
+      : 0;
+  } else {
+    reflectance = toNumber(coating.reflectance?.[lineKey]);
+    if (!Number.isFinite(reflectance)) reflectance = toNumber(coating.reflectance?.d);
+  }
+
+  reflectance = Number.isFinite(reflectance) ? clamp(reflectance, 0, 1) : 0;
+  return {
+    coatingKey: surface?.coatingKey || "multiCoated",
+    coatingName: coating.name,
+    spectralLineKey: lineKey,
+    reflectance,
+    transmission: 1 - reflectance
+  };
+};
+
+const calculateInternalTransmission = (lens, wavelengthKey = "d") => {
+  const normalized = normalizeLens(lens);
+  const perMm = clamp(toNumber(normalized.internalTransmissionPerMm) || 0, 0, 1);
+  const thicknessMm = Math.max(0, toNumber(normalized.thickness) || 0);
+  const transmission = perMm ** thicknessMm;
+  return {
+    wavelengthKey: SPECTRAL_LINES[wavelengthKey] ? wavelengthKey : "d",
+    perMm,
+    thicknessMm,
+    transmission: Number.isFinite(transmission) ? clamp(transmission, 0, 1) : 1
+  };
+};
+
+const calculateSystemTransmission = (lenses, system, options = {}) => {
+  const warnings = new Set();
+  const lineResults = Object.fromEntries(Object.entries(SPECTRAL_LINES).map(([lineKey, line]) => {
+    let surfaceTransmission = 1;
+    let internalTransmission = 1;
+    const surfaces = [];
+    let uncoatedSurfaceCount = 0;
+
+    lenses.map(normalizeLens).forEach((lens, lensIndex) => {
+      const n = getGlassIndexAtWavelength(lens, line.wavelengthNm);
+      const front = calculateSurfaceReflectance({ nBefore: 1, nAfter: n, coatingKey: lens.frontCoatingKey }, lineKey);
+      const rear = calculateSurfaceReflectance({ nBefore: n, nAfter: 1, coatingKey: lens.rearCoatingKey }, lineKey);
+      const internal = calculateInternalTransmission(lens, lineKey);
+
+      surfaceTransmission *= front.transmission * rear.transmission;
+      internalTransmission *= internal.transmission;
+      if (lens.frontCoatingKey === "uncoated") uncoatedSurfaceCount += 1;
+      if (lens.rearCoatingKey === "uncoated") uncoatedSurfaceCount += 1;
+      surfaces.push(
+        { ...front, lensIndex, surfaceIndex: 0 },
+        { ...rear, lensIndex, surfaceIndex: 1 }
+      );
+    });
+
+    return [lineKey, {
+      lineKey,
+      line,
+      surfaceTransmission: clamp(surfaceTransmission, 0, 1),
+      internalTransmission: clamp(internalTransmission, 0, 1),
+      totalTransmission: clamp(surfaceTransmission * internalTransmission, 0, 1),
+      surfaceReflectionLoss: clamp(1 - surfaceTransmission, 0, 1),
+      internalAbsorptionLoss: clamp(1 - internalTransmission, 0, 1),
+      uncoatedSurfaceCount,
+      surfaces
+    }];
+  }));
+  const red = lineResults.C?.totalTransmission;
+  const green = lineResults.d?.totalTransmission;
+  const blue = lineResults.F?.totalTransmission;
+  const transmissions = [red, green, blue].filter(Number.isFinite);
+  const averageTransmission = transmissions.length
+    ? transmissions.reduce((sum, value) => sum + value, 0) / transmissions.length
+    : NaN;
+  const redBalance = Number.isFinite(red) && Number.isFinite(green) && green > 0 ? red / green : NaN;
+  const blueBalance = Number.isFinite(blue) && Number.isFinite(green) && green > 0 ? blue / green : NaN;
+  const tintDelta = Number.isFinite(redBalance) && Number.isFinite(blueBalance) ? redBalance - blueBalance : NaN;
+  const tintTendency = Number.isFinite(tintDelta)
+    ? Math.abs(tintDelta) < 0.03
+      ? "Neutral"
+      : tintDelta > 0
+        ? "Warm"
+        : "Cool"
+    : "--";
+  const fNumber = calculateFNumber(system, options.apertureDiameter ?? state.apertureDiameter, lenses, options);
+  const dLineTransmission = lineResults.d?.totalTransmission;
+  const tStop = Number.isFinite(fNumber) && dLineTransmission > 0 ? fNumber / Math.sqrt(dLineTransmission) : NaN;
+  const dSurfaces = lineResults.d?.surfaces || [];
+
+  if (dLineTransmission < 0.7) warnings.add("Total d-line transmission is below 70%.");
+  if (dSurfaces.some((surface) => surface.reflectance > 0.02)) warnings.add("At least one surface reflectance is above 2%.");
+  if ((lineResults.d?.uncoatedSurfaceCount || 0) >= 4) warnings.add("Many uncoated surfaces are present; contrast and flare risk may be high.");
+  if (Number.isFinite(fNumber) && Number.isFinite(tStop) && tStop / fNumber > 1.15) warnings.add("Estimated T-stop is much slower than the f-number.");
+  warnings.add("This coating model estimates surface reflection and transmission only. It does not simulate ghost images, veiling flare, scattering, sensor reflections, cemented-surface behaviour, or angle-dependent coating performance.");
+
+  return {
+    lineResults,
+    averageTransmission,
+    redBalance,
+    blueBalance,
+    tintTendency,
+    fNumber,
+    tStop,
+    dLineTransmission,
+    surfaceReflectionLossTotal: lineResults.d?.surfaceReflectionLoss ?? NaN,
+    internalAbsorptionLossTotal: lineResults.d?.internalAbsorptionLoss ?? NaN,
+    warnings: [...warnings]
+  };
+};
+
+const radiusMagnitude = (lens) => {
+  const values = [toNumber(lens.r1), toNumber(lens.r2)].filter((value) => Number.isFinite(value) && Math.abs(value) > 0.000001);
+  if (values.length) return Math.max(10, Math.abs(values[0]));
+
+  const diameter = toNumber(lens.diameter) || 40;
+  const thickness = toNumber(lens.thickness) || 5;
+  const semiDiameter = diameter / 2;
+  const sagitta = thickness / 2;
+  return (semiDiameter ** 2 + sagitta ** 2) / (2 * sagitta);
+};
+
+const applyLensType = (lens, type) => {
+  const magnitude = radiusMagnitude(lens);
+  lens.type = type;
+  lens.flipped = false;
+
+  if (type === "biconvex") {
+    lens.r1 = magnitude;
+    lens.r2 = -magnitude;
+  }
+
+  if (type === "planoConvex") {
+    lens.r1 = magnitude;
+    lens.r2 = 0;
+  }
+
+  if (type === "positiveMeniscus") {
+    lens.r1 = magnitude;
+    lens.r2 = Number((magnitude * 1.8).toFixed(2));
+  }
+
+  if (type === "negativeMeniscus") {
+    lens.r1 = Number((magnitude * 1.8).toFixed(2));
+    lens.r2 = magnitude;
+  }
+
+  if (type === "planoConcave") {
+    lens.r1 = 0;
+    lens.r2 = magnitude;
+  }
+
+  if (type === "biconcave") {
+    lens.r1 = -magnitude;
+    lens.r2 = magnitude;
+  }
+};
+
+const metric = (name, value, unit = "mm") => `
+  <div class="metric">
+    <span class="metric-name">${name}</span>
+    <span class="metric-value">${value}</span>
+    <span class="metric-unit">${unit}</span>
+  </div>
+`;
+
+const steppableInput = (lens, field, label, step, unit = "") => `
+  <div class="control">
+    <span class="control-label">${label}</span>
+    <div class="stepper">
+      <button class="step-button" type="button" data-action="adjust-field" data-id="${lens.id}" data-field="${field}" data-delta="-1" aria-label="Decrease ${label}">−</button>
+      <input
+        type="text"
+        inputmode="decimal"
+        pattern="-?[0-9]*[.]?[0-9]*"
+        data-step="${step}"
+        value="${escapeHtml(lens[field] ?? 0)}"
+        data-action="update-lens"
+        data-id="${lens.id}"
+        data-field="${field}"
+        aria-label="${label}"
+      >
+      <button class="step-button" type="button" data-action="adjust-field" data-id="${lens.id}" data-field="${field}" data-delta="1" aria-label="Increase ${label}">+</button>
+    </div>
+    ${unit ? `<span class="control-unit">${unit}</span>` : ""}
+  </div>
+`;
+
+const panelSteppableInput = ({ field, label, action, inputmode = "decimal", unit = "" }) => `
+  <div class="control panel-step-control">
+    <span class="control-label">${label}</span>
+    <div class="stepper">
+      <button class="step-button" type="button" data-action="adjust-panel-field" data-field="${field}" data-delta="-1" aria-label="Decrease ${label}">−</button>
+      <input
+        type="text"
+        inputmode="${inputmode}"
+        data-action="${action}"
+        data-field="${field}"
+        value="${escapeHtml(state[field])}"
+        aria-label="${label}"
+      >
+      <button class="step-button" type="button" data-action="adjust-panel-field" data-field="${field}" data-delta="1" aria-label="Increase ${label}">+</button>
+    </div>
+    ${unit ? `<span class="control-unit">${unit}</span>` : ""}
+  </div>
+`;
+
+const renderTypeControl = (lens) => `
+  <div class="type-control">
+    <label>
+      <span class="control-label">Lens type</span>
+      <select data-action="update-type-select" data-id="${lens.id}" aria-label="Lens type">
+        ${Object.entries(LENS_TYPES).map(([value, label]) => `
+          <option value="${value}" ${lens.type === value ? "selected" : ""}>${label}</option>
+        `).join("")}
+      </select>
+    </label>
+    <div class="type-options" role="group" aria-label="Lens type quick choices">
+      ${Object.entries(LENS_TYPES).map(([value, label]) => `
+        <button
+          class="type-button ${lens.type === value ? "is-active" : ""}"
+          type="button"
+          data-action="update-type"
+          data-id="${lens.id}"
+          data-type="${value}"
+          aria-pressed="${lens.type === value ? "true" : "false"}"
+        >${label}</button>
+      `).join("")}
+    </div>
+  </div>
+`;
+
+const renderGlassControl = (lens) => {
+  const normalized = normalizeLens(lens);
+  const glass = getLensGlass(normalized);
+  const lineIndices = getGlassLineIndices(normalized);
+  const isCustom = glass.type === "custom";
+
+  return `
+    <div class="glass-control">
+      <label class="glass-select-label">
+        <span class="control-label">Glass</span>
+        <select data-action="update-glass" data-id="${lens.id}" aria-label="Glass for lens">
+          ${Object.entries(GLASS_CATALOG).map(([key, option]) => `
+            <option value="${key}" ${normalized.glassKey === key ? "selected" : ""}>${option.name}</option>
+          `).join("")}
+        </select>
+      </label>
+      ${isCustom
+        ? `<div class="glass-custom-grid">
+            ${normalized.patentGlassLabel ? `<div class="glass-readout patent-glass-readout">
+              <span>${escapeHtml(normalized.patentGlassLabel)}</span>
+              <span>nd ${formatNumber(glass.nd, 5)}</span>
+              <span>Vd ${formatNumber(glass.vd, 1)}</span>
+              <span>${escapeHtml(normalized.patentGlassNote || "Exact catalogue glass designation not specified in the patent.")}</span>
+            </div>` : ""}
+            ${steppableInput(normalized, "customNd", "Custom nd", FIELD_STEPS.customNd)}
+            ${steppableInput(normalized, "customVd", "Custom Vd", FIELD_STEPS.customVd)}
+          </div>`
+        : `<div class="glass-readout">
+            <span>${escapeHtml(glass.family)}</span>
+            <span>nd ${formatNumber(glass.nd, 4)}</span>
+            <span>Vd ${formatNumber(glass.vd, 1)}</span>
+            <span>nC ${formatNumber(lineIndices.C, 4)}</span>
+            <span>nF ${formatNumber(lineIndices.F, 4)}</span>
+          </div>`
+      }
+    </div>
+  `;
+};
+
+const renderCoatingControl = (lens) => {
+  const normalized = normalizeLens(lens);
+
+  return `
+    <div class="coating-control">
+      <label>
+        <span class="control-label">Front coating</span>
+        <select data-action="update-coating" data-id="${lens.id}" data-field="frontCoatingKey" aria-label="Front coating for lens">
+          ${Object.entries(COATING_PRESETS).map(([key, option]) => `
+            <option value="${key}" ${normalized.frontCoatingKey === key ? "selected" : ""}>${option.name}</option>
+          `).join("")}
+        </select>
+      </label>
+      <label>
+        <span class="control-label">Rear coating</span>
+        <select data-action="update-coating" data-id="${lens.id}" data-field="rearCoatingKey" aria-label="Rear coating for lens">
+          ${Object.entries(COATING_PRESETS).map(([key, option]) => `
+            <option value="${key}" ${normalized.rearCoatingKey === key ? "selected" : ""}>${option.name}</option>
+          `).join("")}
+        </select>
+      </label>
+      ${steppableInput(normalized, "internalTransmissionPerMm", "Internal transmission / mm", FIELD_STEPS.internalTransmissionPerMm)}
+    </div>
+  `;
+};
+
+const toleranceOverrideInput = (lens, field, label) => `
+  <label>
+    <span class="control-label">${label}</span>
+    <input
+      type="text"
+      inputmode="decimal"
+      data-action="update-lens-tolerance"
+      data-id="${lens.id}"
+      data-field="${field}"
+      value="${lens[field] ?? ""}"
+      placeholder="global"
+      aria-label="${label} tolerance override"
+    />
+  </label>
+`;
+
+const renderToleranceOverrideControl = (lens) => {
+  const normalized = normalizeLens(lens);
+
+  return `
+    <details class="lens-tolerance-control">
+      <summary>Tolerances</summary>
+      <label class="check-control">
+        <input type="checkbox" data-action="toggle-lens-tolerance" data-id="${lens.id}" ${normalized.toleranceEnabled ? "checked" : ""}>
+        Include this lens
+      </label>
+      <div class="lens-tolerance-grid">
+        ${toleranceOverrideInput(normalized, "radiusToleranceMm", "Radius")}
+        ${toleranceOverrideInput(normalized, "thicknessToleranceMm", "Thickness")}
+        ${toleranceOverrideInput(normalized, "airGapToleranceMm", "Air gap")}
+        ${toleranceOverrideInput(normalized, "refractiveIndexTolerance", "Index")}
+        ${toleranceOverrideInput(normalized, "decenterToleranceMm", "Decenter")}
+        ${toleranceOverrideInput(normalized, "tiltToleranceDegrees", "Tilt")}
+      </div>
+    </details>
+  `;
+};
+
+const renderOptimizerLensControl = (lens) => {
+  const normalized = normalizeLens(lens);
+  const variables = normalized.optimizerVariables || DEFAULT_OPTIMIZER_VARIABLES;
+  const labels = {
+    r1: "R1",
+    r2: "R2",
+    thickness: "Thickness",
+    gapAfter: "Gap",
+    diameter: "Diameter",
+    glass: "Glass / index",
+    customVd: "Vd"
+  };
+
+  return `
+    <details class="lens-optimizer-control">
+      <summary>Optimize</summary>
+      <div class="lens-optimizer-grid">
+        ${Object.entries(labels).map(([field, label]) => `
+          <label class="check-control">
+            <input
+              type="checkbox"
+              data-action="toggle-lens-optimizer-variable"
+              data-id="${lens.id}"
+              data-field="${field}"
+              ${variables[field] ? "checked" : ""}
+            >
+            ${label}
+          </label>
+        `).join("")}
+      </div>
+    </details>
+  `;
+};
+
+const renderAsphereSurfaceInputs = (lens, side, label) => {
+  const normalized = normalizeLens(lens);
+  const enabledField = `${side}AsphereEnabled`;
+  const prefix = side === "front" ? "front" : "rear";
+
+  return `
+    <div class="asphere-surface-group">
+      <label class="check-control">
+        <input
+          type="checkbox"
+          data-action="toggle-asphere"
+          data-id="${lens.id}"
+          data-field="${enabledField}"
+          ${normalized[enabledField] ? "checked" : ""}
+        >
+        ${label}
+      </label>
+      <div class="asphere-grid">
+        ${steppableInput(normalized, `${prefix}ConicK`, `${label} K`, FIELD_STEPS.conicK)}
+        ${steppableInput(normalized, `${prefix}A4`, `${label} A4`, FIELD_STEPS.A4)}
+        ${steppableInput(normalized, `${prefix}A6`, `${label} A6`, FIELD_STEPS.A6)}
+        ${steppableInput(normalized, `${prefix}A8`, `${label} A8`, FIELD_STEPS.A8)}
+        ${steppableInput(normalized, `${prefix}A10`, `${label} A10`, FIELD_STEPS.A10)}
+      </div>
+    </div>
+  `;
+};
+
+const renderAsphereControl = (lens) => `
+  <details class="lens-asphere-control">
+    <summary>Aspherical Surfaces</summary>
+    <p class="asphere-note">Even-asphere sag: K plus A4/A6/A8/A10. Disabled or all-zero values trace as spherical.</p>
+    ${renderAsphereSurfaceInputs(lens, "front", "Front")}
+    ${renderAsphereSurfaceInputs(lens, "rear", "Rear")}
+  </details>
+`;
+
+const renderManufacturingEdgeControl = (lens, model) => {
+  const normalized = normalizeLens(lens);
+  const sourceLabel = {
+    patent: "Patent",
+    rayEnvelope: "Ray-envelope estimate",
+    manual: "Manual",
+    svgEstimated: "SVG-estimated",
+    estimated: "Fallback estimate"
+  }[model?.apertureSource || normalized.apertureSource] || "Estimated";
+  const status = model?.manufacturable === false ? "Not manufacturable" : "Manufacturable estimate";
+
+  return `
+    <details class="lens-manufacturing-control">
+      <summary>Mechanical Edge</summary>
+      <p class="manufacturing-note">Clear aperture clips rays. Chip zone, mechanical diameter and bevels affect only the displayed manufactured outline.</p>
+      <div class="lens-manufacturing-grid">
+        ${steppableInput(normalized, "diameter", "Clear aperture", FIELD_STEPS.diameter, "mm")}
+        ${steppableInput(normalized, "chipZoneWidthMm", "Chip-zone width", FIELD_STEPS.chipZoneWidthMm, "mm")}
+        ${steppableInput(normalized, "mechanicalDiameter", "Mechanical diameter", FIELD_STEPS.diameter, "mm")}
+        ${steppableInput(normalized, "minimumEdgeThicknessMm", "Minimum edge", FIELD_STEPS.minimumEdgeThicknessMm, "mm")}
+        ${steppableInput(normalized, "minimumFlatLandMm", "Minimum flat land", FIELD_STEPS.minimumFlatLandMm, "mm")}
+      </div>
+      <div class="lens-bevel-grid">
+        <div class="lens-bevel-group">
+          <label class="check-control">
+            <input type="checkbox" data-action="toggle-bevel" data-id="${lens.id}" data-side="front" ${normalized.frontBevelEnabled ? "checked" : ""}>
+            Front bevel
+          </label>
+          ${steppableInput(normalized, "frontBevelFaceWidthMm", "Face width", FIELD_STEPS.frontBevelFaceWidthMm, "mm")}
+          ${steppableInput(normalized, "frontBevelAngleDeg", "Angle", FIELD_STEPS.frontBevelAngleDeg, "deg")}
+        </div>
+        <div class="lens-bevel-group">
+          <label class="check-control">
+            <input type="checkbox" data-action="toggle-bevel" data-id="${lens.id}" data-side="rear" ${normalized.rearBevelEnabled ? "checked" : ""}>
+            Rear bevel
+          </label>
+          ${steppableInput(normalized, "rearBevelFaceWidthMm", "Face width", FIELD_STEPS.rearBevelFaceWidthMm, "mm")}
+          ${steppableInput(normalized, "rearBevelAngleDeg", "Angle", FIELD_STEPS.rearBevelAngleDeg, "deg")}
+        </div>
+      </div>
+      <div class="manufacturing-diagnostics">
+        ${metric("Clear aperture", formatNumber((model?.clearApertureSemiDiameter || normalized.clearApertureDiameter / 2) * 2, 3), "mm")}
+        ${metric("Chip-zone diameter", formatNumber((model?.chipZoneRadius || normalized.clearApertureDiameter / 2 + normalized.chipZoneWidthMm) * 2, 3), "mm")}
+        ${metric("Mechanical diameter", formatNumber((model?.semiDiameter || normalized.mechanicalDiameter / 2) * 2, 3), "mm")}
+        ${metric("Raw edge thickness", formatNumber(model?.edgeThicknessMm, 3), "mm")}
+        ${metric("Remaining flat land", formatNumber(model?.remainingFlatLandMm, 3), "mm")}
+        ${metric("Geometry source", sourceLabel, normalized.manufacturingGeometrySource || "estimated")}
+        ${metric("Status", status, model?.manufacturable === false ? "Review geometry" : "estimated")}
+      </div>
+      ${(model?.geometryWarnings || []).map((warning) => `<p class="warning manufacturing-warning">${escapeHtml(warning)}</p>`).join("")}
+      ${model?.manufacturable === false ? `<p class="diagram-note">Increase centre thickness, reduce clear aperture or bevel width, or redesign the optical surfaces.</p>` : ""}
+    </details>
+  `;
+};
+
+const isLensCardCollapsed = (lens) => state.collapsedLensCards?.[lens.id] !== false;
+
+const formatLensSummary = (lens, index) => {
+  const air = index < state.lenses.length - 1
+    ? formatNumber(lens.gapAfter, 2)
+    : "—";
+  const refractiveIndex = getGlassIndexAtWavelength(lens, SPECTRAL_LINES.d.wavelengthNm);
+  const glass = getLensGlass(lens);
+  const dispersion = numericValue(glass?.vd ?? lens.customVd);
+  const items = [
+    ["R1", formatNumber(lens.r1, 2)],
+    ["T", formatNumber(lens.thickness, 2)],
+    ["R2", formatNumber(lens.r2, 2)],
+    ["D", formatNumber(lens.clearApertureDiameter || lens.diameter, 2)],
+    ["n", formatNumber(refractiveIndex, 4)],
+    ["Vd", Number.isFinite(dispersion) ? formatNumber(dispersion, 1) : "—"],
+    ["Air", air]
+  ];
+  return items.map(([label, value]) => `
+    <span class="lens-summary-item">
+      <strong class="lens-summary-label">${escapeHtml(label)}</strong>
+      <span class="lens-summary-value">${escapeHtml(value)}</span>
+    </span>
+  `).join("");
+};
+
+const lensHasActiveAsphere = (lens, result = {}) => (
+  createAsphereDescriptor(lens, "front", Number.isFinite(result.r1) ? result.r1 : lens.r1).active
+  || createAsphereDescriptor(lens, "rear", Number.isFinite(result.r2) ? result.r2 : lens.r2).active
+);
+
+const renderLens = (lens, index, result, manufacturingModel = null) => `
+  <article class="lens-card lens-stack-card ${isLensCardCollapsed(lens) ? "is-collapsed" : ""}">
+    <div class="lens-top lens-card-summary">
+      <button
+        class="lens-summary-toggle"
+        type="button"
+        data-action="toggle-lens-card"
+        data-id="${lens.id}"
+        aria-expanded="${isLensCardCollapsed(lens) ? "false" : "true"}"
+      >
+        <span class="lens-summary-title">L${index + 1}</span>
+        <span class="lens-summary-meta">${formatLensSummary(lens, index)}</span>
+        ${lensHasActiveAsphere(lens, result) ? `<span class="lens-asphere-summary-badge" title="Aspherical surface active" aria-label="Aspherical surface active">A</span>` : ""}
+        <span class="lens-card-chevron" aria-hidden="true">${isLensCardCollapsed(lens) ? "▸" : "▾"}</span>
+      </button>
+      <div class="lens-actions">
+        <button
+          class="order-button"
+          type="button"
+          title="Move lens up"
+          aria-label="Move lens ${index + 1} up"
+          data-action="move-lens"
+          data-id="${lens.id}"
+          data-direction="-1"
+          ${index === 0 ? "disabled" : ""}
+        >↑</button>
+        <button
+          class="order-button"
+          type="button"
+          title="Move lens down"
+          aria-label="Move lens ${index + 1} down"
+          data-action="move-lens"
+          data-id="${lens.id}"
+          data-direction="1"
+          ${index === state.lenses.length - 1 ? "disabled" : ""}
+        >↓</button>
+        <button
+          class="flip-button"
+          type="button"
+          title="Flip lens side"
+          aria-label="Flip lens ${index + 1} side"
+          data-action="flip-lens"
+          data-id="${lens.id}"
+        >⇄</button>
+        <button
+          class="remove-button"
+          type="button"
+          title="Remove lens"
+          aria-label="Remove lens ${index + 1}"
+          data-action="remove-lens"
+          data-id="${lens.id}"
+          ${state.lenses.length === 1 ? "disabled" : ""}
+        >x</button>
+      </div>
+    </div>
+    <div class="lens-card-body">
+      <div class="lens-main-prescription-grid">
+        ${steppableInput(lens, "r1", "Front R1", FIELD_STEPS.r1, "mm")}
+        ${steppableInput(lens, "thickness", "Thickness T", FIELD_STEPS.thickness, "mm")}
+        ${steppableInput(lens, "r2", "Rear R2", FIELD_STEPS.r2, "mm")}
+        ${steppableInput(lens, "diameter", "Diameter D", FIELD_STEPS.diameter, "mm")}
+        ${
+          index < state.lenses.length - 1
+            ? steppableInput(lens, "gapAfter", "Air gap", FIELD_STEPS.gapAfter, "mm")
+            : `<div class="control gap-placeholder"><span class="control-label">Air gap</span><span class="placeholder-text">Last element</span></div>`
+        }
+      </div>
+      <div class="lens-material-grid">
+        ${renderTypeControl(lens)}
+        ${renderGlassControl(lens)}
+        ${renderCoatingControl(lens)}
+      </div>
+      <div class="lens-advanced-sections">
+        ${renderAsphereControl(lens)}
+        ${renderManufacturingEdgeControl(lens, manufacturingModel)}
+        ${renderToleranceOverrideControl(lens)}
+        ${renderOptimizerLensControl(lens)}
+      </div>
+      <div class="lens-output">
+        ${metric("Element focal length", formatNumber(result.focalLength), "mm")}
+        ${metric("Element power", formatNumber(result.diopters, 3), "D")}
+        ${metric("Glass", escapeHtml(result.glassName || "Custom"), `n ${formatNumber(result.refractiveIndex, 4)}`)}
+        ${metric("Front surface R1", formatNumber(result.r1), "mm")}
+        ${metric("Rear surface R2", formatNumber(result.r2), "mm")}
+      </div>
+      ${
+        lens.patentGapEstimated
+          ? `<p class="warning">Patent did not state this air gap; ${formatNumber(PATENT_DEFAULT_MISSING_AIR_GAP_MM)} mm was inserted and can be edited.</p>`
+          : ""
+      }
+      ${
+        result.warnings.length
+          ? `<p class="warning">${result.warnings.join(" ")}</p>`
+          : ""
+      }
+    </div>
+  </article>
+`;
+
+const lensPositions = (system, lenses = state.lenses) => {
+  const positions = [];
+  let cursor = Math.max(0, Number.isFinite(system.backFocalLength) ? system.backFocalLength : 55);
+
+  for (let index = lenses.length - 1; index >= 0; index -= 1) {
+    const lens = lenses[index];
+    const result = system.results[index];
+    const thickness = result.valid ? Math.max(result.thickness, 0.5) : 4;
+    const visualDiameter = numericValue(lens.visualDiameter);
+    positions[index] = {
+      start: cursor,
+      end: cursor + thickness,
+      center: cursor + thickness / 2,
+      thickness,
+      diameter: result.valid ? (Number.isFinite(visualDiameter) && visualDiameter > 0 ? visualDiameter : result.diameter) : 30
+    };
+    cursor += thickness;
+
+    if (index > 0) {
+      cursor += Math.max(0, toNumber(lenses[index - 1].gapAfter) || 0);
+    }
+  }
+
+  return positions;
+};
+
+const createSvgPointMapper = (system, chromaticSystems) => {
+  const width = DIAGRAM_SIZE.width;
+  const height = DIAGRAM_SIZE.height;
+  const margin = { left: 60, right: 60, top: 60, bottom: 82 };
+  const validDiameters = system.results
+    .map((result, index) => {
+      if (!result.valid) return NaN;
+      const lens = state.lenses[index] || {};
+      return Math.max(
+        result.diameter,
+        toNumber(lens.visualDiameter) || 0,
+        toNumber(lens.mechanicalDiameter) || 0,
+        toNumber(lens.clearApertureDiameter) || 0,
+        toNumber(lens.patentFrontClearAperture) || 0,
+        toNumber(lens.patentRearClearAperture) || 0
+      );
+    })
+    .filter(Number.isFinite);
+  const maxDiameter = Math.max(...validDiameters, FULL_FRAME_SENSOR.diagonal);
+  const verticalHalfRange = Math.max(18, maxDiameter / 2) * 1.22;
+  const positions = lensPositions(system);
+  const focusOffsets = Object.values(chromaticSystems)
+    .map((colorSystem) => Number.isFinite(colorSystem.backFocalLength) && Number.isFinite(system.backFocalLength)
+      ? system.backFocalLength - colorSystem.backFocalLength
+      : 0);
+  const stackMinX = Math.min(...positions.map((position) => position.start));
+  const stackMaxX = Math.max(...positions.map((position) => position.end));
+  const lensStackCenter = (stackMinX + stackMaxX) / 2;
+  const stackWidth = Math.max(1, stackMaxX - stackMinX);
+  const rightMostLens = Math.max(stackMaxX, 90);
+  const requiredMinX = Math.min(0, SONY_E_FLANGE_DISTANCE, ...focusOffsets) - 8;
+  const requiredMaxX = rightMostLens + Math.max(35, rightMostLens * 0.18);
+  const halfRangeX = Math.max(
+    stackWidth / 2 + Math.max(28, stackWidth * 0.42),
+    Math.abs(lensStackCenter - requiredMinX),
+    Math.abs(requiredMaxX - lensStackCenter)
+  );
+  const minX = lensStackCenter - halfRangeX;
+  const maxX = lensStackCenter + halfRangeX;
+  const availableWidth = width - margin.left - margin.right;
+  const availableHeight = height - margin.top - margin.bottom;
+  const horizontalRangeMm = Math.max(1, maxX - minX);
+  const verticalRangeMm = Math.max(1, verticalHalfRange * 2);
+  const mmScale = Math.min(
+    availableWidth / horizontalRangeMm,
+    availableHeight / verticalRangeMm
+  );
+  const opticalWidth = horizontalRangeMm * mmScale;
+  const opticalHeight = verticalRangeMm * mmScale;
+  const xOrigin = margin.left + (availableWidth - opticalWidth) / 2;
+  const axisY = margin.top + (availableHeight - opticalHeight) / 2 + opticalHeight / 2;
+  const x = (mm) => xOrigin + (maxX - mm) * mmScale;
+
+  return {
+    width,
+    height,
+    axisY,
+    minX,
+    maxX,
+    stackMinX,
+    stackMaxX,
+    lensStackCenter,
+    positions,
+    mmScale,
+    displayDirection: "objectToImage",
+    x,
+    y: (mm) => axisY - mm * mmScale,
+    pxPerMmX: mmScale,
+    pxPerMmY: mmScale
+  };
+};
+
+const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+const normalizeVector = (x, y) => {
+  const length = Math.hypot(x, y);
+  if (length < 0.0000001) return null;
+  return { x: x / length, y: y / length };
+};
+
+const dotVector = (left, right) => left.x * right.x + left.y * right.y;
+const normalizeVector3 = (x, y, z) => {
+  const length = Math.hypot(x, y, z);
+  if (length < 0.0000001) return null;
+  return { x: x / length, y: y / length, z: z / length };
+};
+
+const dotVector3 = (left, right) => left.x * right.x + left.y * right.y + left.z * right.z;
+
+const asphereFieldName = (side, suffix) => `${side}${suffix}`;
+
+const asphereHasTerms = (asphere) => {
+  if (!asphere) return false;
+  return Math.abs(toNumber(asphere.conicK) || 0) > 1e-12
+    || ASPHERE_TERMS.some((term) => Math.abs(toNumber(asphere[term]) || 0) > 1e-18);
+};
+
+const createAsphereDescriptor = (lens, side, radius) => {
+  const normalized = normalizeLens(lens);
+  const enabled = side === "front" ? normalized.frontAsphereEnabled : normalized.rearAsphereEnabled;
+  const asphere = {
+    enabled,
+    conicK: toNumber(normalized[asphereFieldName(side, "ConicK")]) || 0,
+    A4: toNumber(normalized[asphereFieldName(side, "A4")]) || 0,
+    A6: toNumber(normalized[asphereFieldName(side, "A6")]) || 0,
+    A8: toNumber(normalized[asphereFieldName(side, "A8")]) || 0,
+    A10: toNumber(normalized[asphereFieldName(side, "A10")]) || 0
+  };
+
+  const radiusValue = toNumber(radius);
+  return {
+    ...asphere,
+    active: Boolean(enabled && Number.isFinite(radiusValue) && Math.abs(radiusValue) > 1e-9 && asphereHasTerms(asphere))
+  };
+};
+
+const asphereSurfaceType = (surface) => {
+  if (Math.abs(surface.radius || 0) < 1e-9) return "Plano";
+  return isSurfaceAsphereActive(surface) ? "Aspherical" : "Spherical";
+};
+
+const isSurfaceAsphereActive = (surface) => {
+  if (!surface?.asphere) return false;
+  const radius = toNumber(surface.radius);
+  return (surface.asphere.active === true || surface.asphere.enabled === true)
+    && Number.isFinite(radius)
+    && Math.abs(radius) > 1e-9
+    && asphereHasTerms({
+      enabled: true,
+      conicK: surface.asphere.conicK ?? surface.asphere.k ?? 0,
+      A4: surface.asphere.A4,
+      A6: surface.asphere.A6,
+      A8: surface.asphere.A8,
+      A10: surface.asphere.A10
+    });
+};
+
+const evaluateAsphereSag = (radius, asphere, radialHeight) => {
+  const r = Math.abs(toNumber(radialHeight) || 0);
+  const R = toNumber(radius);
+  if (!Number.isFinite(R) || Math.abs(R) < 1e-9) return { valid: true, sag: 0, derivative: 0 };
+
+  const c = 1 / R;
+  const k = toNumber(asphere?.conicK ?? asphere?.k) || 0;
+  const underRoot = 1 - (1 + k) * c * c * r * r;
+  if (underRoot < -1e-10) return { valid: false, sag: NaN, derivative: NaN };
+
+  const sqrtTerm = Math.sqrt(Math.max(0, underRoot));
+  const denominator = 1 + sqrtTerm;
+  if (Math.abs(denominator) < 1e-12) return { valid: false, sag: NaN, derivative: NaN };
+
+  const baseSag = (c * r * r) / denominator;
+  const terms = {
+    A4: toNumber(asphere?.A4) || 0,
+    A6: toNumber(asphere?.A6) || 0,
+    A8: toNumber(asphere?.A8) || 0,
+    A10: toNumber(asphere?.A10) || 0
+  };
+  const r2 = r * r;
+  const r3 = r2 * r;
+  const r4 = r2 * r2;
+  const r5 = r4 * r;
+  const r6 = r4 * r2;
+  const r7 = r6 * r;
+  const r8 = r4 * r4;
+  const r9 = r8 * r;
+  const r10 = r8 * r2;
+  const polynomialSag = terms.A4 * r4 + terms.A6 * r6 + terms.A8 * r8 + terms.A10 * r10;
+  const baseDerivative = sqrtTerm > 1e-12 ? (c * r) / sqrtTerm : (c * r) / 1e-12;
+  const polynomialDerivative = 4 * terms.A4 * r3
+    + 6 * terms.A6 * r5
+    + 8 * terms.A8 * r7
+    + 10 * terms.A10 * r9;
+
+  return {
+    valid: Number.isFinite(baseSag + polynomialSag) && Number.isFinite(baseDerivative + polynomialDerivative),
+    sag: baseSag + polynomialSag,
+    derivative: baseDerivative + polynomialDerivative
+  };
+};
+
+const surfaceProfileXAtRadialHeight = (surface, radialHeight) => {
+  const radius = toNumber(surface.radius) || 0;
+  if (Math.abs(radius) < 1e-9) return surface.x;
+  if (isSurfaceAsphereActive(surface)) {
+    const sag = evaluateAsphereSag(radius, surface.asphere, radialHeight);
+    return sag.valid ? surface.x - sag.sag : NaN;
+  }
+
+  const r = Math.abs(radialHeight);
+  const absRadius = Math.abs(radius);
+  const underRoot = absRadius * absRadius - r * r;
+  if (underRoot < -1e-10) return NaN;
+  return surface.x + Math.sign(radius) * (Math.sqrt(Math.max(0, underRoot)) - absRadius);
+};
+
+const buildApertureStopOptions = (lenses, system) => {
+  const positions = lensPositions(system, lenses);
+  const rightMostLens = Math.max(...positions.filter(Boolean).map((position) => position.end), 55);
+  const options = [{
+    value: "frontGroup",
+    label: "Front of lens group",
+    x: rightMostLens + 2,
+    lensIndex: null,
+    surfaceIndex: "stop"
+  }];
+
+  lenses.forEach((lens, index) => {
+    const position = positions[index];
+    if (!position) return;
+    options.push({
+      value: `lens-${index}-front`,
+      label: `Lens ${index + 1} front`,
+      x: position.end,
+      lensIndex: index,
+      surfaceIndex: 0
+    });
+    options.push({
+      value: `lens-${index}-rear`,
+      label: `Lens ${index + 1} rear`,
+      x: position.start,
+      lensIndex: index,
+      surfaceIndex: 1
+    });
+  });
+
+  return options;
+};
+
+const selectedApertureStopOption = (lenses, system, apertureStopIndex = state.apertureStopIndex) => {
+  const options = buildApertureStopOptions(lenses, system);
+  return options.find((option) => option.value === apertureStopIndex) || options[0];
+};
+
+const patentSurfacePositionMap = (lenses, system, positions = lensPositions(system, lenses), prescription = state.prescription) => {
+  const map = new Map();
+  lenses.forEach((lens, index) => {
+    const position = positions[index];
+    if (!position) return;
+    const startNo = Math.round(toNumber(lens.patentSurfaceStart));
+    const endNo = Math.round(toNumber(lens.patentSurfaceEnd));
+    if (Number.isFinite(startNo)) map.set(startNo, position.end);
+    if (Number.isFinite(endNo)) map.set(endNo, position.start);
+  });
+
+  const patentSurfaces = prescription?.prescriptionType === "surface"
+    ? prescription.surfaces.map(normalizePatentSurface)
+    : [];
+  let previousSurface = null;
+  let previousX = NaN;
+  patentSurfaces.forEach((surface) => {
+    if (!map.has(surface.no) && previousSurface && Number.isFinite(previousX) && Number.isFinite(previousSurface.distanceToNext)) {
+      map.set(surface.no, previousX - previousSurface.distanceToNext);
+    }
+    if (map.has(surface.no)) previousX = map.get(surface.no);
+    previousSurface = surface;
+  });
+
+  return map;
+};
+
+const apertureStopSettingsFrom = (source = state) => ({
+  apertureStopMode: source.apertureStopMode || "auto",
+  apertureStopIndex: source.apertureStopIndex || "frontGroup",
+  apertureStopSurfaceNumber: Math.max(1, Math.round(toNumber(source.apertureStopSurfaceNumber) || 1)),
+  apertureStopSurfaceOffsetMm: Math.max(0, toNumber(source.apertureStopSurfaceOffsetMm) || 0),
+  apertureStopDistanceFromSensorMm: Math.max(0, toNumber(source.apertureStopDistanceFromSensorMm) || 0),
+  apertureStopDistanceFromFrontMm: Math.max(0, toNumber(source.apertureStopDistanceFromFrontMm) || 0)
+});
+
+const resolveApertureStopConfiguration = (
+  settingsSource = state,
+  prescription = state.prescription
+) => {
+  const mergedSettings = settingsSource === state ? state : { ...state, ...settingsSource };
+  const settings = apertureStopSettingsFrom(mergedSettings);
+  const patentSurfaces = prescription?.prescriptionType === "surface"
+    ? prescription.surfaces.map(normalizePatentSurface)
+    : [];
+  return {
+    ...settings,
+    apertureDiameter: Math.max(0.1, toNumber(mergedSettings.apertureDiameter) || 0.1),
+    prescription,
+    patentSurfaces
+  };
+};
+
+const resolveApertureStopPosition = (settingsSource = state, surfaces = [], context = {}) => {
+  const settings = apertureStopSettingsFrom(settingsSource);
+  const sortedSurfaces = [...surfaces].sort((left, right) => right.x - left.x);
+  const fallbackOption = context.fallbackStopOption
+    || selectedApertureStopOption(context.lenses || state.lenses, context.system || calculateSystem(state.lenses), settings.apertureStopIndex);
+  const fallback = {
+    mode: "auto",
+    x: Number.isFinite(fallbackOption?.x) ? fallbackOption.x : 0,
+    matchingSurface: sortedSurfaces.find((surface) => (
+      surface.lensIndex === fallbackOption?.lensIndex && surface.surfaceIndex === fallbackOption?.surfaceIndex
+    )) || null,
+    label: fallbackOption?.label || "Auto / preset default",
+    source: "Auto / preset default",
+    warning: ""
+  };
+
+  if (!sortedSurfaces.length) return fallback;
+
+  if (settings.apertureStopMode === "patentStop") {
+    const patentSurfaces = context.patentSurfaces || (state.prescription?.prescriptionType === "surface"
+      ? state.prescription.surfaces.map(normalizePatentSurface)
+      : []);
+    const stopSurface = patentSurfaces.find((surface) => surface.isStop);
+    const x = stopSurface ? context.patentSurfaceXMap?.get(stopSurface.no) : NaN;
+    if (Number.isFinite(x)) {
+      const matchingSurface = sortedSurfaces.find((surface) => surface.patentSurfaceNumber === stopSurface.no) || null;
+      return {
+        mode: "patentStop",
+        x,
+        matchingSurface,
+        label: `Patent STOP surface ${stopSurface.no}`,
+        source: `Patent STOP surface ${stopSurface.no}`,
+        patentSurfaceNumber: stopSurface.no,
+        warning: ""
+      };
+    }
+    return {
+      ...fallback,
+      mode: "patentStop",
+      warning: "No valid patent STOP surface was found; using the auto aperture stop."
+    };
+  }
+
+  if (settings.apertureStopMode === "surfaceNumber") {
+    const targetNumber = settings.apertureStopSurfaceNumber;
+    const matchingSurface = sortedSurfaces.find((surface) => (
+      toNumber(surface.patentSurfaceNumber) === targetNumber
+    )) || sortedSurfaces.find((surface) => surface.surfaceNumber === targetNumber);
+    if (matchingSurface) {
+      const offset = settings.apertureStopSurfaceOffsetMm;
+      return {
+        mode: "surfaceNumber",
+        x: matchingSurface.x - offset,
+        matchingSurface: offset > 0.000001 ? null : matchingSurface,
+        label: offset > 0.000001 ? `Surface ${targetNumber} + ${formatNumber(offset)} mm toward sensor` : `Surface ${targetNumber}`,
+        source: offset > 0.000001 ? `Surface ${targetNumber} offset` : `Surface ${targetNumber}`,
+        warning: ""
+      };
+    }
+    return {
+      ...fallback,
+      mode: "surfaceNumber",
+      warning: `Surface ${targetNumber} was not found; using the auto aperture stop.`
+    };
+  }
+
+  if (settings.apertureStopMode === "distanceFromSensor") {
+    return {
+      mode: "distanceFromSensor",
+      x: settings.apertureStopDistanceFromSensorMm,
+      matchingSurface: null,
+      label: `${formatNumber(settings.apertureStopDistanceFromSensorMm)} mm from sensor`,
+      source: "Distance from sensor plane",
+      warning: ""
+    };
+  }
+
+  if (settings.apertureStopMode === "distanceFromFront") {
+    const frontX = Math.max(...sortedSurfaces.map((surface) => surface.x));
+    const x = frontX - settings.apertureStopDistanceFromFrontMm;
+    return {
+      mode: "distanceFromFront",
+      x,
+      matchingSurface: null,
+      label: `${formatNumber(settings.apertureStopDistanceFromFrontMm)} mm from front surface`,
+      source: "Distance from first/front optical surface",
+      warning: ""
+    };
+  }
+
+  return fallback;
+};
+
+const buildSurfaceList = (lenses, system, options = {}) => {
+  const stopConfiguration = resolveApertureStopConfiguration(options, options.prescription || state.prescription);
+  const positions = lensPositions(system, lenses);
+  const apertureStopIndex = stopConfiguration.apertureStopIndex;
+  const apertureDiameter = stopConfiguration.apertureDiameter;
+  const wavelengthNm = toNumber(options.wavelengthNm) || SPECTRAL_LINES.d.wavelengthNm;
+  const spectralLineKey = options.spectralLineKey || "d";
+  const stopOption = selectedApertureStopOption(lenses, system, apertureStopIndex);
+  const patentSurfaces = stopConfiguration.patentSurfaces;
+  const patentSurfaceXMap = patentSurfacePositionMap(lenses, system, positions, stopConfiguration.prescription);
+  const surfaces = [];
+
+  lenses.forEach((lens, index) => {
+    const result = system.results[index];
+    const position = positions[index];
+    if (!result?.valid || !position) return;
+
+    const refractiveIndex = getGlassIndexAtWavelength(lens, wavelengthNm);
+    const glass = getLensGlass(lens);
+    const lineIndices = getGlassLineIndices(lens);
+    const normalizedLens = normalizeLens(lens);
+    const frontCoating = getCoatingPreset(normalizedLens.frontCoatingKey);
+    const rearCoating = getCoatingPreset(normalizedLens.rearCoatingKey);
+    const decenterY = toNumber(normalizedLens.decenterY) || 0;
+    const decenterZ = toNumber(normalizedLens.decenterZ) || 0;
+    const tiltY = toNumber(normalizedLens.tiltY) || 0;
+    const tiltZ = toNumber(normalizedLens.tiltZ) || 0;
+    const clearSemiDiameter = Math.max(
+      0.025,
+      (toNumber(normalizedLens.clearApertureDiameter) || toNumber(normalizedLens.diameter) || position.diameter) / 2
+    );
+    const frontSharedCementedSurface = normalizedLens.patentFrontSharedCementedSurface === true;
+    const rearCementedToNextGlass = normalizedLens.patentRearCementedToNextGlass === true;
+    const frontNBefore = frontSharedCementedSurface && index > 0
+      ? getGlassIndexAtWavelength(lenses[index - 1], wavelengthNm)
+      : 1;
+    const rearNAfter = rearCementedToNextGlass && index < lenses.length - 1
+      ? getGlassIndexAtWavelength(lenses[index + 1], wavelengthNm)
+      : 1;
+    if (!(refractiveIndex > 1)) return;
+
+    if (!frontSharedCementedSurface) {
+      surfaces.push({
+        x: position.end,
+        radius: Number.isFinite(result.r1) ? result.r1 : 0,
+        asphere: createAsphereDescriptor(normalizedLens, "front", Number.isFinite(result.r1) ? result.r1 : 0),
+        semiDiameter: clearSemiDiameter,
+        clearApertureDiameter: clearSemiDiameter * 2,
+        mechanicalDiameter: normalizedLens.mechanicalDiameter,
+        visualDiameter: normalizedLens.visualDiameter,
+        apertureSource: normalizedLens.apertureSource,
+        diameterSource: normalizedLens.diameterSource || normalizedLens.apertureSource,
+        nBefore: Number.isFinite(frontNBefore) && frontNBefore > 0 ? frontNBefore : 1,
+        nAfter: refractiveIndex,
+        glassName: glass.name,
+        glassFamily: glass.family,
+        coatingKey: normalizedLens.frontCoatingKey,
+        coatingName: frontCoating.name,
+        decenterY,
+        decenterZ,
+        tiltY,
+        tiltZ,
+        wavelengthNm,
+        spectralLineKey,
+        nC: lineIndices.C,
+        nd: lineIndices.d,
+        nF: lineIndices.F,
+        lensIndex: index,
+        surfaceIndex: 0,
+        patentSurfaceNumber: normalizedLens.patentSurfaceStart,
+        label: `L${index + 1} front R1`
+      });
+    }
+
+    surfaces.push({
+      x: position.start,
+      radius: Number.isFinite(result.r2) ? result.r2 : 0,
+      asphere: createAsphereDescriptor(normalizedLens, "rear", Number.isFinite(result.r2) ? result.r2 : 0),
+      semiDiameter: clearSemiDiameter,
+      clearApertureDiameter: clearSemiDiameter * 2,
+      mechanicalDiameter: normalizedLens.mechanicalDiameter,
+      visualDiameter: normalizedLens.visualDiameter,
+      apertureSource: normalizedLens.apertureSource,
+      diameterSource: normalizedLens.diameterSource || normalizedLens.apertureSource,
+      nBefore: refractiveIndex,
+      nAfter: Number.isFinite(rearNAfter) && rearNAfter > 0 ? rearNAfter : 1,
+      glassName: glass.name,
+      glassFamily: glass.family,
+      coatingKey: rearCementedToNextGlass ? "cemented" : normalizedLens.rearCoatingKey,
+      coatingName: rearCementedToNextGlass ? "Cemented glass interface" : rearCoating.name,
+      decenterY,
+      decenterZ,
+      tiltY,
+      tiltZ,
+      wavelengthNm,
+      spectralLineKey,
+      nC: lineIndices.C,
+      nd: lineIndices.d,
+      nF: lineIndices.F,
+      lensIndex: index,
+      surfaceIndex: 1,
+      patentSurfaceNumber: normalizedLens.patentSurfaceEnd,
+      label: rearCementedToNextGlass ? `L${index + 1} rear / L${index + 2} front cemented` : `L${index + 1} rear R2`,
+      isCementedInterface: rearCementedToNextGlass
+    });
+  });
+
+  if (!surfaces.length) return [];
+
+  const stopSemiDiameter = apertureDiameter / 2;
+  surfaces.sort((left, right) => right.x - left.x);
+  surfaces.forEach((surface, index) => {
+    surface.surfaceNumber = index + 1;
+  });
+  const stopResolution = resolveApertureStopPosition(stopConfiguration, surfaces, {
+    lenses,
+    system,
+    positions,
+    fallbackStopOption: stopOption,
+    patentSurfaces,
+    patentSurfaceXMap
+  });
+  const matchingSurface = stopResolution.matchingSurface;
+
+  if (matchingSurface) {
+    matchingSurface.isStop = true;
+    matchingSurface.stopSemiDiameter = stopSemiDiameter;
+    matchingSurface.semiDiameter = Math.min(matchingSurface.semiDiameter, stopSemiDiameter);
+    matchingSurface.stopSource = stopResolution.source;
+    matchingSurface.stopLabel = stopResolution.label;
+    matchingSurface.stopWarning = stopResolution.warning;
+  } else {
+    surfaces.push({
+      x: Number.isFinite(stopResolution.x) ? stopResolution.x : stopOption.x,
+      radius: 0,
+      asphere: createAsphereDescriptor({}, "front", 0),
+      semiDiameter: stopSemiDiameter,
+      clearApertureDiameter: stopSemiDiameter * 2,
+      mechanicalDiameter: stopSemiDiameter * 2,
+      apertureSource: "manual",
+      nBefore: 1,
+      nAfter: 1,
+      glassName: "--",
+      glassFamily: "--",
+      coatingKey: "--",
+      coatingName: "--",
+      decenterY: 0,
+      decenterZ: 0,
+      tiltY: 0,
+      tiltZ: 0,
+      wavelengthNm,
+      spectralLineKey,
+      lensIndex: null,
+      surfaceIndex: "stop",
+      label: stopResolution.label || "Aperture stop",
+      isStop: true,
+      stopSemiDiameter,
+      stopSource: stopResolution.source,
+      stopWarning: stopResolution.warning,
+      patentSurfaceNumber: stopResolution.patentSurfaceNumber ?? null
+    });
+  }
+
+  const sortedSurfaces = surfaces.sort((left, right) => right.x - left.x);
+  const limitingSemiDiameter = Math.min(...sortedSurfaces.map((surface) => surface.semiDiameter));
+  sortedSurfaces.forEach((surface, index) => {
+    const reflection = calculateSurfaceReflectance(surface, surface.spectralLineKey || "d");
+    surface.surfaceNumber = index + 1;
+    surface.isApertureLimiting = Math.abs(surface.semiDiameter - limitingSemiDiameter) < 0.000001;
+    surface.reflectance = reflection.reflectance;
+    surface.surfaceTransmission = reflection.transmission;
+    surface.reflectanceSpectralLineKey = reflection.spectralLineKey;
+  });
+  sortedSurfaces.stopConfiguration = {
+    ...stopConfiguration,
+    resolvedX: stopResolution.x,
+    source: stopResolution.source,
+    label: stopResolution.label,
+    warning: stopResolution.warning
+  };
+
+  return sortedSurfaces;
+};
+
+const apertureMiss = (hitPoint, surface) => Math.abs(hitPoint.y) > surface.semiDiameter + 0.000001;
+
+const asphereIntersection2D = (ray, surface) => {
+  if (Math.abs(ray.dx) < 1e-9) return { status: "no surface intersection" };
+
+  const localYAt = (t) => ray.y + ray.dy * t - (toNumber(surface.decenterY) || 0);
+  const surfaceXAt = (t) => surfaceProfileXAtRadialHeight(surface, Math.abs(localYAt(t)));
+  const f = (t) => {
+    const x = ray.x + ray.dx * t;
+    const surfaceX = surfaceXAt(t);
+    return Number.isFinite(surfaceX) ? x - surfaceX : NaN;
+  };
+  const derivative = (t) => {
+    const localY = localYAt(t);
+    const sag = evaluateAsphereSag(surface.radius, surface.asphere, Math.abs(localY));
+    if (!sag.valid) return NaN;
+    const signY = Math.abs(localY) > 1e-12 ? Math.sign(localY) : 0;
+    const surfaceDxDt = -sag.derivative * signY * ray.dy;
+    return ray.dx - surfaceDxDt;
+  };
+  const planeT = (surface.x - ray.x) / ray.dx;
+  const sagWindow = Math.max(4, surface.semiDiameter * 0.35, Math.abs(toNumber(surface.radius) || 0) * 0.02);
+  const tWindow = sagWindow / Math.max(0.05, Math.abs(ray.dx));
+  let t = Number.isFinite(planeT) && planeT > 1e-7 ? planeT : 1e-6;
+
+  for (let iteration = 0; iteration < 18; iteration += 1) {
+    const value = f(t);
+    const slope = derivative(t);
+    if (!Number.isFinite(value) || !Number.isFinite(slope) || Math.abs(slope) < 1e-12) break;
+    if (Math.abs(value) < 1e-7 && t > 1e-7) {
+      const hitPoint = { x: ray.x + ray.dx * t, y: ray.y + ray.dy * t };
+      if (apertureMiss(hitPoint, surface)) return { status: "missed aperture", hitPoint };
+      return { status: "valid", hitPoint, t };
+    }
+    const nextT = t - value / slope;
+    if (!Number.isFinite(nextT) || nextT <= 1e-7 || Math.abs(nextT - planeT) > tWindow * 4) break;
+    t = nextT;
+  }
+
+  const startT = Math.max(1e-7, planeT - tWindow * 2);
+  const endT = Math.max(startT + 1e-5, planeT + tWindow * 2);
+  const steps = 96;
+  let previousT = startT;
+  let previousF = f(previousT);
+  let bestT = Number.isFinite(previousF) ? previousT : NaN;
+  let bestAbs = Number.isFinite(previousF) ? Math.abs(previousF) : Infinity;
+  let sawInvalidAsphere = !Number.isFinite(previousF);
+
+  for (let index = 1; index <= steps; index += 1) {
+    const currentT = startT + (endT - startT) * (index / steps);
+    const currentF = f(currentT);
+    if (!Number.isFinite(currentF)) {
+      sawInvalidAsphere = true;
+      continue;
+    }
+    if (Math.abs(currentF) < bestAbs) {
+      bestAbs = Math.abs(currentF);
+      bestT = currentT;
+    }
+    if (Number.isFinite(previousF) && previousF * currentF <= 0) {
+      let lowT = previousT;
+      let highT = currentT;
+      let lowF = previousF;
+      for (let iteration = 0; iteration < 42; iteration += 1) {
+        const midT = (lowT + highT) / 2;
+        const midF = f(midT);
+        if (!Number.isFinite(midF)) break;
+        if (Math.abs(midF) < 1e-8) {
+          lowT = midT;
+          highT = midT;
+          break;
+        }
+        if (lowF * midF <= 0) {
+          highT = midT;
+        } else {
+          lowT = midT;
+          lowF = midF;
+        }
+      }
+      const solvedT = (lowT + highT) / 2;
+      const hitPoint = { x: ray.x + ray.dx * solvedT, y: ray.y + ray.dy * solvedT };
+      if (apertureMiss(hitPoint, surface)) return { status: "missed aperture", hitPoint };
+      return { status: "valid", hitPoint, t: solvedT };
+    }
+    previousT = currentT;
+    previousF = currentF;
+  }
+
+  if (Number.isFinite(bestT) && bestAbs < 1e-5) {
+    const hitPoint = { x: ray.x + ray.dx * bestT, y: ray.y + ray.dy * bestT };
+    if (apertureMiss(hitPoint, surface)) return { status: "missed aperture", hitPoint };
+    return { status: "valid", hitPoint, t: bestT };
+  }
+
+  return { status: sawInvalidAsphere ? "invalid asphere" : "no surface intersection" };
+};
+
+const intersectRayWithSurface = (ray, surface) => {
+  if (!ray || !Number.isFinite(ray.x) || !Number.isFinite(ray.y) || !Number.isFinite(ray.dx) || !Number.isFinite(ray.dy)) {
+    return { status: "invalid" };
+  }
+
+  if (Math.abs(surface.radius) < 0.000001) {
+    if (Math.abs(ray.dx) < 0.000001) return { status: "invalid" };
+    const t = (surface.x - ray.x) / ray.dx;
+    if (!(t > 0.000001)) return { status: "invalid" };
+
+    const hitPoint = { x: surface.x, y: ray.y + ray.dy * t };
+    if (apertureMiss(hitPoint, surface)) return { status: "missed aperture", hitPoint };
+    return { status: "valid", hitPoint, t };
+  }
+
+  if (isSurfaceAsphereActive(surface)) return asphereIntersection2D(ray, surface);
+
+  // Radius follows the UI sign convention for light traveling right-to-left:
+  // a positive radius places the spherical centre toward the sensor side.
+  const centerX = surface.x - surface.radius;
+  const originX = ray.x - centerX;
+  const originY = ray.y;
+  const b = 2 * (originX * ray.dx + originY * ray.dy);
+  const c = originX ** 2 + originY ** 2 - surface.radius ** 2;
+  const discriminant = b ** 2 - 4 * c;
+
+  if (discriminant < 0) return { status: "invalid" };
+
+  const sqrtDiscriminant = Math.sqrt(Math.max(0, discriminant));
+  const candidates = [(-b - sqrtDiscriminant) / 2, (-b + sqrtDiscriminant) / 2]
+    .filter((candidate) => candidate > 0.000001)
+    .sort((left, right) => left - right);
+
+  if (!candidates.length) return { status: "invalid" };
+
+  const t = candidates.reduce((best, candidate) => {
+    const candidateY = ray.y + ray.dy * candidate;
+    const candidateX = ray.x + ray.dx * candidate;
+    const expectedX = surfaceProfileXAtRadialHeight(surface, Math.abs(candidateY - (toNumber(surface.decenterY) || 0)));
+    const error = Number.isFinite(expectedX) ? Math.abs(candidateX - expectedX) : Infinity;
+    return !best || error < best.error ? { candidate, error } : best;
+  }, null)?.candidate;
+  if (!Number.isFinite(t)) return { status: "no surface intersection" };
+  const hitPoint = {
+    x: ray.x + ray.dx * t,
+    y: ray.y + ray.dy * t
+  };
+
+  if (apertureMiss(hitPoint, surface)) return { status: "missed aperture", hitPoint };
+  return { status: "valid", hitPoint, t };
+};
+
+const surfaceNormal = (ray, surface, hitPoint) => {
+  let normal;
+
+  if (Math.abs(surface.radius) < 0.000001) {
+    normal = { x: ray.dx < 0 ? -1 : 1, y: 0 };
+  } else if (isSurfaceAsphereActive(surface)) {
+    const localY = hitPoint.y - (toNumber(surface.decenterY) || 0);
+    const sag = evaluateAsphereSag(surface.radius, surface.asphere, Math.abs(localY));
+    if (!sag.valid) return null;
+    const signY = Math.abs(localY) > 1e-12 ? Math.sign(localY) : 0;
+    normal = normalizeVector(1, sag.derivative * signY);
+    if (!normal) return null;
+  } else {
+    const centerX = surface.x - surface.radius;
+    normal = normalizeVector(hitPoint.x - centerX, hitPoint.y);
+    if (!normal) return null;
+  }
+
+  // Orient the normal into the transmitted side so the tangential Snell component is stable for both radius signs.
+  if (dotVector({ x: ray.dx, y: ray.dy }, normal) < 0) {
+    normal = { x: -normal.x, y: -normal.y };
+  }
+
+  return normal;
+};
+
+const refractRay = (ray, surface, hitPoint) => {
+  const normal = surfaceNormal(ray, surface, hitPoint);
+  if (!normal) return { status: "invalid" };
+
+  const incoming = { x: ray.dx, y: ray.dy };
+  const cosIncoming = dotVector(incoming, normal);
+  const tangent = {
+    x: incoming.x - cosIncoming * normal.x,
+    y: incoming.y - cosIncoming * normal.y
+  };
+  const eta = surface.nBefore / surface.nAfter;
+  const transmittedTangent = {
+    x: tangent.x * eta,
+    y: tangent.y * eta
+  };
+  const normalTermSquared = 1 - (transmittedTangent.x ** 2 + transmittedTangent.y ** 2);
+
+  if (normalTermSquared < -0.0000001) return { status: "total internal reflection" };
+
+  const normalTerm = Math.sqrt(Math.max(0, normalTermSquared));
+  const direction = normalizeVector(
+    transmittedTangent.x + normal.x * normalTerm,
+    transmittedTangent.y + normal.y * normalTerm
+  );
+
+  if (!direction) return { status: "invalid" };
+
+  return {
+    status: "valid",
+    ray: {
+      x: hitPoint.x,
+      y: hitPoint.y,
+      dx: direction.x,
+      dy: direction.y
+    }
+  };
+};
+
+const traceRay = (ray, surfaces) => {
+  let currentRay = { ...ray };
+  const path = [{ x: currentRay.x, y: currentRay.y }];
+
+  for (const surface of surfaces) {
+    const intersection = intersectRayWithSurface(currentRay, surface);
+    if (intersection.status !== "valid") {
+      return {
+        path,
+        finalRay: currentRay,
+        status: intersection.status,
+        failedSurface: surface,
+        hitPoint: intersection.hitPoint
+      };
+    }
+
+    path.push(intersection.hitPoint);
+    if (surface.isStop || Math.abs(surface.nBefore - surface.nAfter) < 0.000001) {
+      currentRay = {
+        x: intersection.hitPoint.x,
+        y: intersection.hitPoint.y,
+        dx: currentRay.dx,
+        dy: currentRay.dy
+      };
+      continue;
+    }
+
+    const refracted = refractRay(currentRay, surface, intersection.hitPoint);
+    if (refracted.status !== "valid") {
+      return {
+        path,
+        finalRay: currentRay,
+        status: refracted.status,
+        failedSurface: surface,
+        hitPoint: intersection.hitPoint
+      };
+    }
+
+    currentRay = refracted.ray;
+  }
+
+  return { path, finalRay: currentRay, status: "valid" };
+};
+
+const generateRayBundle = (options = {}) => {
+  const fieldAngleDegrees = toNumber(options.fieldAngleDegrees) || 0;
+  const rayCount = Math.round(clamp(toNumber(options.rayCount) || 9, 3, 31));
+  const apertureHeight = Math.max(0.1, toNumber(options.apertureHeight) || 10);
+  const referenceX = toNumber(options.referenceX) || 0;
+  const startX = toNumber(options.startX) || referenceX + 25;
+  const angle = fieldAngleDegrees * Math.PI / 180;
+  const direction = normalizeVector(-Math.cos(angle), Math.sin(angle)) || { x: -1, y: 0 };
+  const slope = Math.abs(direction.x) < 0.000001 ? 0 : direction.y / direction.x;
+
+  return Array.from({ length: rayCount }, (_, index) => {
+    const fraction = rayCount === 1 ? 0 : index / (rayCount - 1);
+    const apertureY = -apertureHeight + fraction * apertureHeight * 2;
+
+    return {
+      x: startX,
+      y: apertureY - slope * (referenceX - startX),
+      dx: direction.x,
+      dy: direction.y,
+      apertureY
+    };
+  });
+};
+
+const sensorIntersection = (ray) => {
+  if (!ray || Math.abs(ray.dx) < 0.000001) return null;
+  const t = -ray.x / ray.dx;
+  if (!(t >= 0)) return null;
+  return { x: 0, y: ray.y + ray.dy * t };
+};
+
+const imagePlaneIntersection = (ray, imagePlaneX = 0) => {
+  if (!ray || Math.abs(ray.dx) < 0.000001) return null;
+  const t = (imagePlaneX - ray.x) / ray.dx;
+  if (!(t >= 0)) return null;
+  return { x: imagePlaneX, y: ray.y + ray.dy * t };
+};
+
+const rayTraceApertureOptions = (options = {}) => {
+  const configuration = resolveApertureStopConfiguration(options, options.prescription || state.prescription);
+  return {
+    apertureStopMode: configuration.apertureStopMode,
+    apertureStopIndex: configuration.apertureStopIndex,
+    apertureStopSurfaceNumber: configuration.apertureStopSurfaceNumber,
+    apertureStopSurfaceOffsetMm: configuration.apertureStopSurfaceOffsetMm,
+    apertureStopDistanceFromSensorMm: configuration.apertureStopDistanceFromSensorMm,
+    apertureStopDistanceFromFrontMm: configuration.apertureStopDistanceFromFrontMm,
+    apertureDiameter: configuration.apertureDiameter,
+    prescription: configuration.prescription
+  };
+};
+
+const prepareRayTraceBundle = (lenses, system, options = {}) => {
+  const spectralLineKey = options.spectralLineKey || "d";
+  const wavelengthNm = toNumber(options.wavelengthNm)
+    || SPECTRAL_LINES[spectralLineKey]?.wavelengthNm
+    || SPECTRAL_LINES.d.wavelengthNm;
+  const surfaces = buildSurfaceList(lenses, system, {
+    ...rayTraceApertureOptions(options),
+    wavelengthNm,
+    spectralLineKey
+  });
+  if (!surfaces.length) {
+    return { surfaces, rayBundle: [], apertureSurface: null, wavelengthNm, spectralLineKey };
+  }
+
+  const apertureSurface = surfaces.find((surface) => surface.isStop) || surfaces[0];
+  const rightMostSurfaceX = Math.max(...surfaces.map((surface) => surface.x));
+  const startX = rightMostSurfaceX + Math.max(20, system.totalTrack * 0.15);
+  const rayBundle = generateRayBundle({
+    fieldAngleDegrees: options.fieldAngleDegrees,
+    rayCount: options.rayCount,
+    apertureHeight: apertureSurface.semiDiameter * 0.98,
+    referenceX: apertureSurface.x,
+    startX
+  });
+
+  return { surfaces, rayBundle, apertureSurface, wavelengthNm, spectralLineKey };
+};
+
+const traceSystemRealRays = (lenses, system, options = {}) => {
+  try {
+    const { surfaces, rayBundle, wavelengthNm, spectralLineKey } = prepareRayTraceBundle(lenses, system, options);
+    if (!surfaces.length) {
+      return { enabled: true, spectralLineKey, wavelengthNm, surfaces, rays: [], validRayCount: 0, totalRayCount: 0, missedRayCount: 0, rmsSpotRadius: NaN, warning: "No valid optical surfaces to trace." };
+    }
+
+    const rays = rayBundle.map((ray) => {
+      const traced = traceRay(ray, surfaces);
+      const sensorPoint = traced.status === "valid" ? sensorIntersection(traced.finalRay) : null;
+      const status = traced.status === "valid" && !sensorPoint ? "invalid" : traced.status;
+
+      return {
+        ...traced,
+        status,
+        inputRay: ray,
+        sensorPoint
+      };
+    });
+    const sensorHits = rays.filter((ray) => ray.status === "valid" && ray.sensorPoint);
+    const missedRayCount = rays.filter((ray) => ray.status === "missed aperture").length;
+    const meanSensorY = sensorHits.length
+      ? sensorHits.reduce((sum, ray) => sum + ray.sensorPoint.y, 0) / sensorHits.length
+      : NaN;
+    const rmsSpotRadius = sensorHits.length
+      ? Math.sqrt(sensorHits.reduce((sum, ray) => sum + (ray.sensorPoint.y - meanSensorY) ** 2, 0) / sensorHits.length)
+      : NaN;
+    const maxSpotRadius = sensorHits.length
+      ? Math.max(...sensorHits.map((ray) => Math.abs(ray.sensorPoint.y - meanSensorY)))
+      : NaN;
+    const chiefRay = sensorHits.reduce((closest, ray) => (
+      !closest || Math.abs(ray.inputRay.apertureY) < Math.abs(closest.inputRay.apertureY) ? ray : closest
+    ), null);
+    const marginalRay = sensorHits.reduce((widest, ray) => (
+      !widest || Math.abs(ray.inputRay.apertureY) > Math.abs(widest.inputRay.apertureY) ? ray : widest
+    ), null);
+
+    if (chiefRay) chiefRay.role = "chief";
+    if (marginalRay) marginalRay.role = marginalRay.role ? `${marginalRay.role} marginal` : "marginal";
+
+    return {
+      enabled: true,
+      fieldKey: options.fieldKey || "custom",
+      fieldName: options.fieldName || "Custom field",
+      fieldAngleDegrees: toNumber(options.fieldAngleDegrees) || 0,
+      spectralLineKey,
+      wavelengthNm,
+      spectralLine: SPECTRAL_LINES[spectralLineKey] || SPECTRAL_LINES.d,
+      surfaces,
+      rays,
+      validRayCount: sensorHits.length,
+      totalRayCount: rays.length,
+      missedRayCount,
+      rmsSpotRadius,
+      maxSpotRadius,
+      meanSensorY,
+      chiefRay,
+      marginalRay,
+      warning: sensorHits.length ? "" : "No rays reached the sensor plane."
+    };
+  } catch {
+    return {
+      enabled: true,
+      fieldKey: options.fieldKey || "custom",
+      fieldName: options.fieldName || "Custom field",
+      fieldAngleDegrees: toNumber(options.fieldAngleDegrees) || 0,
+      spectralLineKey: options.spectralLineKey || "d",
+      wavelengthNm: toNumber(options.wavelengthNm) || SPECTRAL_LINES.d.wavelengthNm,
+      spectralLine: SPECTRAL_LINES[options.spectralLineKey] || SPECTRAL_LINES.d,
+      surfaces: [],
+      rays: [],
+      validRayCount: 0,
+      totalRayCount: 0,
+      missedRayCount: 0,
+      rmsSpotRadius: NaN,
+      maxSpotRadius: NaN,
+      warning: "Ray tracing failed for the current lens values."
+    };
+  }
+};
+
+const buildCementedMechanicalGroups = (lenses = state.lenses) => {
+  const groups = [];
+  let current = null;
+  lenses.forEach((lens, index) => {
+    if (!current) current = { elements: [], sharedSurfaces: [] };
+    current.elements.push(index);
+    if (lens.patentRearCementedToNextGlass && index < lenses.length - 1) {
+      current.sharedSurfaces.push(lens.patentSurfaceEnd);
+    } else {
+      const clearApertureDiameter = Math.max(
+        ...current.elements.map((elementIndex) => toNumber(lenses[elementIndex].clearApertureDiameter) || 0)
+      );
+      const mechanicalDiameter = Math.max(
+        clearApertureDiameter,
+        ...current.elements.map((elementIndex) => toNumber(lenses[elementIndex].mechanicalDiameter) || 0)
+      );
+      groups.push({
+        ...current,
+        clearApertureDiameter,
+        mechanicalDiameter
+      });
+      current = null;
+    }
+  });
+  return groups;
+};
+
+const calculateEntrancePupil = (lenses, system, options = {}) => {
+  const configuration = resolveApertureStopConfiguration(options, options.prescription || state.prescription);
+  const surfaces = buildSurfaceList(lenses, system, {
+    ...configuration,
+    wavelengthNm: options.wavelengthNm || SPECTRAL_LINES.d.wavelengthNm,
+    spectralLineKey: options.spectralLineKey || "d"
+  });
+  const stop = surfaces.find((surface) => surface.isStop);
+  const physicalStopDiameter = configuration.apertureDiameter;
+  if (!stop || !(physicalStopDiameter > 0)) {
+    return {
+      physicalStopDiameter,
+      entrancePupilDiameter: NaN,
+      pupilMagnification: NaN,
+      pupilPlaneX: NaN,
+      warning: "A valid aperture stop is required for entrance-pupil calculation."
+    };
+  }
+
+  const frontSurfaces = surfaces
+    .filter((surface) => !surface.isStop && surface.x > stop.x + 0.000001)
+    .sort((left, right) => left.x - right.x)
+    .map((surface) => ({
+      ...surface,
+      nBefore: surface.nAfter,
+      nAfter: surface.nBefore,
+      isStop: false
+    }));
+  if (!frontSurfaces.length) {
+    return {
+      physicalStopDiameter,
+      entrancePupilDiameter: physicalStopDiameter,
+      pupilMagnification: 1,
+      pupilPlaneX: stop.x,
+      stopX: stop.x,
+      warning: ""
+    };
+  }
+
+  const edgeY = physicalStopDiameter / 2;
+  const traceBackwardParaxial = (initialSlope) => {
+    let x = stop.x;
+    let y = edgeY;
+    let slope = initialSlope;
+    for (const surface of frontSurfaces) {
+      const distance = surface.x - x;
+      if (distance < -0.000001) return null;
+      y += slope * distance;
+      const nBefore = toNumber(surface.nBefore);
+      const nAfter = toNumber(surface.nAfter);
+      if (!(nBefore > 0) || !(nAfter > 0)) return null;
+      if (Math.abs(surface.radius) > 0.000001) {
+        const reverseRadius = -surface.radius;
+        slope = (nBefore / nAfter) * slope
+          - y * (nAfter - nBefore) / (nAfter * reverseRadius);
+      } else {
+        slope = (nBefore / nAfter) * slope;
+      }
+      x = surface.x;
+    }
+    return { x, y, slope };
+  };
+  const rayA = traceBackwardParaxial(0);
+  const rayB = traceBackwardParaxial(0.015);
+  if (!rayA || !rayB) {
+    return {
+      physicalStopDiameter,
+      entrancePupilDiameter: NaN,
+      pupilMagnification: NaN,
+      pupilPlaneX: NaN,
+      stopX: stop.x,
+      warning: "Entrance-pupil rays were clipped or invalid."
+    };
+  }
+
+  const slopeA = rayA.slope;
+  const slopeB = rayB.slope;
+  const interceptA = rayA.y - slopeA * rayA.x;
+  const interceptB = rayB.y - slopeB * rayB.x;
+  const denominator = slopeA - slopeB;
+  const pupilPlaneX = Math.abs(denominator) > 1e-12
+    ? (interceptB - interceptA) / denominator
+    : Math.max(...frontSurfaces.map((surface) => surface.x));
+  const pupilRadius = Math.abs(interceptA + slopeA * pupilPlaneX);
+  const entrancePupilDiameter = pupilRadius * 2;
+
+  return {
+    physicalStopDiameter,
+    entrancePupilDiameter,
+    pupilMagnification: entrancePupilDiameter / physicalStopDiameter,
+    pupilPlaneX,
+    stopX: stop.x,
+    warning: Number.isFinite(entrancePupilDiameter) && entrancePupilDiameter > 0
+      ? ""
+      : "Entrance-pupil image could not be resolved."
+  };
+};
+
+const matchPatentPhysicalStopDiameter = (lenses, system, options = {}) => {
+  const targetFNumber = parseApertureNumber(options.apertureRatio || options.fNumber);
+  if (!(targetFNumber > 0) || !Number.isFinite(system.effectiveFocalLength)) return NaN;
+  const unitPupil = calculateEntrancePupil(lenses, system, {
+    ...options,
+    apertureDiameter: 1
+  });
+  if (!(unitPupil.pupilMagnification > 0)) return NaN;
+  const targetEntrancePupilDiameter = Math.abs(system.effectiveFocalLength) / targetFNumber;
+  return targetEntrancePupilDiameter / unitPupil.pupilMagnification;
+};
+
+const estimatePatentAperturesTwoPass = (lenses, system, options = {}) => {
+  if (!lenses.some((lens) => lens.patentSurfaceStart)) return { lenses, traces: [], warnings: [] };
+  const focalLength = Math.abs(toNumber(system.effectiveFocalLength)) || 50;
+  const physicalStopDiameter = Math.max(0.1, toNumber(options.apertureDiameter) || state.apertureDiameter);
+  const temporaryDiameter = Math.min(240, Math.max(80, focalLength * 1.6, physicalStopDiameter * 3));
+  const oversized = lenses.map((lens) => normalizeLens({
+    ...lens,
+    diameter: temporaryDiameter,
+    clearApertureDiameter: temporaryDiameter,
+    mechanicalDiameter: temporaryDiameter,
+    visualDiameter: temporaryDiameter
+  }));
+  const oversizedSystem = calculateSystem(oversized, SPECTRAL_LINES.d.wavelengthNm);
+  const fullFrameCornerField = Math.atan(FULL_FRAME_SENSOR.diagonal / (2 * focalLength)) * 180 / Math.PI;
+  const maximumField = Math.max(
+    5,
+    Math.min(30, toNumber(options.fieldAngleDeg) || Math.min(18, fullFrameCornerField))
+  );
+  const traceOptions = {
+    ...rayTraceApertureOptions(options),
+    apertureDiameter: physicalStopDiameter,
+    prescription: options.prescription || state.prescription,
+    rayCount: 21,
+    wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+    spectralLineKey: "d"
+  };
+  const traces = [0, maximumField / 2, maximumField].map((fieldAngleDegrees) => (
+    traceSystemRealRays(oversized, oversizedSystem, {
+      ...traceOptions,
+      fieldAngleDegrees
+    })
+  ));
+  const envelopeByPatentSurface = new Map();
+  traces.forEach((trace) => {
+    (trace.rays || []).forEach((ray) => {
+      if (ray.status !== "valid" || ray.path?.length !== (trace.surfaces || []).length + 1) return;
+      (trace.surfaces || []).forEach((surface, surfaceIndex) => {
+        if (!Number.isFinite(toNumber(surface.patentSurfaceNumber))) return;
+        const point = ray.path?.[surfaceIndex + 1];
+        if (!point || !Number.isFinite(point.y)) return;
+        const current = envelopeByPatentSurface.get(surface.patentSurfaceNumber) || 0;
+        envelopeByPatentSurface.set(surface.patentSurfaceNumber, Math.max(current, Math.abs(point.y)));
+      });
+    });
+  });
+
+  const warnings = [];
+  const estimated = lenses.map((lens) => {
+    const stated = [
+      toNumber(lens.patentFrontClearAperture),
+      toNumber(lens.patentRearClearAperture)
+    ].filter((value) => value > 0);
+    const surfaceHeights = [
+      envelopeByPatentSurface.get(lens.patentSurfaceStart),
+      envelopeByPatentSurface.get(lens.patentSurfaceEnd)
+    ].filter(Number.isFinite);
+    const maximumHeight = surfaceHeights.length ? Math.max(...surfaceHeights) : NaN;
+    const manualAperture = lens.apertureSource === "manual" && toNumber(lens.clearApertureDiameter) > 0;
+    const svgAperture = lens.apertureSource === "svgEstimated" && toNumber(lens.clearApertureDiameter) > 0;
+    const clearRadius = manualAperture
+      ? toNumber(lens.clearApertureDiameter) / 2
+      : svgAperture
+        ? toNumber(lens.clearApertureDiameter) / 2
+      : stated.length
+        ? Math.min(...stated) / 2
+        : Number.isFinite(maximumHeight)
+          // The separate chip zone supplies the manufacturing safety band outside the traced clear aperture.
+          ? maximumHeight + PATENT_CLEAR_APERTURE_NUMERICAL_MARGIN_MM
+          : Math.max(1, physicalStopDiameter / 2);
+    const chipZoneValue = toNumber(lens.chipZoneWidthMm);
+    const chipZoneWidthMm = Math.max(0, Number.isFinite(chipZoneValue) ? chipZoneValue : DEFAULT_CHIP_ZONE_WIDTH_MM);
+    const estimatedDiameter = clearRadius * 2 + chipZoneWidthMm * 2;
+    const bevelFaceWidth = automaticBevelFaceWidthMm(estimatedDiameter);
+    const bevelRadialRun = bevelFaceWidth * Math.sin(DEFAULT_BEVEL_ANGLE_DEG * Math.PI / 180);
+    const manualMechanical = lens.manufacturingGeometrySource === "manual" && toNumber(lens.mechanicalDiameter) > 0;
+    const svgMechanical = svgAperture && toNumber(lens.mechanicalDiameter) > 0;
+    const mechanicalRadius = manualMechanical
+      ? Math.max(clearRadius, toNumber(lens.mechanicalDiameter) / 2)
+      : svgMechanical
+        ? Math.max(clearRadius, toNumber(lens.mechanicalDiameter) / 2)
+      : clearRadius
+        + chipZoneWidthMm
+        + bevelRadialRun
+        + Math.max(PATENT_MECHANICAL_MARGIN_MIN_MM, clearRadius * PATENT_MECHANICAL_MARGIN_RATIO);
+    return normalizeLens({
+      ...lens,
+      diameter: clearRadius * 2,
+      clearApertureDiameter: clearRadius * 2,
+      mechanicalDiameter: mechanicalRadius * 2,
+      visualDiameter: mechanicalRadius * 2,
+      chipZoneWidthMm,
+      minimumEdgeThicknessMm: lens.minimumEdgeThicknessMm ?? DEFAULT_MINIMUM_EDGE_THICKNESS_MM,
+      minimumFlatLandMm: lens.minimumFlatLandMm ?? DEFAULT_MINIMUM_FLAT_LAND_MM,
+      manufacturingGeometrySource: svgMechanical ? "svgEstimated" : lens.manufacturingGeometrySource || "estimated",
+      apertureSource: manualAperture ? "manual" : svgAperture ? "svgEstimated" : stated.length ? "patent" : Number.isFinite(maximumHeight) ? "rayEnvelope" : "estimated",
+      diameterSource: svgAperture ? "svgEstimated" : lens.diameterSource,
+      diameterReference: svgAperture ? lens.diameterReference : lens.diameterReference,
+      diameterNote: svgAperture ? lens.diameterNote : lens.diameterNote
+    });
+  });
+
+  buildCementedMechanicalGroups(estimated).forEach((group) => {
+    const groupMechanicalDiameter = Math.max(
+      group.clearApertureDiameter,
+      ...group.elements.map((index) => estimated[index].mechanicalDiameter)
+    );
+    group.elements.forEach((index) => {
+      estimated[index].mechanicalDiameter = groupMechanicalDiameter;
+      estimated[index].visualDiameter = groupMechanicalDiameter;
+    });
+  });
+
+  if (traces.some((trace) => trace.missedRayCount > 0)) {
+    warnings.push("Oversized first-pass aperture trace clipped rays; aperture estimates may be conservative.");
+  }
+  return { lenses: estimated, traces, warnings, temporaryDiameter };
+};
+
+const apertureMiss3D = (hitPoint, surface) => Math.hypot(
+  hitPoint.y - (toNumber(surface.decenterY) || 0),
+  hitPoint.z - (toNumber(surface.decenterZ) || 0)
+) > surface.semiDiameter + 0.000001;
+
+const asphereIntersection3D = (ray, surface) => {
+  if (Math.abs(ray.dx) < 1e-9) return { status: "no surface intersection" };
+
+  const centerY = toNumber(surface.decenterY) || 0;
+  const centerZ = toNumber(surface.decenterZ) || 0;
+  const localAt = (t) => ({
+    y: ray.y + ray.dy * t - centerY,
+    z: ray.z + ray.dz * t - centerZ
+  });
+  const radialAt = (t) => {
+    const local = localAt(t);
+    return Math.hypot(local.y, local.z);
+  };
+  const f = (t) => {
+    const surfaceX = surfaceProfileXAtRadialHeight(surface, radialAt(t));
+    return Number.isFinite(surfaceX) ? ray.x + ray.dx * t - surfaceX : NaN;
+  };
+  const derivative = (t) => {
+    const local = localAt(t);
+    const radial = Math.hypot(local.y, local.z);
+    const sag = evaluateAsphereSag(surface.radius, surface.asphere, radial);
+    if (!sag.valid) return NaN;
+    const drdt = radial > 1e-12 ? (local.y * ray.dy + local.z * ray.dz) / radial : 0;
+    const surfaceDxDt = -sag.derivative * drdt;
+    return ray.dx - surfaceDxDt;
+  };
+  const planeT = (surface.x - ray.x) / ray.dx;
+  const sagWindow = Math.max(4, surface.semiDiameter * 0.35, Math.abs(toNumber(surface.radius) || 0) * 0.02);
+  const tWindow = sagWindow / Math.max(0.05, Math.abs(ray.dx));
+  let t = Number.isFinite(planeT) && planeT > 1e-7 ? planeT : 1e-6;
+
+  for (let iteration = 0; iteration < 18; iteration += 1) {
+    const value = f(t);
+    const slope = derivative(t);
+    if (!Number.isFinite(value) || !Number.isFinite(slope) || Math.abs(slope) < 1e-12) break;
+    if (Math.abs(value) < 1e-7 && t > 1e-7) {
+      const hitPoint = { x: ray.x + ray.dx * t, y: ray.y + ray.dy * t, z: ray.z + ray.dz * t };
+      if (apertureMiss3D(hitPoint, surface)) return { status: "missed aperture", hitPoint };
+      return { status: "valid", hitPoint, t };
+    }
+    const nextT = t - value / slope;
+    if (!Number.isFinite(nextT) || nextT <= 1e-7 || Math.abs(nextT - planeT) > tWindow * 4) break;
+    t = nextT;
+  }
+
+  const startT = Math.max(1e-7, planeT - tWindow * 2);
+  const endT = Math.max(startT + 1e-5, planeT + tWindow * 2);
+  const steps = 96;
+  let previousT = startT;
+  let previousF = f(previousT);
+  let bestT = Number.isFinite(previousF) ? previousT : NaN;
+  let bestAbs = Number.isFinite(previousF) ? Math.abs(previousF) : Infinity;
+  let sawInvalidAsphere = !Number.isFinite(previousF);
+
+  for (let index = 1; index <= steps; index += 1) {
+    const currentT = startT + (endT - startT) * (index / steps);
+    const currentF = f(currentT);
+    if (!Number.isFinite(currentF)) {
+      sawInvalidAsphere = true;
+      continue;
+    }
+    if (Math.abs(currentF) < bestAbs) {
+      bestAbs = Math.abs(currentF);
+      bestT = currentT;
+    }
+    if (Number.isFinite(previousF) && previousF * currentF <= 0) {
+      let lowT = previousT;
+      let highT = currentT;
+      let lowF = previousF;
+      for (let iteration = 0; iteration < 42; iteration += 1) {
+        const midT = (lowT + highT) / 2;
+        const midF = f(midT);
+        if (!Number.isFinite(midF)) break;
+        if (Math.abs(midF) < 1e-8) {
+          lowT = midT;
+          highT = midT;
+          break;
+        }
+        if (lowF * midF <= 0) {
+          highT = midT;
+        } else {
+          lowT = midT;
+          lowF = midF;
+        }
+      }
+      const solvedT = (lowT + highT) / 2;
+      const hitPoint = { x: ray.x + ray.dx * solvedT, y: ray.y + ray.dy * solvedT, z: ray.z + ray.dz * solvedT };
+      if (apertureMiss3D(hitPoint, surface)) return { status: "missed aperture", hitPoint };
+      return { status: "valid", hitPoint, t: solvedT };
+    }
+    previousT = currentT;
+    previousF = currentF;
+  }
+
+  if (Number.isFinite(bestT) && bestAbs < 1e-5) {
+    const hitPoint = { x: ray.x + ray.dx * bestT, y: ray.y + ray.dy * bestT, z: ray.z + ray.dz * bestT };
+    if (apertureMiss3D(hitPoint, surface)) return { status: "missed aperture", hitPoint };
+    return { status: "valid", hitPoint, t: bestT };
+  }
+
+  return { status: sawInvalidAsphere ? "invalid asphere" : "no surface intersection" };
+};
+
+const intersectRayWithSurface3D = (ray, surface) => {
+  if (
+    !ray
+    || !Number.isFinite(ray.x)
+    || !Number.isFinite(ray.y)
+    || !Number.isFinite(ray.z)
+    || !Number.isFinite(ray.dx)
+    || !Number.isFinite(ray.dy)
+    || !Number.isFinite(ray.dz)
+  ) {
+    return { status: "invalid" };
+  }
+
+  if (Math.abs(surface.radius) < 0.000001) {
+    if (Math.abs(ray.dx) < 0.000001) return { status: "invalid" };
+    const t = (surface.x - ray.x) / ray.dx;
+    if (!(t > 0.000001)) return { status: "invalid" };
+
+    const hitPoint = {
+      x: surface.x,
+      y: ray.y + ray.dy * t,
+      z: ray.z + ray.dz * t
+    };
+    if (apertureMiss3D(hitPoint, surface)) return { status: "missed aperture", hitPoint };
+    return { status: "valid", hitPoint, t };
+  }
+
+  if (isSurfaceAsphereActive(surface)) return asphereIntersection3D(ray, surface);
+
+  const centerX = surface.x - surface.radius;
+  const centerY = toNumber(surface.decenterY) || 0;
+  const centerZ = toNumber(surface.decenterZ) || 0;
+  const originX = ray.x - centerX;
+  const originY = ray.y - centerY;
+  const originZ = ray.z - centerZ;
+  const b = 2 * (originX * ray.dx + originY * ray.dy + originZ * ray.dz);
+  const c = originX ** 2 + originY ** 2 + originZ ** 2 - surface.radius ** 2;
+  const discriminant = b ** 2 - 4 * c;
+
+  if (discriminant < 0) return { status: "invalid" };
+
+  const sqrtDiscriminant = Math.sqrt(Math.max(0, discriminant));
+  const candidates = [(-b - sqrtDiscriminant) / 2, (-b + sqrtDiscriminant) / 2]
+    .filter((candidate) => candidate > 0.000001)
+    .sort((left, right) => left - right);
+
+  if (!candidates.length) return { status: "invalid" };
+
+  const t = candidates.reduce((best, candidate) => {
+    const hitY = ray.y + ray.dy * candidate;
+    const hitZ = ray.z + ray.dz * candidate;
+    const candidateX = ray.x + ray.dx * candidate;
+    const radialHeight = Math.hypot(
+      hitY - (toNumber(surface.decenterY) || 0),
+      hitZ - (toNumber(surface.decenterZ) || 0)
+    );
+    const expectedX = surfaceProfileXAtRadialHeight(surface, radialHeight);
+    const error = Number.isFinite(expectedX) ? Math.abs(candidateX - expectedX) : Infinity;
+    return !best || error < best.error ? { candidate, error } : best;
+  }, null)?.candidate;
+  if (!Number.isFinite(t)) return { status: "no surface intersection" };
+  const hitPoint = {
+    x: ray.x + ray.dx * t,
+    y: ray.y + ray.dy * t,
+    z: ray.z + ray.dz * t
+  };
+
+  if (apertureMiss3D(hitPoint, surface)) return { status: "missed aperture", hitPoint };
+  return { status: "valid", hitPoint, t };
+};
+
+const rotateSurfaceNormalApprox = (normal, surface) => {
+  const tiltY = (toNumber(surface.tiltY) || 0) * Math.PI / 180;
+  const tiltZ = (toNumber(surface.tiltZ) || 0) * Math.PI / 180;
+  let rotated = { ...normal };
+
+  if (Math.abs(tiltY) > 0.0000001) {
+    const cos = Math.cos(tiltY);
+    const sin = Math.sin(tiltY);
+    rotated = {
+      x: rotated.x * cos + rotated.z * sin,
+      y: rotated.y,
+      z: -rotated.x * sin + rotated.z * cos
+    };
+  }
+
+  if (Math.abs(tiltZ) > 0.0000001) {
+    const cos = Math.cos(tiltZ);
+    const sin = Math.sin(tiltZ);
+    rotated = {
+      x: rotated.x * cos - rotated.y * sin,
+      y: rotated.x * sin + rotated.y * cos,
+      z: rotated.z
+    };
+  }
+
+  return normalizeVector3(rotated.x, rotated.y, rotated.z) || normal;
+};
+
+const surfaceNormal3D = (ray, surface, hitPoint) => {
+  let normal;
+
+  if (Math.abs(surface.radius) < 0.000001) {
+    normal = { x: ray.dx < 0 ? -1 : 1, y: 0, z: 0 };
+  } else if (isSurfaceAsphereActive(surface)) {
+    const localY = hitPoint.y - (toNumber(surface.decenterY) || 0);
+    const localZ = hitPoint.z - (toNumber(surface.decenterZ) || 0);
+    const radial = Math.hypot(localY, localZ);
+    const sag = evaluateAsphereSag(surface.radius, surface.asphere, radial);
+    if (!sag.valid) return null;
+    const radialY = radial > 1e-12 ? localY / radial : 0;
+    const radialZ = radial > 1e-12 ? localZ / radial : 0;
+    normal = normalizeVector3(1, sag.derivative * radialY, sag.derivative * radialZ);
+    if (!normal) return null;
+  } else {
+    const centerX = surface.x - surface.radius;
+    const centerY = toNumber(surface.decenterY) || 0;
+    const centerZ = toNumber(surface.decenterZ) || 0;
+    normal = normalizeVector3(hitPoint.x - centerX, hitPoint.y - centerY, hitPoint.z - centerZ);
+    if (!normal) return null;
+  }
+
+  normal = rotateSurfaceNormalApprox(normal, surface);
+
+  if (dotVector3({ x: ray.dx, y: ray.dy, z: ray.dz }, normal) < 0) {
+    normal = { x: -normal.x, y: -normal.y, z: -normal.z };
+  }
+
+  return normal;
+};
+
+const refractRay3D = (ray, surface, hitPoint) => {
+  const normal = surfaceNormal3D(ray, surface, hitPoint);
+  if (!normal) return { status: "invalid" };
+
+  const incoming = { x: ray.dx, y: ray.dy, z: ray.dz };
+  const cosIncoming = dotVector3(incoming, normal);
+  const tangent = {
+    x: incoming.x - cosIncoming * normal.x,
+    y: incoming.y - cosIncoming * normal.y,
+    z: incoming.z - cosIncoming * normal.z
+  };
+  const eta = surface.nBefore / surface.nAfter;
+  const transmittedTangent = {
+    x: tangent.x * eta,
+    y: tangent.y * eta,
+    z: tangent.z * eta
+  };
+  const normalTermSquared = 1 - (
+    transmittedTangent.x ** 2
+    + transmittedTangent.y ** 2
+    + transmittedTangent.z ** 2
+  );
+
+  if (normalTermSquared < -0.0000001) return { status: "total internal reflection" };
+
+  const normalTerm = Math.sqrt(Math.max(0, normalTermSquared));
+  const direction = normalizeVector3(
+    transmittedTangent.x + normal.x * normalTerm,
+    transmittedTangent.y + normal.y * normalTerm,
+    transmittedTangent.z + normal.z * normalTerm
+  );
+
+  if (!direction) return { status: "invalid" };
+
+  return {
+    status: "valid",
+    ray: {
+      x: hitPoint.x,
+      y: hitPoint.y,
+      z: hitPoint.z,
+      dx: direction.x,
+      dy: direction.y,
+      dz: direction.z
+    }
+  };
+};
+
+const traceRay3D = (ray, surfaces) => {
+  const direction = normalizeVector3(ray?.dx, ray?.dy, ray?.dz);
+  if (!direction) {
+    return {
+      path: [],
+      finalRay: ray,
+      status: "invalid",
+      failedSurface: null
+    };
+  }
+
+  let currentRay = { ...ray, dx: direction.x, dy: direction.y, dz: direction.z };
+  const path = [{ x: currentRay.x, y: currentRay.y, z: currentRay.z }];
+
+  for (const surface of surfaces) {
+    const intersection = intersectRayWithSurface3D(currentRay, surface);
+    if (intersection.status !== "valid") {
+      return {
+        path,
+        finalRay: currentRay,
+        status: intersection.status,
+        failedSurface: surface,
+        hitPoint: intersection.hitPoint
+      };
+    }
+
+    path.push(intersection.hitPoint);
+    if (surface.isStop || Math.abs(surface.nBefore - surface.nAfter) < 0.000001) {
+      currentRay = {
+        x: intersection.hitPoint.x,
+        y: intersection.hitPoint.y,
+        z: intersection.hitPoint.z,
+        dx: currentRay.dx,
+        dy: currentRay.dy,
+        dz: currentRay.dz
+      };
+      continue;
+    }
+
+    const refracted = refractRay3D(currentRay, surface, intersection.hitPoint);
+    if (refracted.status !== "valid") {
+      return {
+        path,
+        finalRay: currentRay,
+        status: refracted.status,
+        failedSurface: surface,
+        hitPoint: intersection.hitPoint
+      };
+    }
+
+    currentRay = refracted.ray;
+  }
+
+  return { path, finalRay: currentRay, status: "valid" };
+};
+
+const fieldDirection3D = (fieldAngleDegrees = 0, orientation = "tangential") => {
+  const angle = degreesToRadians(toNumber(fieldAngleDegrees) || 0);
+  const axial = -Math.cos(angle);
+  const transverse = Math.sin(angle);
+
+  if (orientation === "sagittal") return normalizeVector3(axial, 0, transverse) || { x: -1, y: 0, z: 0 };
+  if (orientation === "diagonal") {
+    const component = transverse / Math.SQRT2;
+    return normalizeVector3(axial, component, component) || { x: -1, y: 0, z: 0 };
+  }
+  return normalizeVector3(axial, transverse, 0) || { x: -1, y: 0, z: 0 };
+};
+
+const pupilSamples3D = (sampling = "grid", sampleCount = 7, apertureRadius = 10, orientation = "tangential") => {
+  const count = Math.round(clamp(toNumber(sampleCount) || 7, 3, sampling === "grid" ? 15 : 31));
+  const radius = Math.max(0.1, toNumber(apertureRadius) || 10);
+
+  if (sampling === "line") {
+    return Array.from({ length: count }, (_, index) => {
+      const fraction = count === 1 ? 0.5 : index / (count - 1);
+      const value = -radius + fraction * radius * 2;
+      if (orientation === "sagittal") return { y: 0, z: value, pupilU: value / radius, pupilV: 0 };
+      if (orientation === "diagonal") {
+        const component = value / Math.SQRT2;
+        return { y: component, z: component, pupilU: value / radius, pupilV: 0 };
+      }
+      return { y: value, z: 0, pupilU: value / radius, pupilV: 0 };
+    });
+  }
+
+  if (sampling === "radial") {
+    const rings = Math.max(2, Math.round(Math.sqrt(count)));
+    const points = [{ y: 0, z: 0, pupilU: 0, pupilV: 0 }];
+    for (let ring = 1; ring <= rings; ring += 1) {
+      const ringRadius = radius * ring / rings;
+      const angularCount = Math.max(6, ring * 6);
+      for (let index = 0; index < angularCount; index += 1) {
+        const angle = 2 * Math.PI * index / angularCount;
+        points.push({
+          y: ringRadius * Math.cos(angle),
+          z: ringRadius * Math.sin(angle),
+          pupilU: (ringRadius / radius) * Math.cos(angle),
+          pupilV: (ringRadius / radius) * Math.sin(angle)
+        });
+      }
+    }
+    return points;
+  }
+
+  const samples = [];
+  for (let row = 0; row < count; row += 1) {
+    for (let column = 0; column < count; column += 1) {
+      const y = -radius + (2 * radius * column) / (count - 1);
+      const z = -radius + (2 * radius * row) / (count - 1);
+      if (Math.hypot(y, z) <= radius + 0.000001) {
+        samples.push({ y, z, pupilU: y / radius, pupilV: z / radius });
+      }
+    }
+  }
+  return samples;
+};
+
+const generateRayBundle3D = (options = {}) => {
+  const orientation = options.fieldOrientation || "tangential";
+  const sampling = options.sampling || "grid";
+  const direction = fieldDirection3D(options.fieldAngleDegrees, orientation);
+  const apertureRadius = Math.max(0.1, toNumber(options.apertureRadius ?? options.apertureHeight) || 10);
+  const referenceX = toNumber(options.referenceX) || 0;
+  const startX = toNumber(options.startX) || referenceX + 25;
+  const tToReference = Math.abs(direction.x) > 0.000001 ? (referenceX - startX) / direction.x : 0;
+
+  return pupilSamples3D(sampling, options.sampleCount, apertureRadius, orientation).map((sample) => ({
+    x: startX,
+    y: sample.y - direction.y * tToReference,
+    z: sample.z - direction.z * tToReference,
+    dx: direction.x,
+    dy: direction.y,
+    dz: direction.z,
+    apertureY: sample.y,
+    apertureZ: sample.z,
+    pupilU: sample.pupilU,
+    pupilV: sample.pupilV
+  }));
+};
+
+const imagePlaneIntersection3D = (ray, imagePlaneX = 0) => {
+  if (!ray || Math.abs(ray.dx) < 0.000001) return null;
+  const t = (imagePlaneX - ray.x) / ray.dx;
+  if (!(t >= 0)) return null;
+  return {
+    x: imagePlaneX,
+    y: ray.y + ray.dy * t,
+    z: ray.z + ray.dz * t
+  };
+};
+
+const rayTrace3DAxes = (orientation = "tangential") => {
+  if (orientation === "sagittal") {
+    return {
+      tangential: { y: 0, z: 1 },
+      sagittal: { y: 1, z: 0 }
+    };
+  }
+  if (orientation === "diagonal") {
+    return {
+      tangential: { y: 1 / Math.SQRT2, z: 1 / Math.SQRT2 },
+      sagittal: { y: -1 / Math.SQRT2, z: 1 / Math.SQRT2 }
+    };
+  }
+  return {
+    tangential: { y: 1, z: 0 },
+    sagittal: { y: 0, z: 1 }
+  };
+};
+
+const projectRayTrace3DCoordinate = (point, axis) => point.y * axis.y + point.z * axis.z;
+
+const spotStats3D = (points, orientation = "tangential") => {
+  if (!points.length) {
+    return {
+      meanY: NaN,
+      meanZ: NaN,
+      rmsSpotRadius: NaN,
+      rmsTangentialWidth: NaN,
+      rmsSagittalWidth: NaN,
+      maxSpotRadius: NaN
+    };
+  }
+
+  const meanY = points.reduce((sum, point) => sum + point.y, 0) / points.length;
+  const meanZ = points.reduce((sum, point) => sum + point.z, 0) / points.length;
+  const axes = rayTrace3DAxes(orientation);
+  const deviations = points.map((point) => ({
+    y: point.y - meanY,
+    z: point.z - meanZ
+  }));
+  const tangentialValues = deviations.map((point) => projectRayTrace3DCoordinate(point, axes.tangential));
+  const sagittalValues = deviations.map((point) => projectRayTrace3DCoordinate(point, axes.sagittal));
+  const rms = (values) => Math.sqrt(values.reduce((sum, value) => sum + value ** 2, 0) / values.length);
+
+  return {
+    meanY,
+    meanZ,
+    rmsSpotRadius: Math.sqrt(deviations.reduce((sum, point) => sum + point.y ** 2 + point.z ** 2, 0) / deviations.length),
+    rmsTangentialWidth: rms(tangentialValues),
+    rmsSagittalWidth: rms(sagittalValues),
+    maxSpotRadius: Math.max(...deviations.map((point) => Math.hypot(point.y, point.z)))
+  };
+};
+
+const prepareRayTraceBundle3D = (lenses, system, options = {}) => {
+  const spectralLineKey = options.spectralLineKey || "d";
+  const wavelengthNm = toNumber(options.wavelengthNm)
+    || SPECTRAL_LINES[spectralLineKey]?.wavelengthNm
+    || SPECTRAL_LINES.d.wavelengthNm;
+  const surfaces = buildSurfaceList(lenses, system, {
+    ...rayTraceApertureOptions(options),
+    wavelengthNm,
+    spectralLineKey
+  });
+  if (!surfaces.length) {
+    return { surfaces, rayBundle: [], apertureSurface: null, wavelengthNm, spectralLineKey };
+  }
+
+  const apertureSurface = surfaces.find((surface) => surface.isStop) || surfaces[0];
+  const rightMostSurfaceX = Math.max(...surfaces.map((surface) => surface.x));
+  const startX = rightMostSurfaceX + Math.max(20, system.totalTrack * 0.15);
+  const rayBundle = generateRayBundle3D({
+    fieldAngleDegrees: options.fieldAngleDegrees,
+    fieldOrientation: options.fieldOrientation,
+    sampleCount: options.sampleCount,
+    sampling: options.sampling,
+    apertureRadius: apertureSurface.semiDiameter * 0.98,
+    referenceX: apertureSurface.x,
+    startX
+  });
+
+  return { surfaces, rayBundle, apertureSurface, wavelengthNm, spectralLineKey };
+};
+
+const traceSystem3D = (lenses, system, options = {}) => {
+  try {
+    const fieldOrientation = options.fieldOrientation || "tangential";
+    const { surfaces, rayBundle, wavelengthNm, spectralLineKey } = prepareRayTraceBundle3D(lenses, system, options);
+    if (!surfaces.length) {
+      return {
+        enabled: true,
+        spectralLineKey,
+        wavelengthNm,
+        surfaces,
+        rays: [],
+        validRayCount: 0,
+        totalRayCount: 0,
+        clippedRayCount: 0,
+        rmsSpotRadius: NaN,
+        rmsTangentialWidth: NaN,
+        rmsSagittalWidth: NaN,
+        warning: "No valid optical surfaces to trace in 3D."
+      };
+    }
+
+    const rays = rayBundle.map((ray) => {
+      const traced = traceRay3D(ray, surfaces);
+      const imagePoint = traced.status === "valid" ? imagePlaneIntersection3D(traced.finalRay, options.imagePlaneX ?? 0) : null;
+      const status = traced.status === "valid" && !imagePoint ? "invalid" : traced.status;
+
+      return {
+        ...traced,
+        status,
+        inputRay: ray,
+        imagePoint
+      };
+    });
+    const imageHits = rays.filter((ray) => ray.status === "valid" && ray.imagePoint).map((ray) => ray.imagePoint);
+    const clippedRayCount = rays.filter((ray) => ray.status === "missed aperture").length;
+    const stats = spotStats3D(imageHits, fieldOrientation);
+
+    return {
+      enabled: true,
+      fieldAngleDegrees: toNumber(options.fieldAngleDegrees) || 0,
+      fieldOrientation,
+      sampling: options.sampling || "grid",
+      sampleCount: toNumber(options.sampleCount) || state.rayTrace3DSampleCount,
+      spectralLineKey,
+      wavelengthNm,
+      spectralLine: SPECTRAL_LINES[spectralLineKey] || SPECTRAL_LINES.d,
+      surfaces,
+      rays,
+      validRayCount: imageHits.length,
+      totalRayCount: rays.length,
+      clippedRayCount,
+      imageHits,
+      ...stats,
+      warning: imageHits.length ? "" : "No 3D rays reached the image plane."
+    };
+  } catch {
+    return {
+      enabled: true,
+      fieldAngleDegrees: toNumber(options.fieldAngleDegrees) || 0,
+      fieldOrientation: options.fieldOrientation || "tangential",
+      spectralLineKey: options.spectralLineKey || "d",
+      wavelengthNm: toNumber(options.wavelengthNm) || SPECTRAL_LINES.d.wavelengthNm,
+      spectralLine: SPECTRAL_LINES[options.spectralLineKey] || SPECTRAL_LINES.d,
+      surfaces: [],
+      rays: [],
+      imageHits: [],
+      validRayCount: 0,
+      totalRayCount: 0,
+      clippedRayCount: 0,
+      rmsSpotRadius: NaN,
+      rmsTangentialWidth: NaN,
+      rmsSagittalWidth: NaN,
+      warning: "3D ray tracing failed for the current lens values."
+    };
+  }
+};
+
+const traceSystem3DSpectral = (lenses, system, options = {}) => (
+  options.wavelengthMode === "rgb"
+    ? Object.entries(SPECTRAL_LINES).map(([lineKey, line]) => traceSystem3D(lenses, system, {
+      ...options,
+      wavelengthNm: line.wavelengthNm,
+      spectralLineKey: lineKey
+    }))
+    : [traceSystem3D(lenses, system, {
+      ...options,
+      wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+      spectralLineKey: "d"
+    })]
+);
+
+const distance3D = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
+
+const traceRay3DWithOpticalPath = (ray, surfaces, imagePlaneX = 0) => {
+  const direction = normalizeVector3(ray?.dx, ray?.dy, ray?.dz);
+  if (!direction) return { status: "invalid", opticalPathLength: NaN, path: [] };
+
+  let currentRay = { ...ray, dx: direction.x, dy: direction.y, dz: direction.z };
+  let currentN = surfaces[0]?.nBefore || 1;
+  let opticalPathLength = 0;
+  const path = [{ x: currentRay.x, y: currentRay.y, z: currentRay.z }];
+
+  for (const surface of surfaces) {
+    const intersection = intersectRayWithSurface3D(currentRay, surface);
+    if (intersection.status !== "valid") {
+      return {
+        status: intersection.status,
+        finalRay: currentRay,
+        opticalPathLength,
+        path,
+        failedSurface: surface,
+        hitPoint: intersection.hitPoint
+      };
+    }
+
+    opticalPathLength += distance3D(currentRay, intersection.hitPoint) * currentN;
+    path.push(intersection.hitPoint);
+
+    if (surface.isStop || Math.abs(surface.nBefore - surface.nAfter) < 0.000001) {
+      currentRay = {
+        x: intersection.hitPoint.x,
+        y: intersection.hitPoint.y,
+        z: intersection.hitPoint.z,
+        dx: currentRay.dx,
+        dy: currentRay.dy,
+        dz: currentRay.dz
+      };
+      continue;
+    }
+
+    const refracted = refractRay3D(currentRay, surface, intersection.hitPoint);
+    if (refracted.status !== "valid") {
+      return {
+        status: refracted.status,
+        finalRay: currentRay,
+        opticalPathLength,
+        path,
+        failedSurface: surface,
+        hitPoint: intersection.hitPoint
+      };
+    }
+
+    currentN = surface.nAfter;
+    currentRay = refracted.ray;
+  }
+
+  const imagePoint = imagePlaneIntersection3D(currentRay, imagePlaneX);
+  if (!imagePoint) {
+    return {
+      status: "invalid",
+      finalRay: currentRay,
+      opticalPathLength,
+      path,
+      imagePoint: null
+    };
+  }
+
+  opticalPathLength += distance3D(currentRay, imagePoint) * currentN;
+  path.push(imagePoint);
+
+  return {
+    status: "valid",
+    finalRay: currentRay,
+    opticalPathLength,
+    path,
+    imagePoint
+  };
+};
+
+const solveLinear3x3 = (matrix, vector) => {
+  const augmented = matrix.map((row, index) => [...row, vector[index]]);
+
+  for (let column = 0; column < 3; column += 1) {
+    let pivot = column;
+    for (let row = column + 1; row < 3; row += 1) {
+      if (Math.abs(augmented[row][column]) > Math.abs(augmented[pivot][column])) pivot = row;
+    }
+    if (Math.abs(augmented[pivot][column]) < 0.000000000001) return null;
+    if (pivot !== column) {
+      const temp = augmented[column];
+      augmented[column] = augmented[pivot];
+      augmented[pivot] = temp;
+    }
+    const pivotValue = augmented[column][column];
+    for (let item = column; item < 4; item += 1) augmented[column][item] /= pivotValue;
+    for (let row = 0; row < 3; row += 1) {
+      if (row === column) continue;
+      const factor = augmented[row][column];
+      for (let item = column; item < 4; item += 1) augmented[row][item] -= factor * augmented[column][item];
+    }
+  }
+
+  return [augmented[0][3], augmented[1][3], augmented[2][3]];
+};
+
+const removePistonTiltFromOPD = (samples) => {
+  const validSamples = samples.filter((sample) => (
+    Number.isFinite(sample.pupilU)
+    && Number.isFinite(sample.pupilV)
+    && Number.isFinite(sample.opdMm)
+  ));
+  if (validSamples.length < 3) return validSamples.map((sample) => ({ ...sample, residualOpdMm: NaN }));
+
+  const normalMatrix = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+  const normalVector = [0, 0, 0];
+  validSamples.forEach((sample) => {
+    const basis = [1, sample.pupilU, sample.pupilV];
+    for (let row = 0; row < 3; row += 1) {
+      normalVector[row] += basis[row] * sample.opdMm;
+      for (let column = 0; column < 3; column += 1) {
+        normalMatrix[row][column] += basis[row] * basis[column];
+      }
+    }
+  });
+  const coefficients = solveLinear3x3(normalMatrix, normalVector);
+  if (!coefficients) {
+    const mean = validSamples.reduce((sum, sample) => sum + sample.opdMm, 0) / validSamples.length;
+    return validSamples.map((sample) => ({ ...sample, residualOpdMm: sample.opdMm - mean }));
+  }
+
+  return validSamples.map((sample) => ({
+    ...sample,
+    residualOpdMm: sample.opdMm - (coefficients[0] + coefficients[1] * sample.pupilU + coefficients[2] * sample.pupilV)
+  }));
+};
+
+const calculateWavefrontOPD = (lenses, system, options = {}) => {
+  try {
+    const spectralLineKey = options.spectralLineKey || "d";
+    const wavelengthNm = toNumber(options.wavelengthNm)
+      || SPECTRAL_LINES[spectralLineKey]?.wavelengthNm
+      || SPECTRAL_LINES.d.wavelengthNm;
+    const wavelengthMm = wavelengthNm / 1000000;
+    const fieldAngleDegrees = toNumber(options.fieldAngleDegrees) || 0;
+    const imagePlaneX = Number.isFinite(toNumber(options.imagePlaneX)) ? toNumber(options.imagePlaneX) : 0;
+    const { surfaces, rayBundle } = prepareRayTraceBundle3D(lenses, system, {
+      fieldAngleDegrees,
+      fieldOrientation: "tangential",
+      sampleCount: options.sampleCount,
+      sampling: options.sampling || "grid",
+      apertureStopIndex: options.apertureStopIndex,
+      apertureDiameter: options.apertureDiameter,
+      wavelengthNm,
+      spectralLineKey
+    });
+    if (!surfaces.length || !rayBundle.length || !(wavelengthMm > 0)) {
+      return {
+        status: "invalid",
+        fieldKey: options.fieldKey,
+        fieldName: options.fieldName || "Field",
+        fieldAngleDegrees,
+        spectralLineKey,
+        wavelengthNm,
+        validRayCount: 0,
+        totalRayCount: rayBundle.length,
+        clippedRayCount: 0,
+        rmsOpdMm: NaN,
+        rmsOpdWaves: NaN,
+        peakToValleyOpdMm: NaN,
+        peakToValleyOpdWaves: NaN,
+        strehlEstimate: NaN,
+        warnings: ["Wavefront OPD estimate could not build a valid 3D ray bundle."]
+      };
+    }
+
+    const traced = rayBundle.map((ray) => {
+      const result = traceRay3DWithOpticalPath(ray, surfaces, imagePlaneX);
+      return {
+        ...result,
+        inputRay: ray
+      };
+    });
+    const valid = traced.filter((ray) => ray.status === "valid" && Number.isFinite(ray.opticalPathLength));
+    const clippedRayCount = traced.filter((ray) => ray.status === "missed aperture").length;
+    const chief = valid.reduce((closest, ray) => {
+      const pupilDistance = Math.hypot(ray.inputRay?.pupilU || 0, ray.inputRay?.pupilV || 0);
+      const closestDistance = closest ? Math.hypot(closest.inputRay?.pupilU || 0, closest.inputRay?.pupilV || 0) : Infinity;
+      return pupilDistance < closestDistance ? ray : closest;
+    }, null);
+    const referenceOpl = chief?.opticalPathLength ?? valid[0]?.opticalPathLength ?? NaN;
+    const rawSamples = valid.map((ray) => ({
+      pupilU: ray.inputRay?.pupilU ?? NaN,
+      pupilV: ray.inputRay?.pupilV ?? NaN,
+      opdMm: ray.opticalPathLength - referenceOpl,
+      imageY: ray.imagePoint?.y ?? NaN,
+      imageZ: ray.imagePoint?.z ?? NaN
+    }));
+    const samples = removePistonTiltFromOPD(rawSamples);
+    const residuals = samples.map((sample) => sample.residualOpdMm).filter(Number.isFinite);
+    const warnings = [];
+
+    if (residuals.length < 5) warnings.push("Fewer than 5 valid rays reached the image plane; OPD/Strehl estimate may be unstable.");
+    if (traced.length && clippedRayCount / traced.length > 0.5) warnings.push("More than 50% of wavefront rays are clipped.");
+    if (!(wavelengthMm > 0)) warnings.push("Wavelength is invalid for OPD waves and Strehl calculation.");
+
+    const rmsOpdMm = residuals.length
+      ? Math.sqrt(residuals.reduce((sum, value) => sum + value ** 2, 0) / residuals.length)
+      : NaN;
+    const peakToValleyOpdMm = residuals.length ? Math.max(...residuals) - Math.min(...residuals) : NaN;
+    const rmsOpdWaves = Number.isFinite(rmsOpdMm) && wavelengthMm > 0 ? rmsOpdMm / wavelengthMm : NaN;
+    const peakToValleyOpdWaves = Number.isFinite(peakToValleyOpdMm) && wavelengthMm > 0 ? peakToValleyOpdMm / wavelengthMm : NaN;
+    const strehlEstimate = Number.isFinite(rmsOpdWaves)
+      ? clamp(Math.exp(-((2 * Math.PI * rmsOpdWaves) ** 2)), 0, 1)
+      : NaN;
+
+    return {
+      status: residuals.length >= 5 ? "valid" : "too-few-rays",
+      fieldKey: options.fieldKey,
+      fieldName: options.fieldName || "Field",
+      fieldAngleDegrees,
+      spectralLineKey,
+      wavelengthNm,
+      imagePlaneX,
+      validRayCount: residuals.length,
+      totalRayCount: traced.length,
+      clippedRayCount,
+      rmsOpdMm,
+      rmsOpdWaves,
+      peakToValleyOpdMm,
+      peakToValleyOpdWaves,
+      strehlEstimate,
+      samples,
+      warnings
+    };
+  } catch {
+    return {
+      status: "invalid",
+      fieldKey: options.fieldKey,
+      fieldName: options.fieldName || "Field",
+      fieldAngleDegrees: toNumber(options.fieldAngleDegrees) || 0,
+      spectralLineKey: options.spectralLineKey || "d",
+      wavelengthNm: toNumber(options.wavelengthNm) || SPECTRAL_LINES.d.wavelengthNm,
+      validRayCount: 0,
+      totalRayCount: 0,
+      clippedRayCount: 0,
+      rmsOpdMm: NaN,
+      rmsOpdWaves: NaN,
+      peakToValleyOpdMm: NaN,
+      peakToValleyOpdWaves: NaN,
+      strehlEstimate: NaN,
+      samples: [],
+      warnings: ["Wavefront OPD estimate failed for the current lens values."]
+    };
+  }
+};
+
+const calculateWavefrontPanelData = (lenses, system) => {
+  const field = RAY_TRACE_FIELDS.find((item) => item.key === state.wavefrontFieldKey) || RAY_TRACE_FIELDS[0];
+  const wavelengthMode = ["C", "d", "F", "rgb"].includes(state.wavefrontWavelengthMode)
+    ? state.wavefrontWavelengthMode
+    : "d";
+  const lines = diffractionHybridLinesForMode(wavelengthMode);
+  const sampleCount = Math.round(clamp(toNumber(state.rayTrace3DSampleCount) || 7, 3, 15));
+  const results = lines.map(([lineKey, line]) => calculateWavefrontOPD(lenses, system, {
+    fieldKey: field.key,
+    fieldName: field.name,
+    fieldAngleDegrees: field.angle,
+    spectralLineKey: lineKey,
+    wavelengthNm: line.wavelengthNm,
+    sampleCount,
+    sampling: "grid",
+    apertureStopIndex: state.apertureStopIndex,
+    apertureDiameter: state.apertureDiameter,
+    imagePlaneX: 0
+  }));
+  const warnings = new Set();
+
+  results.forEach((result) => {
+    (result.warnings || []).forEach((warning) => warnings.add(warning));
+    if (result.status !== "valid") warnings.add(`OPD/Strehl estimate is unstable for ${result.fieldName} ${result.spectralLineKey}-line.`);
+  });
+  warnings.add("Strehl uses the Maréchal approximation from RMS OPD after piston/tilt removal.");
+  warnings.add("This is not a full wavefront PSF / OTF / MTF calculation.");
+
+  return {
+    field,
+    wavelengthMode,
+    sampleCount,
+    results,
+    warnings: [...warnings]
+  };
+};
+
+const clampWaveOpticsGridSize = (gridSize) => {
+  const size = Math.round(toNumber(gridSize) || 32);
+  if (size <= 16) return 16;
+  if (size <= 32) return 32;
+  return 48;
+};
+
+const nearestOpdSample = (samples, pupilU, pupilV) => samples.reduce((nearest, sample) => {
+  const distance = (sample.pupilU - pupilU) ** 2 + (sample.pupilV - pupilV) ** 2;
+  return !nearest || distance < nearest.distance ? { sample, distance } : nearest;
+}, null);
+
+const buildPupilComplexField = (opdResult, gridSize = 32) => {
+  const size = clampWaveOpticsGridSize(gridSize);
+  const wavelengthMm = toNumber(opdResult?.wavelengthNm) / 1000000;
+  const samples = (opdResult?.samples || []).filter((sample) => (
+    Number.isFinite(sample.pupilU)
+    && Number.isFinite(sample.pupilV)
+    && Number.isFinite(sample.residualOpdMm)
+  ));
+  const values = [];
+  let insideCount = 0;
+  let interpolatedCount = 0;
+
+  for (let row = 0; row < size; row += 1) {
+    const line = [];
+    const pupilV = size === 1 ? 0 : 1 - (2 * row) / (size - 1);
+    for (let column = 0; column < size; column += 1) {
+      const pupilU = size === 1 ? 0 : -1 + (2 * column) / (size - 1);
+      const insidePupil = Math.hypot(pupilU, pupilV) <= 1.000001;
+      if (!insidePupil || samples.length < 3 || !(wavelengthMm > 0)) {
+        line.push({ real: 0, imag: 0, amplitude: 0, phase: 0, pupilU, pupilV, insidePupil });
+        continue;
+      }
+      const nearest = nearestOpdSample(samples, pupilU, pupilV);
+      const residualOpdMm = nearest?.sample?.residualOpdMm ?? 0;
+      const phase = 2 * Math.PI * residualOpdMm / wavelengthMm;
+      insideCount += 1;
+      if (nearest && nearest.distance > 0.015) interpolatedCount += 1;
+      line.push({
+        real: Math.cos(phase),
+        imag: Math.sin(phase),
+        amplitude: 1,
+        phase,
+        pupilU,
+        pupilV,
+        insidePupil,
+        residualOpdMm,
+        nearestDistance: nearest?.distance ?? NaN
+      });
+    }
+    values.push(line);
+  }
+
+  return {
+    gridSize: size,
+    values,
+    insideCount,
+    sampleCount: samples.length,
+    interpolatedCount,
+    wavelengthNm: opdResult?.wavelengthNm,
+    status: samples.length >= 5 && wavelengthMm > 0 ? "valid" : "invalid"
+  };
+};
+
+const calculatePSFFromPupil = (pupilField) => {
+  const size = pupilField.gridSize;
+  const center = Math.floor(size / 2);
+  const intensity = Array.from({ length: size }, () => Array(size).fill(0));
+  let totalEnergy = 0;
+
+  for (let outY = 0; outY < size; outY += 1) {
+    const frequencyY = outY - center;
+    for (let outX = 0; outX < size; outX += 1) {
+      const frequencyX = outX - center;
+      let real = 0;
+      let imag = 0;
+      for (let row = 0; row < size; row += 1) {
+        const y = row - center;
+        for (let column = 0; column < size; column += 1) {
+          const sample = pupilField.values[row][column];
+          if (!sample.amplitude) continue;
+          const x = column - center;
+          const angle = -2 * Math.PI * ((frequencyX * x + frequencyY * y) / size);
+          const cos = Math.cos(angle);
+          const sin = Math.sin(angle);
+          real += sample.real * cos - sample.imag * sin;
+          imag += sample.real * sin + sample.imag * cos;
+        }
+      }
+      const value = real ** 2 + imag ** 2;
+      intensity[outY][outX] = value;
+      totalEnergy += value;
+    }
+  }
+
+  const normalized = totalEnergy > 0
+    ? intensity.map((row) => row.map((value) => value / totalEnergy))
+    : intensity;
+  const peakIntensity = Math.max(0, ...normalized.flat());
+
+  return {
+    gridSize: size,
+    values: normalized,
+    peakIntensity,
+    totalEnergy: totalEnergy > 0 ? 1 : 0,
+    status: totalEnergy > 0 ? "valid" : "invalid"
+  };
+};
+
+const calculateOTFFromPSF = (psf) => {
+  const size = psf.gridSize;
+  const center = Math.floor(size / 2);
+  const complex = Array.from({ length: size }, () => Array.from({ length: size }, () => ({ real: 0, imag: 0 })));
+  const mtfValues = Array.from({ length: size }, () => Array(size).fill(0));
+
+  for (let outY = 0; outY < size; outY += 1) {
+    const frequencyY = outY - center;
+    for (let outX = 0; outX < size; outX += 1) {
+      const frequencyX = outX - center;
+      let real = 0;
+      let imag = 0;
+      for (let row = 0; row < size; row += 1) {
+        const y = row - center;
+        for (let column = 0; column < size; column += 1) {
+          const x = column - center;
+          const angle = -2 * Math.PI * ((frequencyX * x + frequencyY * y) / size);
+          const value = psf.values[row][column];
+          real += value * Math.cos(angle);
+          imag += value * Math.sin(angle);
+        }
+      }
+      complex[outY][outX] = { real, imag };
+    }
+  }
+
+  const zeroMagnitude = Math.hypot(complex[center][center].real, complex[center][center].imag);
+  for (let row = 0; row < size; row += 1) {
+    for (let column = 0; column < size; column += 1) {
+      mtfValues[row][column] = zeroMagnitude > 0
+        ? clamp(Math.hypot(complex[row][column].real, complex[row][column].imag) / zeroMagnitude, 0, 1)
+        : NaN;
+    }
+  }
+
+  return {
+    gridSize: size,
+    complex,
+    mtfValues,
+    status: zeroMagnitude > 0 ? "valid" : "invalid"
+  };
+};
+
+const extractWavefrontMTFCuts = (otfResult, cutoffFrequency = NaN) => {
+  const size = otfResult.gridSize;
+  const center = Math.floor(size / 2);
+  const maximumPositiveOffset = Math.max(0, size - 1 - center);
+  const makePoint = (index, value) => {
+    const normalizedFrequency = index / Math.max(1, maximumPositiveOffset);
+    return {
+      normalizedFrequency,
+      lpMm: Number.isFinite(cutoffFrequency) ? normalizedFrequency * cutoffFrequency : NaN,
+      value: Number.isFinite(value) ? clamp(value, 0, 1) : NaN
+    };
+  };
+  const tangential = [];
+  const sagittal = [];
+
+  for (let offset = 0; offset <= maximumPositiveOffset; offset += 1) {
+    tangential.push(makePoint(offset, otfResult.mtfValues[center][center + offset]));
+    sagittal.push(makePoint(offset, otfResult.mtfValues[center + offset]?.[center]));
+  }
+
+  return { tangential, sagittal };
+};
+
+const mtfCutValueAtLpMm = (cut, frequency) => {
+  const finite = cut.filter((point) => Number.isFinite(point.lpMm) && Number.isFinite(point.value));
+  if (!finite.length) return NaN;
+  if (frequency <= finite[0].lpMm) return finite[0].value;
+  for (let index = 1; index < finite.length; index += 1) {
+    const low = finite[index - 1];
+    const high = finite[index];
+    if (frequency <= high.lpMm) {
+      const fraction = (frequency - low.lpMm) / Math.max(0.000001, high.lpMm - low.lpMm);
+      return low.value + (high.value - low.value) * fraction;
+    }
+  }
+  return finite[finite.length - 1].value;
+};
+
+const mtfCutValueAtNormalized = (cut, normalizedFrequency) => {
+  const finite = cut.filter((point) => Number.isFinite(point.normalizedFrequency) && Number.isFinite(point.value));
+  if (!finite.length) return NaN;
+  if (normalizedFrequency <= finite[0].normalizedFrequency) return finite[0].value;
+  for (let index = 1; index < finite.length; index += 1) {
+    const low = finite[index - 1];
+    const high = finite[index];
+    if (normalizedFrequency <= high.normalizedFrequency) {
+      const fraction = (normalizedFrequency - low.normalizedFrequency) / Math.max(0.000001, high.normalizedFrequency - low.normalizedFrequency);
+      return low.value + (high.value - low.value) * fraction;
+    }
+  }
+  return finite[finite.length - 1].value;
+};
+
+const calculateWavefrontPSFOTFMTFPrototype = (lenses, system) => {
+  const field = RAY_TRACE_FIELDS.find((item) => item.key === state.waveOpticsFieldKey) || RAY_TRACE_FIELDS[0];
+  const line = SPECTRAL_LINES[state.waveOpticsWavelengthKey] || SPECTRAL_LINES.d;
+  const lineKey = SPECTRAL_LINES[state.waveOpticsWavelengthKey] ? state.waveOpticsWavelengthKey : "d";
+  const gridSize = clampWaveOpticsGridSize(state.waveOpticsGridSize);
+  const fNumber = calculateFNumber(system, state.apertureDiameter);
+  const diffraction = calculateDiffractionLimitedMTF({
+    fNumber,
+    wavelengthNm: line.wavelengthNm,
+    maxFrequencyLpMm: 100,
+    frequencyStepLpMm: 5
+  });
+  const opd = calculateWavefrontOPD(lenses, system, {
+    fieldKey: field.key,
+    fieldName: field.name,
+    fieldAngleDegrees: field.angle,
+    spectralLineKey: lineKey,
+    wavelengthNm: line.wavelengthNm,
+    sampleCount: Math.min(gridSize, 15),
+    sampling: "grid",
+    apertureStopIndex: state.apertureStopIndex,
+    apertureDiameter: state.apertureDiameter,
+    imagePlaneX: 0
+  });
+  const pupilField = buildPupilComplexField(opd, gridSize);
+  const psf = pupilField.status === "valid" ? calculatePSFFromPupil(pupilField) : { gridSize, values: [], peakIntensity: NaN, status: "invalid" };
+  const otf = psf.status === "valid" ? calculateOTFFromPSF(psf) : { gridSize, mtfValues: [], status: "invalid" };
+  const cuts = otf.status === "valid" ? extractWavefrontMTFCuts(otf, diffraction.cutoffFrequency) : { tangential: [], sagittal: [] };
+  const warnings = new Set();
+
+  (opd.warnings || []).forEach((warning) => warnings.add(warning));
+  if (opd.status !== "valid") warnings.add("OPD result is invalid; PSF / OTF / MTF prototype cannot be trusted.");
+  if (pupilField.sampleCount < 8) warnings.add("Too few OPD samples for stable pupil interpolation.");
+  if (gridSize > 32) warnings.add("48 x 48 grid is heavier; keep edits modest for browser performance.");
+  if (pupilField.insideCount && pupilField.interpolatedCount / pupilField.insideCount > 0.45) warnings.add("Pupil interpolation is sparse; nearest-sample OPD fill may be rough.");
+  warnings.add("Frequency axis is approximate and based on ideal diffraction cutoff scaling.");
+  warnings.add("This is not a validated professional wave optics solver.");
+
+  return {
+    field,
+    lineKey,
+    line,
+    gridSize,
+    fNumber,
+    diffractionCutoffFrequency: diffraction.cutoffFrequency,
+    opd,
+    pupilField,
+    psf,
+    otf,
+    cuts,
+    warnings: [...warnings]
+  };
+};
+
+const normalizePolychromaticWeights = (weights = {}) => {
+  const raw = Object.keys(POLYCHROMATIC_WEIGHTS).reduce((acc, lineKey) => {
+    acc[lineKey] = Math.max(0, toNumber(weights[lineKey]) || 0);
+    return acc;
+  }, {});
+  const total = Object.values(raw).reduce((sum, value) => sum + value, 0);
+  if (!(total > 0)) {
+    return Object.fromEntries(Object.entries(POLYCHROMATIC_WEIGHTS).map(([lineKey, item]) => [lineKey, item.weight]));
+  }
+  return Object.fromEntries(Object.entries(raw).map(([lineKey, value]) => [lineKey, value / total]));
+};
+
+const getCurrentPolychromaticWeights = () => {
+  const preset = POLYCHROMATIC_WEIGHT_PRESETS[state.polyMtfWeightPreset] || POLYCHROMATIC_WEIGHT_PRESETS.balanced;
+  return normalizePolychromaticWeights(preset.weights || state.polyMtfWeights);
+};
+
+const calculateWavefrontOpticsForLine = (lenses, system, options = {}) => {
+  const lineKey = SPECTRAL_LINES[options.spectralLineKey] ? options.spectralLineKey : "d";
+  const line = SPECTRAL_LINES[lineKey];
+  const gridSize = clampWaveOpticsGridSize(options.gridSize);
+  const lineSystem = calculateSystem(lenses, line.wavelengthNm);
+  const fNumber = calculateFNumber(lineSystem, options.apertureDiameter);
+  const diffraction = calculateDiffractionLimitedMTF({
+    fNumber,
+    wavelengthNm: line.wavelengthNm,
+    maxFrequencyLpMm: 100,
+    frequencyStepLpMm: 5
+  });
+  const opd = calculateWavefrontOPD(lenses, lineSystem || system, {
+    fieldKey: options.fieldKey,
+    fieldName: options.fieldName,
+    fieldAngleDegrees: options.fieldAngleDegrees,
+    spectralLineKey: lineKey,
+    wavelengthNm: line.wavelengthNm,
+    sampleCount: Math.min(gridSize, 15),
+    sampling: "grid",
+    apertureStopIndex: options.apertureStopIndex,
+    apertureDiameter: options.apertureDiameter,
+    imagePlaneX: Number.isFinite(toNumber(options.imagePlaneX)) ? toNumber(options.imagePlaneX) : 0
+  });
+  const pupilField = buildPupilComplexField(opd, gridSize);
+  const psf = pupilField.status === "valid" ? calculatePSFFromPupil(pupilField) : { gridSize, values: [], peakIntensity: NaN, status: "invalid" };
+  const otf = psf.status === "valid" ? calculateOTFFromPSF(psf) : { gridSize, mtfValues: [], status: "invalid" };
+  const cuts = otf.status === "valid" ? extractWavefrontMTFCuts(otf, diffraction.cutoffFrequency) : { tangential: [], sagittal: [] };
+
+  return {
+    lineKey,
+    line,
+    system: lineSystem,
+    gridSize,
+    fNumber,
+    diffractionCutoffFrequency: diffraction.cutoffFrequency,
+    opd,
+    pupilField,
+    psf,
+    otf,
+    cuts,
+    status: otf.status === "valid" && opd.status === "valid" ? "valid" : "invalid"
+  };
+};
+
+const combinePolychromaticCuts = (monoResults, weights) => {
+  const normalizedWeights = normalizePolychromaticWeights(weights);
+  const center = Math.floor(Math.max(16, ...monoResults.map((result) => result.gridSize || 16)) / 2);
+  const makeCombinedCut = (axis) => Array.from({ length: center + 1 }, (_, index) => {
+    const normalizedFrequency = index / Math.max(1, center);
+    let weightedValue = 0;
+    let weightSum = 0;
+    monoResults.forEach((result) => {
+      const weight = normalizedWeights[result.lineKey] || 0;
+      const value = mtfCutValueAtNormalized(result.cuts?.[axis] || [], normalizedFrequency);
+      if (weight > 0 && Number.isFinite(value)) {
+        weightedValue += weight * value;
+        weightSum += weight;
+      }
+    });
+    return {
+      normalizedFrequency,
+      lpMm: NaN,
+      value: weightSum > 0 ? clamp(weightedValue / weightSum, 0, 1) : NaN
+    };
+  });
+
+  return {
+    tangential: makeCombinedCut("tangential"),
+    sagittal: makeCombinedCut("sagittal")
+  };
+};
+
+const polychromaticCutValueAtLpMm = (monoResults, axis, weights, frequency) => {
+  const normalizedWeights = normalizePolychromaticWeights(weights);
+  let weightedValue = 0;
+  let weightSum = 0;
+  monoResults.forEach((result) => {
+    const weight = normalizedWeights[result.lineKey] || 0;
+    const value = mtfCutValueAtLpMm(result.cuts?.[axis] || [], frequency);
+    if (weight > 0 && Number.isFinite(value)) {
+      weightedValue += weight * value;
+      weightSum += weight;
+    }
+  });
+  return weightSum > 0 ? clamp(weightedValue / weightSum, 0, 1) : NaN;
+};
+
+const estimatePolychromaticFocusShifts = (lenses, options = {}) => {
+  const focusResults = Object.entries(SPECTRAL_LINES).map(([lineKey, line]) => {
+    const lineSystem = calculateSystem(lenses, line.wavelengthNm);
+    const best = findBestFocusSagittalTangentialMTF(lenses, lineSystem, {
+      fieldKey: options.fieldKey,
+      fieldName: options.fieldName,
+      fieldAngleDegrees: options.fieldAngleDegrees,
+      spectralLineKey: lineKey,
+      wavelengthNm: line.wavelengthNm,
+      rayCount: Math.min(11, Math.max(5, toNumber(options.rayCount) || 7)),
+      apertureStopIndex: options.apertureStopIndex,
+      apertureDiameter: options.apertureDiameter,
+      rangeMm: 5,
+      sampleCount: 15
+    });
+    return {
+      lineKey,
+      line,
+      imagePlaneX: Number.isFinite(best.imagePlaneX) ? best.imagePlaneX : NaN,
+      rms: best.combinedRms,
+      status: best.status
+    };
+  });
+  const shifts = focusResults.map((item) => item.imagePlaneX).filter(Number.isFinite);
+  const chromaticSpreadMm = shifts.length >= 2 ? Math.max(...shifts) - Math.min(...shifts) : NaN;
+  return { focusResults, chromaticSpreadMm };
+};
+
+const calculatePolychromaticWavefrontMTF = (lenses, system, options = {}) => {
+  try {
+    const field = RAY_TRACE_FIELDS.find((item) => item.key === options.fieldKey) || RAY_TRACE_FIELDS[0];
+    const gridSize = clampWaveOpticsGridSize(options.gridSize);
+    const weights = normalizePolychromaticWeights(options.weights || POLYCHROMATIC_WEIGHTS);
+    const monoResults = Object.entries(SPECTRAL_LINES).map(([lineKey]) => calculateWavefrontOpticsForLine(lenses, system, {
+      fieldKey: field.key,
+      fieldName: field.name,
+      fieldAngleDegrees: field.angle,
+      spectralLineKey: lineKey,
+      gridSize,
+      apertureStopIndex: options.apertureStopIndex,
+      apertureDiameter: options.apertureDiameter,
+      imagePlaneX: 0
+    }));
+    const combinedCuts = combinePolychromaticCuts(monoResults, weights);
+    const focus = estimatePolychromaticFocusShifts(lenses, {
+      fieldKey: field.key,
+      fieldName: field.name,
+      fieldAngleDegrees: field.angle,
+      rayCount: options.rayCount,
+      apertureStopIndex: options.apertureStopIndex,
+      apertureDiameter: options.apertureDiameter
+    });
+    const warnings = new Set();
+
+    monoResults.forEach((result) => {
+      (result.opd?.warnings || []).forEach((warning) => warnings.add(`${result.lineKey}: ${warning}`));
+      if (result.status !== "valid") warnings.add(`${result.lineKey}-line wavefront MTF is unstable or invalid.`);
+      if (result.pupilField?.sampleCount < 8) warnings.add(`${result.lineKey}: too few OPD samples for stable pupil interpolation.`);
+    });
+    if (gridSize > 32) warnings.add("48 x 48 polychromatic grid runs three wavelengths and can be slow while editing.");
+    if (Number.isFinite(focus.chromaticSpreadMm) && focus.chromaticSpreadMm > 1) {
+      warnings.add("Large chromatic focus spread: C, d, and F lines are focusing at noticeably different image planes.");
+    }
+    warnings.add("Frequency axis is approximate and uses each wavelength's ideal diffraction cutoff scale for lp/mm readouts.");
+    warnings.add("This is an educational approximation, not a validated professional spectral MTF solver.");
+
+    return {
+      field,
+      gridSize,
+      weights,
+      monoResults,
+      combinedCuts,
+      focusResults: focus.focusResults,
+      chromaticSpreadMm: focus.chromaticSpreadMm,
+      status: monoResults.some((result) => result.status === "valid") ? "valid" : "invalid",
+      warnings: [...warnings]
+    };
+  } catch {
+    return {
+      field: RAY_TRACE_FIELDS[0],
+      gridSize: clampWaveOpticsGridSize(options.gridSize),
+      weights: normalizePolychromaticWeights(options.weights || POLYCHROMATIC_WEIGHTS),
+      monoResults: [],
+      combinedCuts: { tangential: [], sagittal: [] },
+      focusResults: [],
+      chromaticSpreadMm: NaN,
+      status: "invalid",
+      warnings: ["Polychromatic wavefront MTF failed for the current lens values."]
+    };
+  }
+};
+
+const aggregateTrace3DResults = (results) => {
+  const traces = (Array.isArray(results) ? results : [results]).filter(Boolean);
+  const allHits = traces.flatMap((trace) => trace.imageHits || []);
+  const stats = spotStats3D(allHits, traces[0]?.fieldOrientation || "tangential");
+  return {
+    traces,
+    imageHits: allHits,
+    validRayCount: traces.reduce((sum, trace) => sum + (trace.validRayCount || 0), 0),
+    totalRayCount: traces.reduce((sum, trace) => sum + (trace.totalRayCount || 0), 0),
+    clippedRayCount: traces.reduce((sum, trace) => sum + (trace.clippedRayCount || 0), 0),
+    ...stats,
+    warning: traces.find((trace) => trace.warning)?.warning || ""
+  };
+};
+
+const normalizeFanRayCount = (rayCount) => {
+  const count = Math.round(clamp(toNumber(rayCount) || 9, 3, 31));
+  return count % 2 === 0 ? Math.min(31, count + 1) : count;
+};
+
+const generateRayFanLineBundle3D = ({ apertureRadius, fieldAngleDegrees, rayCount, fanAxis, referenceX, startX }) => {
+  const radius = Math.max(0.1, toNumber(apertureRadius) || 10);
+  const count = normalizeFanRayCount(rayCount);
+  const direction = fieldDirection3D(fieldAngleDegrees, "tangential");
+  const tToReference = Math.abs(direction.x) > 0.000001 ? (referenceX - startX) / direction.x : 0;
+
+  return Array.from({ length: count }, (_, index) => {
+    const normalizedPupilCoordinate = count === 1 ? 0 : -1 + (2 * index) / (count - 1);
+    const pupilValue = normalizedPupilCoordinate * radius;
+    const apertureY = fanAxis === "tangential" ? pupilValue : 0;
+    const apertureZ = fanAxis === "sagittal" ? pupilValue : 0;
+
+    return {
+      x: startX,
+      y: apertureY - direction.y * tToReference,
+      z: apertureZ - direction.z * tToReference,
+      dx: direction.x,
+      dy: direction.y,
+      dz: direction.z,
+      apertureY,
+      apertureZ,
+      normalizedPupilCoordinate,
+      pupilU: apertureY / radius,
+      pupilV: apertureZ / radius
+    };
+  });
+};
+
+const calculateRayFan3DCore = (lenses, system, options = {}, fanAxis = "tangential") => {
+  try {
+    const spectralLineKey = options.spectralLineKey || "d";
+    const wavelengthNm = toNumber(options.wavelengthNm)
+      || SPECTRAL_LINES[spectralLineKey]?.wavelengthNm
+      || SPECTRAL_LINES.d.wavelengthNm;
+    const fieldAngleDegrees = toNumber(options.fieldAngleDegrees) || 0;
+    const imagePlaneX = Number.isFinite(toNumber(options.imagePlaneX)) ? toNumber(options.imagePlaneX) : 0;
+    const surfaces = buildSurfaceList(lenses, system, {
+      ...rayTraceApertureOptions(options),
+      wavelengthNm,
+      spectralLineKey
+    });
+
+    if (!surfaces.length) {
+      return {
+        samples: [],
+        validCount: 0,
+        clippedCount: 0,
+        failedCount: 0,
+        totalRayCount: 0,
+        fieldAngleDegrees,
+        wavelengthNm,
+        spectralLineKey,
+        warning: "No valid surfaces for 3D ray fan tracing."
+      };
+    }
+
+    const apertureSurface = surfaces.find((surface) => surface.isStop) || surfaces[0];
+    const rightMostSurfaceX = Math.max(...surfaces.map((surface) => surface.x));
+    const startX = rightMostSurfaceX + Math.max(20, system.totalTrack * 0.15);
+    const rayBundle = generateRayFanLineBundle3D({
+      apertureRadius: apertureSurface.semiDiameter * 0.98,
+      fieldAngleDegrees,
+      rayCount: options.rayCount,
+      fanAxis,
+      referenceX: apertureSurface.x,
+      startX
+    });
+    const tracedSamples = rayBundle.map((inputRay) => {
+      const traced = traceRay3D(inputRay, surfaces);
+      const imagePoint = traced.status === "valid" ? imagePlaneIntersection3D(traced.finalRay, imagePlaneX) : null;
+      const status = traced.status === "valid" && !imagePoint ? "no image intercept" : traced.status;
+
+      return {
+        normalizedPupilCoordinate: inputRay.normalizedPupilCoordinate,
+        imageY: imagePoint?.y ?? NaN,
+        imageZ: imagePoint?.z ?? NaN,
+        tangentialError: NaN,
+        sagittalError: NaN,
+        status,
+        wavelengthNm,
+        spectralLineKey,
+        fieldAngleDegrees
+      };
+    });
+    const validSamples = tracedSamples.filter((sample) => sample.status === "valid" && Number.isFinite(sample.imageY) && Number.isFinite(sample.imageZ));
+    const chief = validSamples.reduce((closest, sample) => (
+      !closest || Math.abs(sample.normalizedPupilCoordinate) < Math.abs(closest.normalizedPupilCoordinate) ? sample : closest
+    ), null);
+    const chiefRayImageY = chief?.imageY ?? NaN;
+    const chiefRayImageZ = chief?.imageZ ?? NaN;
+    const samples = tracedSamples.map((sample) => ({
+      ...sample,
+      chiefRayImageY,
+      chiefRayImageZ,
+      tangentialError: Number.isFinite(sample.imageY) && Number.isFinite(chiefRayImageY)
+        ? sample.imageY - chiefRayImageY
+        : NaN,
+      sagittalError: Number.isFinite(sample.imageZ) && Number.isFinite(chiefRayImageZ)
+        ? sample.imageZ - chiefRayImageZ
+        : NaN
+    }));
+    const errorKey = fanAxis === "sagittal" ? "sagittalError" : "tangentialError";
+    const errors = samples
+      .filter((sample) => sample.status === "valid" && Number.isFinite(sample[errorKey]))
+      .map((sample) => sample[errorKey]);
+    const clippedCount = samples.filter((sample) => sample.status === "missed aperture").length;
+    const failedCount = samples.length - validSamples.length;
+    const rmsError = errors.length
+      ? Math.sqrt(errors.reduce((sum, error) => sum + error ** 2, 0) / errors.length)
+      : NaN;
+    const peakError = errors.length ? Math.max(...errors.map(Math.abs)) : NaN;
+    const warnings = [];
+    if (validSamples.length < 3) warnings.push(`Too few valid rays for ${fanAxis} 3D fan.`);
+    if (samples.length && failedCount / samples.length > 0.5) warnings.push(`Most ${fanAxis} fan rays are clipped or failed.`);
+    if (validSamples.length && !errors.length) warnings.push(`Image plane intersection failed for ${fanAxis} fan.`);
+
+    return {
+      fanAxis,
+      samples,
+      validCount: validSamples.length,
+      clippedCount,
+      failedCount,
+      totalRayCount: samples.length,
+      rmsError,
+      peakError,
+      chiefRayImageY,
+      chiefRayImageZ,
+      fieldAngleDegrees,
+      wavelengthNm,
+      spectralLineKey,
+      warning: warnings.join(" ")
+    };
+  } catch {
+    return {
+      fanAxis,
+      samples: [],
+      validCount: 0,
+      clippedCount: 0,
+      failedCount: 0,
+      totalRayCount: 0,
+      rmsError: NaN,
+      peakError: NaN,
+      fieldAngleDegrees: toNumber(options.fieldAngleDegrees) || 0,
+      wavelengthNm: toNumber(options.wavelengthNm) || SPECTRAL_LINES.d.wavelengthNm,
+      spectralLineKey: options.spectralLineKey || "d",
+      warning: `${fanAxis} 3D ray fan failed for the current geometry.`
+    };
+  }
+};
+
+const calculateTangentialRayFan3D = (lenses, system, options = {}) => (
+  calculateRayFan3DCore(lenses, system, options, "tangential")
+);
+
+const calculateSagittalRayFan3D = (lenses, system, options = {}) => (
+  calculateRayFan3DCore(lenses, system, options, "sagittal")
+);
+
+const traceSystemFieldSet = (lenses, system, options = {}) => RAY_TRACE_FIELDS.map((field) => ({
+  ...traceSystemRealRays(lenses, system, {
+    fieldAngleDegrees: field.angle,
+    rayCount: options.rayCount,
+    apertureStopIndex: options.apertureStopIndex,
+    apertureDiameter: options.apertureDiameter,
+    wavelengthNm: options.wavelengthNm ?? SPECTRAL_LINES.d.wavelengthNm,
+    spectralLineKey: options.spectralLineKey ?? "d",
+    fieldKey: field.key,
+    fieldName: field.name
+  }),
+  fieldKey: field.key,
+  fieldName: field.name,
+  fieldAngleDegrees: field.angle
+}));
+
+const traceSpectralFieldSet = (lenses, geometrySystem, options = {}) => Object.entries(SPECTRAL_LINES)
+  .flatMap(([lineKey, line]) => traceSystemFieldSet(lenses, geometrySystem, {
+    ...options,
+    wavelengthNm: line.wavelengthNm,
+    spectralLineKey: lineKey
+  }));
+
+const visibleRayTraceResults = (dLineResults, spectralResults) => (
+  state.spotDisplayMode === "rgb" ? spectralResults : dLineResults
+);
+
+const SENSOR_FORMATS = [
+  { key: "fullFrame", name: "Full-frame", width: 36, height: 24, diagonal: FULL_FRAME_SENSOR.diagonal },
+  { key: "apsC", name: "APS-C", width: 23.5, height: 15.6, diagonal: 28.2 },
+  { key: "mft", name: "Micro Four Thirds", width: 17.3, height: 13, diagonal: 21.6 }
+];
+
+const fieldImageHeight = (system, angleDegrees, trace) => {
+  const meanHeight = Math.abs(toNumber(trace?.meanSensorY));
+  if (Number.isFinite(meanHeight)) return meanHeight;
+  const focalLength = Math.abs(toNumber(system.effectiveFocalLength));
+  if (!Number.isFinite(focalLength)) return NaN;
+  return focalLength * Math.tan(degreesToRadians(angleDegrees));
+};
+
+const sampleImageCircleCoverage = (lenses, system, options = {}) => {
+  const maxFieldAngleDegrees = clamp(toNumber(options.maxFieldAngleDegrees) || 30, 1, 70);
+  const fieldStepDegrees = clamp(toNumber(options.fieldStepDegrees) || 1, 0.5, 10);
+  const rayCountPerField = Math.round(clamp(toNumber(options.rayCountPerField) || state.rayTraceRayCount, 3, 31));
+  const wavelengthMode = options.wavelengthMode === "rgbWorst" ? "rgbWorst" : "d";
+  const sampleCount = Math.floor(maxFieldAngleDegrees / fieldStepDegrees) + 1;
+  const angles = Array.from({ length: sampleCount }, (_, index) => Number(Math.min(maxFieldAngleDegrees, index * fieldStepDegrees).toFixed(3)));
+  if (angles[angles.length - 1] !== maxFieldAngleDegrees) angles.push(maxFieldAngleDegrees);
+
+  const samples = angles.map((angle) => {
+    const traceOptions = {
+      fieldAngleDegrees: angle,
+      rayCount: rayCountPerField,
+      apertureStopIndex: options.apertureStopIndex,
+      apertureDiameter: options.apertureDiameter,
+      fieldKey: `field-${angle}`,
+      fieldName: `${formatNumber(angle, 2)} degree field`
+    };
+    const traces = wavelengthMode === "rgbWorst"
+      ? Object.entries(SPECTRAL_LINES).map(([lineKey, line]) => traceSystemRealRays(lenses, system, {
+        ...traceOptions,
+        wavelengthNm: line.wavelengthNm,
+        spectralLineKey: lineKey
+      }))
+      : [traceSystemRealRays(lenses, system, {
+        ...traceOptions,
+        wavelengthNm: options.wavelengthNm || SPECTRAL_LINES.d.wavelengthNm,
+        spectralLineKey: options.spectralLineKey || "d"
+      })];
+    const measured = traces.map((trace) => {
+      const totalRayCount = trace.totalRayCount || 0;
+      const throughput = totalRayCount ? trace.validRayCount / totalRayCount : 0;
+      return {
+        trace,
+        throughput,
+        rmsSpotRadius: trace.rmsSpotRadius,
+        imageHeight: fieldImageHeight(system, angle, trace)
+      };
+    });
+    const worst = measured.reduce((selected, item) => {
+      if (!selected) return item;
+      if (item.throughput < selected.throughput) return item;
+      if (item.throughput === selected.throughput && (item.rmsSpotRadius || 0) > (selected.rmsSpotRadius || 0)) return item;
+      return selected;
+    }, null);
+    const theoreticalImageHeight = fieldImageHeight(system, angle, null);
+
+    return {
+      fieldAngleDegrees: angle,
+      throughput: worst?.throughput || 0,
+      validRayCount: worst?.trace.validRayCount || 0,
+      totalRayCount: worst?.trace.totalRayCount || rayCountPerField,
+      rmsSpotRadius: worst?.rmsSpotRadius ?? NaN,
+      meanSensorHeight: Math.abs(toNumber(worst?.trace.meanSensorY)),
+      imageHeight: Number.isFinite(worst?.imageHeight) ? worst.imageHeight : theoreticalImageHeight,
+      theoreticalImageHeight,
+      spectralLineKey: worst?.trace.spectralLineKey || "d",
+      traces
+    };
+  });
+  const lastAtThreshold = (threshold) => [...samples].reverse().find((sample) => sample.throughput >= threshold);
+  const sample90 = lastAtThreshold(0.9);
+  const sample50 = lastAtThreshold(0.5);
+  const circleFromSample = (sample) => (sample && Number.isFinite(sample.imageHeight) ? sample.imageHeight * 2 : NaN);
+  const circle90 = circleFromSample(sample90);
+  const circle50 = circleFromSample(sample50);
+  const maxSample = samples[samples.length - 1] || null;
+  const fullFrameCornerFieldDegrees = Number.isFinite(system.effectiveFocalLength)
+    ? radiansToDegrees(Math.atan((FULL_FRAME_SENSOR.diagonal / 2) / Math.abs(system.effectiveFocalLength)))
+    : NaN;
+  const coverageFormats = SENSOR_FORMATS.map((format) => {
+    let status = "No";
+    let statusClass = "coverage-bad";
+    if (Number.isFinite(circle90) && circle90 >= format.diagonal) {
+      status = "Yes";
+      statusClass = "coverage-good";
+    } else if (Number.isFinite(circle50) && circle50 >= format.diagonal) {
+      status = "Partial";
+      statusClass = "coverage-warning";
+    }
+    return { ...format, status, statusClass };
+  });
+  const warnings = [];
+  const validFieldSamples = samples.filter((sample) => sample.validRayCount > 0).length;
+  if (rayCountPerField < 5) warnings.push("Too few rays are traced for a stable coverage estimate.");
+  if (validFieldSamples < 2) warnings.push("Image circle estimate is based on insufficient valid field samples.");
+  if (!Number.isFinite(circle50)) warnings.push("No 50% throughput field was found within the sampled range.");
+
+  return {
+    maxFieldAngleDegrees,
+    fieldStepDegrees,
+    rayCountPerField,
+    wavelengthMode,
+    samples,
+    sample90,
+    sample50,
+    circle90,
+    circle50,
+    fullTheoreticalImageHeight: maxSample?.theoreticalImageHeight ?? NaN,
+    fullTheoreticalImageCircle: Number.isFinite(maxSample?.theoreticalImageHeight) ? maxSample.theoreticalImageHeight * 2 : NaN,
+    fullFrameCornerFieldDegrees,
+    coverageFormats,
+    warnings
+  };
+};
+
+const selectedRayFanFieldAngle = () => {
+  if (state.rayFanFieldPreset === "mid") return 10;
+  if (state.rayFanFieldPreset === "corner") return 20;
+  if (state.rayFanFieldPreset === "custom") return clamp(toNumber(state.rayFanCustomFieldAngleDegrees) || 0, 0, 70);
+  return 0;
+};
+
+const selectedSTRayFanFieldAngle = () => {
+  if (state.stRayFanFieldPreset === "mid") return 10;
+  if (state.stRayFanFieldPreset === "corner") return 20;
+  if (state.stRayFanFieldPreset === "custom") return clamp(toNumber(state.stRayFanCustomFieldAngleDegrees) || 0, 0, 70);
+  return 0;
+};
+
+const rayFanSpectralLines = (mode) => (
+  mode === "rgb" ? Object.entries(SPECTRAL_LINES) : [["d", SPECTRAL_LINES.d]]
+);
+
+const bestFocusPlaneFor3DRayFan = (lenses, system, fieldAngleDegrees, rayCount) => {
+  if (state.stRayFanImagePlaneMode !== "best") return 0;
+  const trace = traceSystemRealRays(lenses, system, {
+    fieldAngleDegrees,
+    rayCount,
+    apertureStopIndex: state.apertureStopIndex,
+    apertureDiameter: state.apertureDiameter,
+    wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+    spectralLineKey: "d"
+  });
+  const best = findBestFocusMTF(trace, { rangeMm: 5, sampleCount: 21 });
+  return Number.isFinite(best.imagePlaneX) ? best.imagePlaneX : 0;
+};
+
+const calculateRayFan = (lenses, system, options = {}) => {
+  try {
+    const fieldAngleDegrees = toNumber(options.fieldAngleDegrees) || 0;
+    const imagePlaneX = Number.isFinite(toNumber(options.imagePlaneX)) ? toNumber(options.imagePlaneX) : 0;
+    const { surfaces, rayBundle, apertureSurface, wavelengthNm, spectralLineKey } = prepareRayTraceBundle(lenses, system, options);
+    if (!surfaces.length || !rayBundle.length || !apertureSurface) {
+      return { samples: [], validCount: 0, skippedCount: 0, warning: "Ray fan tracing failed for the current lens values." };
+    }
+    const pupilScale = Math.max(0.0001, apertureSurface.semiDiameter * 0.98);
+    const tracedSamples = rayBundle.map((inputRay) => {
+      const traced = traceRay(inputRay, surfaces);
+      const intercept = traced.status === "valid" ? imagePlaneIntersection(traced.finalRay, imagePlaneX) : null;
+      const status = traced.status === "valid" && !intercept ? "no image intercept" : traced.status;
+      return {
+        pupil: clamp(inputRay.apertureY / pupilScale, -1, 1),
+        rayImageY: intercept?.y ?? NaN,
+        transverseError: NaN,
+        status,
+        wavelengthNm,
+        spectralLineKey,
+        fieldAngleDegrees
+      };
+    });
+    const validSamples = tracedSamples.filter((sample) => sample.status === "valid" && Number.isFinite(sample.rayImageY));
+    const chief = validSamples.reduce((closest, sample) => (
+      !closest || Math.abs(sample.pupil) < Math.abs(closest.pupil) ? sample : closest
+    ), null);
+    const chiefRayImageY = chief?.rayImageY ?? NaN;
+    const samples = tracedSamples.map((sample) => ({
+      ...sample,
+      chiefRayImageY,
+      transverseError: Number.isFinite(sample.rayImageY) && Number.isFinite(chiefRayImageY)
+        ? sample.rayImageY - chiefRayImageY
+        : NaN
+    }));
+
+    return {
+      samples,
+      validCount: validSamples.length,
+      skippedCount: samples.length - validSamples.length,
+      chiefRayImageY,
+      fieldAngleDegrees,
+      wavelengthNm,
+      spectralLineKey,
+      warning: validSamples.length < 3 ? "Too few valid rays for a stable ray fan curve." : ""
+    };
+  } catch {
+    return { samples: [], validCount: 0, skippedCount: 0, warning: "Ray fan tracing failed for the current lens values." };
+  }
+};
+
+const calculateLongitudinalAberration = (lenses, system, options = {}) => {
+  try {
+    const imagePlaneX = Number.isFinite(toNumber(options.imagePlaneX)) ? toNumber(options.imagePlaneX) : 0;
+    const paraxialFocusX = Number.isFinite(toNumber(options.paraxialFocusX)) ? toNumber(options.paraxialFocusX) : imagePlaneX;
+    const { surfaces, rayBundle, apertureSurface, wavelengthNm, spectralLineKey } = prepareRayTraceBundle(lenses, system, {
+      ...options,
+      fieldAngleDegrees: 0
+    });
+    if (!surfaces.length || !rayBundle.length || !apertureSurface) {
+      return { samples: [], validCount: 0, skippedCount: 0, warning: "Longitudinal aberration tracing failed." };
+    }
+    const pupilScale = Math.max(0.0001, apertureSurface.semiDiameter * 0.98);
+    const samples = rayBundle.map((inputRay) => {
+      const traced = traceRay(inputRay, surfaces);
+      let axisPoint = null;
+      if (traced.status === "valid" && Math.abs(traced.finalRay.dy) > 0.000001) {
+        const t = -traced.finalRay.y / traced.finalRay.dy;
+        if (t >= 0) {
+          axisPoint = {
+            x: traced.finalRay.x + traced.finalRay.dx * t,
+            y: 0
+          };
+        }
+      }
+      const status = traced.status === "valid" && !axisPoint ? "no axis crossing" : traced.status;
+      return {
+        pupil: clamp(inputRay.apertureY / pupilScale, -1, 1),
+        focusX: axisPoint?.x ?? NaN,
+        focusShift: axisPoint ? axisPoint.x - paraxialFocusX : NaN,
+        status,
+        wavelengthNm,
+        spectralLineKey,
+        fieldAngleDegrees: 0
+      };
+    });
+    const validCount = samples.filter((sample) => sample.status === "valid" && Number.isFinite(sample.focusShift)).length;
+    return {
+      samples,
+      validCount,
+      skippedCount: samples.length - validCount,
+      wavelengthNm,
+      spectralLineKey,
+      warning: validCount < 3 ? "Too few valid axis crossings for a stable longitudinal curve." : ""
+    };
+  } catch {
+    return { samples: [], validCount: 0, skippedCount: 0, warning: "Longitudinal aberration tracing failed." };
+  }
+};
+
+const calculateDistortionCurve = (lenses, system, options = {}) => {
+  const maxFieldAngleDegrees = clamp(toNumber(options.maxFieldAngleDegrees) || state.rayCircleMaxFieldAngleDegrees || 20, 1, 70);
+  const fieldStepDegrees = clamp(toNumber(options.fieldStepDegrees) || state.rayCircleFieldStepDegrees || 2, 0.5, 10);
+  const sampleCount = Math.floor(maxFieldAngleDegrees / fieldStepDegrees) + 1;
+  const angles = Array.from({ length: sampleCount }, (_, index) => Number(Math.min(maxFieldAngleDegrees, index * fieldStepDegrees).toFixed(3)));
+  if (angles[angles.length - 1] !== maxFieldAngleDegrees) angles.push(maxFieldAngleDegrees);
+  const focalLength = Math.abs(toNumber(system.effectiveFocalLength));
+  const samples = angles.map((angle) => {
+    if (Math.abs(angle) < 0.000001) {
+      return { fieldAngleDegrees: angle, actualImageHeight: 0, idealImageHeight: 0, distortionPercent: 0, status: "valid" };
+    }
+    const fan = calculateRayFan(lenses, system, {
+      ...options,
+      fieldAngleDegrees: angle,
+      rayCount: Math.max(3, Math.min(toNumber(options.rayCount) || state.rayTraceRayCount, 9))
+    });
+    const valid = fan.samples.filter((sample) => sample.status === "valid" && Number.isFinite(sample.rayImageY));
+    const chief = valid.reduce((closest, sample) => (
+      !closest || Math.abs(sample.pupil) < Math.abs(closest.pupil) ? sample : closest
+    ), null);
+    const actualImageHeight = Math.abs(chief?.rayImageY ?? NaN);
+    const idealImageHeight = Number.isFinite(focalLength) ? focalLength * Math.tan(degreesToRadians(angle)) : NaN;
+    const distortionPercent = Number.isFinite(actualImageHeight) && Number.isFinite(idealImageHeight) && Math.abs(idealImageHeight) > 0.000001
+      ? 100 * (actualImageHeight - idealImageHeight) / idealImageHeight
+      : NaN;
+    return {
+      fieldAngleDegrees: angle,
+      actualImageHeight,
+      idealImageHeight,
+      distortionPercent,
+      status: Number.isFinite(distortionPercent) ? "valid" : "invalid"
+    };
+  });
+  const validCount = samples.filter((sample) => sample.status === "valid").length;
+  return {
+    samples,
+    validCount,
+    skippedCount: samples.length - validCount,
+    warning: validCount < 2 ? "Too few valid fields for a stable distortion curve." : ""
+  };
+};
+
+const estimateBestFocusByField = (lenses, system, options = {}) => {
+  const maxFieldAngleDegrees = clamp(toNumber(options.maxFieldAngleDegrees) || Math.min(state.rayCircleMaxFieldAngleDegrees || 20, 20), 1, 40);
+  const fieldStepDegrees = Math.max(clamp(toNumber(options.fieldStepDegrees) || state.rayCircleFieldStepDegrees || 2, 0.5, 10), maxFieldAngleDegrees / 8);
+  const sampleCount = Math.floor(maxFieldAngleDegrees / fieldStepDegrees) + 1;
+  const angles = Array.from({ length: sampleCount }, (_, index) => Number(Math.min(maxFieldAngleDegrees, index * fieldStepDegrees).toFixed(3)));
+  if (angles[angles.length - 1] !== maxFieldAngleDegrees) angles.push(maxFieldAngleDegrees);
+  const focalLength = Math.abs(toNumber(system.effectiveFocalLength));
+  const focusRange = Math.max(3, Math.min(20, Number.isFinite(focalLength) ? focalLength * 0.08 : 8));
+  const planeCount = 21;
+  const planes = Array.from({ length: planeCount }, (_, index) => -focusRange + (2 * focusRange * index) / (planeCount - 1));
+  const samples = angles.map((angle) => {
+    const { surfaces, rayBundle } = prepareRayTraceBundle(lenses, system, {
+      ...options,
+      fieldAngleDegrees: angle,
+      rayCount: options.rayCount
+    });
+    const finalRays = surfaces.length
+      ? rayBundle.map((ray) => traceRay(ray, surfaces)).filter((trace) => trace.status === "valid").map((trace) => trace.finalRay)
+      : [];
+    const planeResults = planes.map((planeX) => {
+      const hits = finalRays.map((ray) => imagePlaneIntersection(ray, planeX)).filter(Boolean);
+      if (hits.length < 3) return { planeX, rmsSpotRadius: NaN, hitCount: hits.length };
+      const meanY = hits.reduce((sum, hit) => sum + hit.y, 0) / hits.length;
+      return {
+        planeX,
+        rmsSpotRadius: Math.sqrt(hits.reduce((sum, hit) => sum + (hit.y - meanY) ** 2, 0) / hits.length),
+        hitCount: hits.length
+      };
+    }).filter((plane) => Number.isFinite(plane.rmsSpotRadius));
+    const best = planeResults.reduce((selected, plane) => (
+      !selected || plane.rmsSpotRadius < selected.rmsSpotRadius ? plane : selected
+    ), null);
+    return {
+      fieldAngleDegrees: angle,
+      bestFocusX: best?.planeX ?? NaN,
+      rmsSpotRadius: best?.rmsSpotRadius ?? NaN,
+      validRayCount: best?.hitCount ?? 0,
+      status: best ? "valid" : "invalid"
+    };
+  });
+  const validCount = samples.filter((sample) => sample.status === "valid").length;
+  return {
+    samples,
+    validCount,
+    skippedCount: samples.length - validCount,
+    focusRange,
+    warning: validCount < 2 ? "Too few valid fields for a stable field curvature estimate." : ""
+  };
+};
+
+const calculateRayFanAberrationData = (lenses, system, options = {}) => {
+  const fieldAngleDegrees = selectedRayFanFieldAngle();
+  const rayCount = Math.round(clamp(toNumber(options.rayCount) || state.rayTraceRayCount, 3, 31));
+  const commonOptions = {
+    rayCount,
+    apertureStopIndex: state.apertureStopIndex,
+    apertureDiameter: state.apertureDiameter,
+    imagePlaneX: 0
+  };
+  const lines = rayFanSpectralLines(state.rayFanWavelengthMode);
+  const transverseFans = state.showTransverseRayFan
+    ? lines.map(([lineKey, line]) => calculateRayFan(lenses, system, {
+      ...commonOptions,
+      fieldAngleDegrees,
+      wavelengthNm: line.wavelengthNm,
+      spectralLineKey: lineKey
+    }))
+    : [];
+  const longitudinalFans = state.showLongitudinalAberration
+    ? lines.map(([lineKey, line]) => calculateLongitudinalAberration(lenses, system, {
+      ...commonOptions,
+      wavelengthNm: line.wavelengthNm,
+      spectralLineKey: lineKey
+    }))
+    : [];
+  const distortion = state.showDistortionCurve
+    ? calculateDistortionCurve(lenses, system, {
+      ...commonOptions,
+      maxFieldAngleDegrees: state.rayCircleMaxFieldAngleDegrees,
+      fieldStepDegrees: state.rayCircleFieldStepDegrees,
+      wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+      spectralLineKey: "d"
+    })
+    : null;
+  const fieldCurvature = state.showFieldCurvature
+    ? estimateBestFocusByField(lenses, system, {
+      ...commonOptions,
+      maxFieldAngleDegrees: Math.min(state.rayCircleMaxFieldAngleDegrees, 30),
+      fieldStepDegrees: state.rayCircleFieldStepDegrees,
+      wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+      spectralLineKey: "d"
+    })
+    : null;
+  const warnings = [
+    ...transverseFans.map((fan) => fan.warning).filter(Boolean),
+    ...longitudinalFans.map((fan) => fan.warning).filter(Boolean),
+    distortion?.warning,
+    fieldCurvature?.warning
+  ].filter(Boolean);
+
+  return {
+    fieldAngleDegrees,
+    rayCount,
+    wavelengthMode: state.rayFanWavelengthMode,
+    transverseFans,
+    longitudinalFans,
+    distortion,
+    fieldCurvature,
+    warnings
+  };
+};
+
+const combineRayFan3DStats = (fans, errorKey) => {
+  const errors = fans.flatMap((fan) => fan.samples
+    .filter((sample) => sample.status === "valid" && Number.isFinite(sample[errorKey]))
+    .map((sample) => sample[errorKey]));
+  return {
+    rmsError: errors.length ? Math.sqrt(errors.reduce((sum, error) => sum + error ** 2, 0) / errors.length) : NaN,
+    peakError: errors.length ? Math.max(...errors.map(Math.abs)) : NaN
+  };
+};
+
+const aggregateFanDiagnostics = (fans, errorKey) => {
+  const errors = fans.flatMap((fan) => fan.samples
+    .filter((sample) => sample.status === "valid" && Number.isFinite(sample[errorKey]))
+    .map((sample) => sample[errorKey]));
+  const totalRayCount = fans.reduce((sum, fan) => sum + (fan.totalRayCount || 0), 0);
+  const validCount = fans.reduce((sum, fan) => sum + (fan.validCount || 0), 0);
+  const clippedCount = fans.reduce((sum, fan) => sum + (fan.clippedCount || 0), 0);
+  const failedCount = fans.reduce((sum, fan) => sum + (fan.failedCount || 0), 0);
+
+  return {
+    totalRayCount,
+    validCount,
+    clippedCount,
+    failedCount,
+    rmsError: errors.length ? Math.sqrt(errors.reduce((sum, error) => sum + error ** 2, 0) / errors.length) : NaN,
+    peakError: errors.length ? Math.max(...errors.map(Math.abs)) : NaN
+  };
+};
+
+const compareCenterFieldRayFans2D3D = (lenses, system, options = {}) => {
+  const rayCount = normalizeFanRayCount(options.rayCount || state.stRayFanRayCount);
+  const commonOptions = {
+    fieldAngleDegrees: 0,
+    rayCount,
+    apertureStopIndex: options.apertureStopIndex ?? state.apertureStopIndex,
+    apertureDiameter: options.apertureDiameter ?? state.apertureDiameter,
+    imagePlaneX: Number.isFinite(toNumber(options.imagePlaneX)) ? toNumber(options.imagePlaneX) : 0,
+    wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+    spectralLineKey: "d"
+  };
+  const fan2D = calculateRayFan(lenses, system, commonOptions);
+  const fan3D = calculateTangentialRayFan3D(lenses, system, commonOptions);
+  const differences = fan2D.samples.map((sample2D) => {
+    const sample3D = fan3D.samples.find((candidate) => (
+      Math.abs(candidate.normalizedPupilCoordinate - sample2D.pupil) < 0.000001
+    ));
+    return sample3D
+      && Number.isFinite(sample2D.transverseError)
+      && Number.isFinite(sample3D.tangentialError)
+      ? Math.abs(sample2D.transverseError - sample3D.tangentialError)
+      : NaN;
+  }).filter(Number.isFinite);
+  const maxDifference = differences.length ? Math.max(...differences) : NaN;
+  const tolerance = 0.0001;
+  const status = Number.isFinite(maxDifference)
+    ? (maxDifference <= tolerance ? "Pass" : "Warning")
+    : "Unavailable";
+
+  return {
+    fan2D,
+    fan3D,
+    comparedRayCount: differences.length,
+    maxDifference,
+    tolerance,
+    status
+  };
+};
+
+const fanErrorsAreAllZero = (fans, errorKey) => {
+  const errors = fans.flatMap((fan) => fan.samples
+    .filter((sample) => sample.status === "valid" && Number.isFinite(sample[errorKey]))
+    .map((sample) => Math.abs(sample[errorKey])));
+  return errors.length >= 3 && Math.max(...errors) < 0.00000001;
+};
+
+const maxFanLineDifference = (fans, errorKey) => {
+  if (fans.length < 2) return NaN;
+  const reference = fans[0].samples;
+  const differences = fans.slice(1).flatMap((fan) => fan.samples.map((sample, index) => {
+    const base = reference[index];
+    return base
+      && Number.isFinite(base[errorKey])
+      && Number.isFinite(sample[errorKey])
+      ? Math.abs(base[errorKey] - sample[errorKey])
+      : NaN;
+  })).filter(Number.isFinite);
+  return differences.length ? Math.max(...differences) : NaN;
+};
+
+const hasHighDispersionGlass = (lenses) => lenses.some((lens) => getLensGlass(lens).vd < 40);
+
+const compareApertureFanSensitivity = (lenses, system, options = {}) => {
+  const apertureDiameter = toNumber(options.apertureDiameter) || state.apertureDiameter;
+  if (!Number.isFinite(apertureDiameter) || apertureDiameter <= 1) return { changed: true, difference: NaN };
+  const narrowAperture = Math.max(0.5, apertureDiameter * 0.65);
+  const commonOptions = {
+    fieldAngleDegrees: options.fieldAngleDegrees,
+    rayCount: options.rayCount,
+    apertureStopIndex: options.apertureStopIndex,
+    imagePlaneX: options.imagePlaneX,
+    wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+    spectralLineKey: "d"
+  };
+  const current = calculateTangentialRayFan3D(lenses, system, {
+    ...commonOptions,
+    apertureDiameter
+  });
+  const narrow = calculateTangentialRayFan3D(lenses, system, {
+    ...commonOptions,
+    apertureDiameter: narrowAperture
+  });
+  const difference = Number.isFinite(current.rmsError) && Number.isFinite(narrow.rmsError)
+    ? Math.abs(current.rmsError - narrow.rmsError)
+    : NaN;
+  return {
+    changed: !Number.isFinite(difference) || difference > 0.000001,
+    difference,
+    current,
+    narrow
+  };
+};
+
+const csvEscape = (value) => {
+  const text = value === null || value === undefined || Number.isNaN(value) ? "" : String(value);
+  return /[",\n]/.test(text) ? `"${text.replace(/"/g, "\"\"")}"` : text;
+};
+
+const exportSagittalTangentialRayFanCsv = (result) => {
+  const header = [
+    "fanType",
+    "spectralLine",
+    "fieldAngleDegrees",
+    "normalizedPupilCoordinate",
+    "imageY",
+    "imageZ",
+    "tangentialError",
+    "sagittalError",
+    "status"
+  ];
+  const rows = [
+    ...result.tangentialFans.flatMap((fan) => fan.samples.map((sample) => [
+      "tangential",
+      fan.spectralLineKey,
+      sample.fieldAngleDegrees,
+      sample.normalizedPupilCoordinate,
+      sample.imageY,
+      sample.imageZ,
+      sample.tangentialError,
+      "",
+      sample.status
+    ])),
+    ...result.sagittalFans.flatMap((fan) => fan.samples.map((sample) => [
+      "sagittal",
+      fan.spectralLineKey,
+      sample.fieldAngleDegrees,
+      sample.normalizedPupilCoordinate,
+      sample.imageY,
+      sample.imageZ,
+      "",
+      sample.sagittalError,
+      sample.status
+    ]))
+  ];
+
+  return [header, ...rows].map((row) => row.map(csvEscape).join(",")).join("\n");
+};
+
+const fallbackCopyText = (text) => new Promise((resolve, reject) => {
+  try {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.left = "-9999px";
+    textarea.style.top = "0";
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    const copied = typeof document.execCommand === "function" && document.execCommand("copy");
+    document.body.removeChild(textarea);
+    copied ? resolve() : reject(new Error("Copy command unavailable"));
+  } catch (error) {
+    reject(error);
+  }
+});
+
+const copyTextToClipboard = (text) => {
+  if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+    return navigator.clipboard.writeText(text).catch(() => fallbackCopyText(text));
+  }
+
+  return fallbackCopyText(text);
+};
+
+const createSeededRandom = (seed = 1) => {
+  let stateValue = Math.trunc(toNumber(seed) || 1) >>> 0;
+  if (!stateValue) stateValue = 1;
+  return () => {
+    stateValue = (1664525 * stateValue + 1013904223) >>> 0;
+    return stateValue / 4294967296;
+  };
+};
+
+const randomUniform = (random) => (typeof random === "function" ? random() : Math.random());
+
+const randomNormal = (random) => {
+  const u1 = Math.max(0.0000001, randomUniform(random));
+  const u2 = randomUniform(random);
+  return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+};
+
+const sanitizeToleranceSettings = (settings = {}) => ({
+  ...DEFAULT_TOLERANCE_SETTINGS,
+  ...settings,
+  radiusToleranceMm: Math.max(0, toNumber(settings.radiusToleranceMm) || 0),
+  thicknessToleranceMm: Math.max(0, toNumber(settings.thicknessToleranceMm) || 0),
+  airGapToleranceMm: Math.max(0, toNumber(settings.airGapToleranceMm) || 0),
+  diameterToleranceMm: Math.max(0, toNumber(settings.diameterToleranceMm) || 0),
+  refractiveIndexTolerance: Math.max(0, toNumber(settings.refractiveIndexTolerance) || 0),
+  abbeTolerance: Math.max(0, toNumber(settings.abbeTolerance) || 0),
+  decenterToleranceMm: Math.max(0, toNumber(settings.decenterToleranceMm) || 0),
+  tiltToleranceDegrees: Math.max(0, toNumber(settings.tiltToleranceDegrees) || 0),
+  monteCarloRuns: Math.round(clamp(toNumber(settings.monteCarloRuns) || 25, 1, 100)),
+  seed: Math.trunc(toNumber(settings.seed) || DEFAULT_TOLERANCE_SETTINGS.seed),
+  maxRmsSpotRadius: Math.max(0, toNumber(settings.maxRmsSpotRadius) || 0),
+  minMtf40: clamp(toNumber(settings.minMtf40) || 0, 0, 1),
+  maxRmsOpdWaves: Math.max(0, toNumber(settings.maxRmsOpdWaves) || 0),
+  minStrehl: clamp(toNumber(settings.minStrehl) || 0, 0, 1),
+  histogramMetric: ["rmsSpotRadius", "mtf40", "rmsOpdWaves", "strehl"].includes(settings.histogramMetric)
+    ? settings.histogramMetric
+    : "rmsSpotRadius",
+  wavelengthMode: settings.wavelengthMode === "rgbWorst" ? "rgbWorst" : "d"
+});
+
+const lensToleranceValue = (lens, settings, field) => {
+  const value = toNumber(lens[field]);
+  return Number.isFinite(value) && value >= 0 ? value : settings[field];
+};
+
+const changedValue = (changes, lensIndex, field, original, perturbed) => {
+  const difference = Number.isFinite(original) && Number.isFinite(perturbed) ? perturbed - original : NaN;
+  if (Number.isFinite(difference) && Math.abs(difference) < 0.0000001) return;
+  changes.push({ lensIndex, field, original, perturbed, difference });
+};
+
+const applyToleranceToLens = (lens, toleranceSettings, random, lensIndex = 0) => {
+  const settings = sanitizeToleranceSettings(toleranceSettings);
+  const original = normalizeLens(lens);
+  const perturbed = { ...original, id: original.id || crypto.randomUUID() };
+  const changes = [];
+
+  if (original.toleranceEnabled === false) return { lens: perturbed, changes };
+
+  const perturbNumber = (field, toleranceField, minimum = -Infinity) => {
+    const baseValue = toNumber(original[field]);
+    const tolerance = lensToleranceValue(original, settings, toleranceField);
+    if (!Number.isFinite(baseValue) || !(tolerance > 0)) return;
+    const nextValue = Math.max(minimum, baseValue + randomNormal(random) * tolerance);
+    perturbed[field] = Number(nextValue.toFixed(field === "customVd" ? 3 : 4));
+    changedValue(changes, lensIndex, field, baseValue, perturbed[field]);
+  };
+
+  perturbNumber("r1", "radiusToleranceMm");
+  perturbNumber("r2", "radiusToleranceMm");
+  perturbNumber("thickness", "thicknessToleranceMm", 0.01);
+  perturbNumber("gapAfter", "airGapToleranceMm", 0);
+  perturbNumber("diameter", "diameterToleranceMm", 0.01);
+
+  const ndTolerance = lensToleranceValue(original, settings, "refractiveIndexTolerance");
+  if (ndTolerance > 0) {
+    const baseNd = getLensGlass(original).nd;
+    const nextNd = Math.max(1.0001, baseNd + randomNormal(random) * ndTolerance);
+    perturbed.glassKey = "custom";
+    perturbed.customNd = Number(nextNd.toFixed(6));
+    perturbed.refractiveIndex = perturbed.customNd;
+    changedValue(changes, lensIndex, "customNd", baseNd, perturbed.customNd);
+  }
+
+  const vdTolerance = settings.abbeTolerance;
+  if (vdTolerance > 0) {
+    const baseVd = getLensGlass(original).vd;
+    const nextVd = Math.max(1.0001, baseVd + randomNormal(random) * vdTolerance);
+    perturbed.glassKey = "custom";
+    perturbed.customVd = Number(nextVd.toFixed(4));
+    changedValue(changes, lensIndex, "customVd", baseVd, perturbed.customVd);
+  }
+
+  const decenterTolerance = lensToleranceValue(original, settings, "decenterToleranceMm");
+  const tiltTolerance = lensToleranceValue(original, settings, "tiltToleranceDegrees");
+  const decenterY = (toNumber(original.decenterY) || 0) + randomNormal(random) * decenterTolerance;
+  const decenterZ = (toNumber(original.decenterZ) || 0) + randomNormal(random) * decenterTolerance;
+  const tiltY = (toNumber(original.tiltY) || 0) + randomNormal(random) * tiltTolerance;
+  const tiltZ = (toNumber(original.tiltZ) || 0) + randomNormal(random) * tiltTolerance;
+
+  if (decenterTolerance > 0) {
+    perturbed.decenterY = Number(decenterY.toFixed(5));
+    perturbed.decenterZ = Number(decenterZ.toFixed(5));
+    changedValue(changes, lensIndex, "decenterY", toNumber(original.decenterY) || 0, perturbed.decenterY);
+    changedValue(changes, lensIndex, "decenterZ", toNumber(original.decenterZ) || 0, perturbed.decenterZ);
+  }
+
+  if (tiltTolerance > 0) {
+    perturbed.tiltY = Number(tiltY.toFixed(5));
+    perturbed.tiltZ = Number(tiltZ.toFixed(5));
+    changedValue(changes, lensIndex, "tiltY", toNumber(original.tiltY) || 0, perturbed.tiltY);
+    changedValue(changes, lensIndex, "tiltZ", toNumber(original.tiltZ) || 0, perturbed.tiltZ);
+  }
+
+  return { lens: normalizeLens(perturbed), changes };
+};
+
+const generateTolerancedDesign = (lenses, toleranceSettings, seed = 1) => {
+  const settings = sanitizeToleranceSettings(toleranceSettings);
+  const random = createSeededRandom(seed);
+  const changes = [];
+  const tolerancedLenses = lenses.map((lens, lensIndex) => {
+    const result = applyToleranceToLens(lens, settings, random, lensIndex);
+    changes.push(...result.changes);
+    return result.lens;
+  });
+
+  return {
+    seed,
+    settings,
+    lenses: tolerancedLenses,
+    changes
+  };
+};
+
+const metricStats = (values) => {
+  const finite = values.filter(Number.isFinite).sort((left, right) => left - right);
+  if (!finite.length) return { mean: NaN, median: NaN, min: NaN, max: NaN, standardDeviation: NaN };
+  const mean = finite.reduce((sum, value) => sum + value, 0) / finite.length;
+  const median = finite.length % 2
+    ? finite[Math.floor(finite.length / 2)]
+    : (finite[finite.length / 2 - 1] + finite[finite.length / 2]) / 2;
+  const variance = finite.reduce((sum, value) => sum + (value - mean) ** 2, 0) / finite.length;
+  return {
+    mean,
+    median,
+    min: finite[0],
+    max: finite[finite.length - 1],
+    standardDeviation: Math.sqrt(variance)
+  };
+};
+
+const evaluateToleranceRun = (lenses, options = {}) => {
+  const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+  const rayOptions = {
+    rayCount: Math.min(9, Math.max(5, toNumber(state.rayTraceRayCount) || 7)),
+    apertureStopIndex: state.apertureStopIndex,
+    apertureDiameter: state.apertureDiameter,
+    wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+    spectralLineKey: "d"
+  };
+  const traces = traceSystemFieldSet(lenses, system, rayOptions);
+  const traceFor = (key) => traces.find((trace) => trace.fieldKey === key);
+  const mtfFor = (key) => calculateApproximateMTF(traceFor(key), { minRayCount: 3 });
+  const centerTrace = traceFor("center");
+  const midTrace = traceFor("mid");
+  const cornerTrace = traceFor("corner");
+  const centerMtf = mtfFor("center");
+  const midMtf = mtfFor("mid");
+  const cornerMtf = mtfFor("corner");
+  const rmsValues = [centerTrace?.rmsSpotRadius, midTrace?.rmsSpotRadius, cornerTrace?.rmsSpotRadius].filter(Number.isFinite);
+  const mtfValues = [centerMtf.readouts?.[40], midMtf.readouts?.[40], cornerMtf.readouts?.[40]].filter(Number.isFinite);
+  const opd = calculateWavefrontOPD(lenses, system, {
+    fieldKey: "center",
+    fieldName: "Centre field",
+    fieldAngleDegrees: 0,
+    spectralLineKey: "d",
+    wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+    sampleCount: 5,
+    sampling: "grid",
+    apertureStopIndex: state.apertureStopIndex,
+    apertureDiameter: state.apertureDiameter,
+    imagePlaneX: 0
+  });
+  const transmission = calculateSystemTransmission(lenses, system, { apertureDiameter: state.apertureDiameter });
+
+  return {
+    system,
+    rmsSpotCentre: centerTrace?.rmsSpotRadius ?? NaN,
+    rmsSpotMid: midTrace?.rmsSpotRadius ?? NaN,
+    rmsSpotCorner: cornerTrace?.rmsSpotRadius ?? NaN,
+    worstRmsSpotRadius: rmsValues.length ? Math.max(...rmsValues) : NaN,
+    mtf40Centre: centerMtf.readouts?.[40] ?? NaN,
+    mtf40Mid: midMtf.readouts?.[40] ?? NaN,
+    mtf40Corner: cornerMtf.readouts?.[40] ?? NaN,
+    worstMtf40: mtfValues.length ? Math.min(...mtfValues) : NaN,
+    rmsOpdWaves: opd.rmsOpdWaves,
+    strehl: opd.strehlEstimate,
+    transmission: transmission.dLineTransmission,
+    tStop: transmission.tStop,
+    failedTraceCount: traces.filter((trace) => !trace.validRayCount).length
+  };
+};
+
+const toleranceRunPasses = (metrics, settings) => {
+  const checks = [];
+  if (settings.enableRmsCriterion) checks.push(Number.isFinite(metrics.worstRmsSpotRadius) && metrics.worstRmsSpotRadius <= settings.maxRmsSpotRadius);
+  if (settings.enableMtfCriterion) checks.push(Number.isFinite(metrics.worstMtf40) && metrics.worstMtf40 >= settings.minMtf40);
+  if (settings.enableOpdCriterion) checks.push(Number.isFinite(metrics.rmsOpdWaves) && metrics.rmsOpdWaves <= settings.maxRmsOpdWaves);
+  if (settings.enableStrehlCriterion) checks.push(Number.isFinite(metrics.strehl) && metrics.strehl >= settings.minStrehl);
+  return checks.length ? checks.every(Boolean) : true;
+};
+
+const toleranceMetricValue = (run, metric) => {
+  if (metric === "mtf40") return run.metrics.worstMtf40;
+  if (metric === "rmsOpdWaves") return run.metrics.rmsOpdWaves;
+  if (metric === "strehl") return run.metrics.strehl;
+  return run.metrics.worstRmsSpotRadius;
+};
+
+const runToleranceMonteCarlo = (lenses, system, options = {}) => {
+  const settings = sanitizeToleranceSettings(options.settings || state.toleranceSettings);
+  const runs = Math.round(clamp(toNumber(options.runs) || settings.monteCarloRuns, 1, 100));
+  const seed = Math.trunc(toNumber(options.seed) || settings.seed);
+  const results = Array.from({ length: runs }, (_, index) => {
+    const runSeed = seed + index;
+    const sample = generateTolerancedDesign(lenses, settings, runSeed);
+    const metrics = evaluateToleranceRun(sample.lenses, options);
+    const pass = toleranceRunPasses(metrics, settings);
+    return {
+      runIndex: index + 1,
+      seed: runSeed,
+      sample,
+      metrics,
+      pass
+    };
+  });
+  const passCount = results.filter((run) => run.pass).length;
+  const metric = settings.histogramMetric;
+  const values = results.map((run) => toleranceMetricValue(run, metric)).filter(Number.isFinite);
+  const worstRun = results.reduce((worst, run) => {
+    const value = toleranceMetricValue(run, metric);
+    const worstValue = worst ? toleranceMetricValue(worst, metric) : NaN;
+    if (!Number.isFinite(value)) return worst || run;
+    if (!Number.isFinite(worstValue)) return run;
+    return metric === "mtf40" || metric === "strehl"
+      ? value < worstValue ? run : worst
+      : value > worstValue ? run : worst;
+  }, null);
+  const bestRun = results.reduce((best, run) => {
+    const value = toleranceMetricValue(run, metric);
+    const bestValue = best ? toleranceMetricValue(best, metric) : NaN;
+    if (!Number.isFinite(value)) return best || run;
+    if (!Number.isFinite(bestValue)) return run;
+    return metric === "mtf40" || metric === "strehl"
+      ? value > bestValue ? run : best
+      : value < bestValue ? run : best;
+  }, null);
+  const warnings = [];
+  const failedTraceRuns = results.filter((run) => run.metrics.failedTraceCount > 0).length;
+
+  if (runs >= 50) warnings.push("High Monte Carlo run count may be slow in the browser.");
+  warnings.push("Tilt/decenter modelling is approximate in this browser version.");
+  if (failedTraceRuns / Math.max(1, runs) > 0.25) warnings.push("Too many ray traces failed or clipped completely.");
+  if (passCount / Math.max(1, runs) < 0.5) warnings.push("Pass rate is below 50% for the selected criteria.");
+  if (settings.radiusToleranceMm > 2 || settings.decenterToleranceMm > 0.5 || settings.tiltToleranceDegrees > 1) warnings.push("Some tolerance values are very loose for optical manufacturing.");
+  warnings.push("This result should not be used as production certification.");
+
+  return {
+    settings,
+    runs: results,
+    runsCompleted: results.length,
+    passRate: results.length ? passCount / results.length : NaN,
+    selectedMetric: metric,
+    selectedMetricStats: metricStats(values),
+    worstRun,
+    bestRun,
+    summary: {
+      rmsSpotRadius: metricStats(results.map((run) => run.metrics.worstRmsSpotRadius)),
+      mtf40: metricStats(results.map((run) => run.metrics.worstMtf40)),
+      rmsOpdWaves: metricStats(results.map((run) => run.metrics.rmsOpdWaves)),
+      strehl: metricStats(results.map((run) => run.metrics.strehl)),
+      transmission: metricStats(results.map((run) => run.metrics.transmission)),
+      tStop: metricStats(results.map((run) => run.metrics.tStop))
+    },
+    warnings
+  };
+};
+
+const exportToleranceCsv = (result) => {
+  const header = [
+    "runIndex",
+    "seed",
+    "pass",
+    "rmsSpotCentre",
+    "rmsSpotMid",
+    "rmsSpotCorner",
+    "mtf40Centre",
+    "mtf40Mid",
+    "mtf40Corner",
+    "rmsOpd",
+    "strehl",
+    "transmission",
+    "tStop",
+    "keyPerturbedValues"
+  ];
+  const rows = (result?.runs || []).map((run) => [
+    run.runIndex,
+    run.seed,
+    run.pass ? "pass" : "fail",
+    run.metrics.rmsSpotCentre,
+    run.metrics.rmsSpotMid,
+    run.metrics.rmsSpotCorner,
+    run.metrics.mtf40Centre,
+    run.metrics.mtf40Mid,
+    run.metrics.mtf40Corner,
+    run.metrics.rmsOpdWaves,
+    run.metrics.strehl,
+    run.metrics.transmission,
+    run.metrics.tStop,
+    run.sample.changes.slice(0, 20).map((change) => `L${change.lensIndex + 1}.${change.field}:${formatNumber(change.difference, 5)}`).join("; ")
+  ]);
+  return [header, ...rows].map((row) => row.map(csvEscape).join(",")).join("\n");
+};
+
+const cloneOptimizerLenses = (lenses) => lenses.map((lens) => normalizeLens({ ...lens, optimizerVariables: { ...(lens.optimizerVariables || DEFAULT_OPTIMIZER_VARIABLES) } }));
+
+const signedRadiusClamp = (value) => {
+  if (!Number.isFinite(value)) return 50;
+  const sign = value < 0 ? -1 : 1;
+  return sign * clamp(Math.abs(value), 5, 1000);
+};
+
+const collectOptimizationVariables = (lenses, options = {}) => {
+  const variables = [];
+  lenses.forEach((lens, lensIndex) => {
+    const normalized = normalizeLens(lens);
+    const enabled = normalized.optimizerVariables || DEFAULT_OPTIMIZER_VARIABLES;
+    if (enabled.r1) variables.push({ type: "lens", lensIndex, field: "r1", step: 5 * (options.stepScale || 1) });
+    if (enabled.r2) variables.push({ type: "lens", lensIndex, field: "r2", step: 5 * (options.stepScale || 1) });
+    if (enabled.thickness) variables.push({ type: "lens", lensIndex, field: "thickness", step: 0.4 * (options.stepScale || 1) });
+    if (enabled.gapAfter && lensIndex < lenses.length - 1) variables.push({ type: "lens", lensIndex, field: "gapAfter", step: 0.8 * (options.stepScale || 1) });
+    if (enabled.diameter) variables.push({ type: "lens", lensIndex, field: "diameter", step: 1 * (options.stepScale || 1) });
+    if (enabled.glass) variables.push({ type: "lens", lensIndex, field: "customNd", step: 0.004 * (options.stepScale || 1) });
+    if (enabled.customVd) variables.push({ type: "lens", lensIndex, field: "customVd", step: 1 * (options.stepScale || 1) });
+  });
+  if (options.useApertureDiameter) variables.push({ type: "aperture", field: "apertureDiameter", step: 1 * (options.stepScale || 1) });
+  return variables;
+};
+
+const clampOptimizationCandidate = (candidate) => {
+  candidate.lenses = candidate.lenses.map((lens, index, lenses) => {
+    const next = { ...lens };
+    next.r1 = Math.abs(toNumber(next.r1)) < 0.000001 ? 0 : signedRadiusClamp(toNumber(next.r1));
+    next.r2 = Math.abs(toNumber(next.r2)) < 0.000001 ? 0 : signedRadiusClamp(toNumber(next.r2));
+    next.thickness = clamp(toNumber(next.thickness) || 1, 0.5, 30);
+    next.gapAfter = index < lenses.length - 1 ? clamp(toNumber(next.gapAfter) || 0, 0, 80) : 0;
+    next.diameter = clamp(toNumber(next.diameter) || 40, 5, 120);
+    next.clearApertureDiameter = next.diameter;
+    next.mechanicalDiameter = Math.max(next.diameter, toNumber(next.mechanicalDiameter) || next.diameter);
+    next.visualDiameter = next.mechanicalDiameter;
+    if (next.glassKey === "custom" || Number.isFinite(toNumber(next.customNd))) {
+      next.glassKey = "custom";
+      next.customNd = clamp(toNumber(next.customNd) || toNumber(next.refractiveIndex) || 1.5168, 1.3, 1.9);
+      next.refractiveIndex = next.customNd;
+      next.customVd = clamp(toNumber(next.customVd) || 50, 20, 90);
+    }
+    return normalizeLens(next);
+  });
+  const largestDiameter = Math.max(5, ...candidate.lenses.map((lens) => toNumber(lens.diameter) || 5));
+  candidate.apertureDiameter = clamp(toNumber(candidate.apertureDiameter) || state.apertureDiameter, 1, largestDiameter);
+  return candidate;
+};
+
+const mutateOptimizationCandidate = (candidate, variable, delta) => {
+  const next = {
+    lenses: cloneOptimizerLenses(candidate.lenses),
+    apertureDiameter: candidate.apertureDiameter
+  };
+  if (variable.type === "aperture") {
+    next.apertureDiameter += delta;
+  } else {
+    const lens = { ...next.lenses[variable.lensIndex] };
+    if (variable.field === "customNd" || variable.field === "customVd") lens.glassKey = "custom";
+    lens[variable.field] = (toNumber(lens[variable.field]) || 0) + delta;
+    if (variable.field === "customNd") lens.refractiveIndex = lens.customNd;
+    next.lenses[variable.lensIndex] = lens;
+  }
+  return clampOptimizationCandidate(next);
+};
+
+const candidateViolatesConstraints = (candidate, system, options = {}) => {
+  const maxTrack = Math.max(1, toNumber(options.maxTrackLength) || state.optimizerMaxTrackLength || 160);
+  const minBfd = Math.max(0, toNumber(options.minBfd) || state.optimizerMinBfd || 0);
+  const maxDiameter = Math.max(5, toNumber(options.maxDiameter) || state.optimizerMaxDiameter || 120);
+  if (!system.validCount || !Number.isFinite(system.effectiveFocalLength)) return true;
+  if (system.totalTrack > maxTrack) return true;
+  if (Number.isFinite(system.backFocalLength) && system.backFocalLength < minBfd) return true;
+  if (candidate.lenses.some((lens) => (toNumber(lens.diameter) || 0) > maxDiameter || (toNumber(lens.thickness) || 0) <= 0 || (toNumber(lens.gapAfter) || 0) < 0)) return true;
+  return false;
+};
+
+const calculateMeritScore = (lenses, system, options = {}) => {
+  const warnings = [];
+  const apertureDiameter = toNumber(options.apertureDiameter) || state.apertureDiameter;
+  const componentScores = {};
+  const metrics = {
+    effectiveFocalLength: system.effectiveFocalLength,
+    backFocalLength: system.backFocalLength,
+    fNumber: calculateFNumber(system, apertureDiameter, lenses, options)
+  };
+
+  if (options.useTargetFocalLength ?? state.optimizerUseTargetFocalLength) {
+    const target = Math.max(0.1, toNumber(options.targetFocalLength) || state.optimizerTargetFocalLength || 50);
+    componentScores.focalLength = Number.isFinite(system.effectiveFocalLength)
+      ? ((system.effectiveFocalLength - target) / target) ** 2 * 8
+      : 1000;
+  }
+
+  if (options.useTargetBfd ?? state.optimizerUseTargetBfd) {
+    const target = Math.max(0.1, toNumber(options.targetBfd) || state.optimizerTargetBfd || 18);
+    componentScores.backFocalDistance = Number.isFinite(system.backFocalLength)
+      ? ((system.backFocalLength - target) / target) ** 2 * 6
+      : 1000;
+  }
+
+  let traces = [];
+  if ((options.useSpotSize ?? state.optimizerUseSpotSize) || (options.useMtf ?? state.optimizerUseMtf)) {
+    traces = traceSystemFieldSet(lenses, system, {
+      rayCount: 5,
+      apertureStopIndex: state.apertureStopIndex,
+      apertureDiameter,
+      wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+      spectralLineKey: "d"
+    });
+    const rmsValues = traces.map((trace) => trace.rmsSpotRadius).filter(Number.isFinite);
+    metrics.rmsSpotCentre = traces.find((trace) => trace.fieldKey === "center")?.rmsSpotRadius ?? NaN;
+    metrics.rmsSpotMid = traces.find((trace) => trace.fieldKey === "mid")?.rmsSpotRadius ?? NaN;
+    metrics.rmsSpotCorner = traces.find((trace) => trace.fieldKey === "corner")?.rmsSpotRadius ?? NaN;
+    metrics.worstRmsSpotRadius = rmsValues.length ? Math.max(...rmsValues) : NaN;
+    if (options.useSpotSize ?? state.optimizerUseSpotSize) {
+      componentScores.spotSize = Number.isFinite(metrics.worstRmsSpotRadius) ? (metrics.worstRmsSpotRadius / 0.05) ** 2 : 100;
+    }
+    if (options.useMtf ?? state.optimizerUseMtf) {
+      const mtfValues = traces.map((trace) => calculateApproximateMTF(trace, { minRayCount: 3 }).readouts?.[40]).filter(Number.isFinite);
+      metrics.mtf40Centre = calculateApproximateMTF(traces.find((trace) => trace.fieldKey === "center"), { minRayCount: 3 }).readouts?.[40] ?? NaN;
+      metrics.mtf40Mid = calculateApproximateMTF(traces.find((trace) => trace.fieldKey === "mid"), { minRayCount: 3 }).readouts?.[40] ?? NaN;
+      metrics.mtf40Corner = calculateApproximateMTF(traces.find((trace) => trace.fieldKey === "corner"), { minRayCount: 3 }).readouts?.[40] ?? NaN;
+      metrics.worstMtf40 = mtfValues.length ? Math.min(...mtfValues) : NaN;
+      componentScores.mtf40 = Number.isFinite(metrics.worstMtf40) ? (1 - metrics.worstMtf40) * 2 : 10;
+    }
+  }
+
+  if (options.useStBalance ?? state.optimizerUseStBalance) {
+    const st = calculateSagittalTangentialGeometricMTF(lenses, system, {
+      fieldKey: "mid",
+      fieldName: "Mid field",
+      fieldAngleDegrees: 10,
+      rayCount: 5,
+      apertureStopIndex: state.apertureStopIndex,
+      apertureDiameter,
+      wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+      spectralLineKey: "d"
+    });
+    const tangential40 = mtfValueAtFrequency(st.tangential, 40);
+    const sagittal40 = mtfValueAtFrequency(st.sagittal, 40);
+    metrics.stBalance = Number.isFinite(tangential40) && Number.isFinite(sagittal40) ? Math.abs(tangential40 - sagittal40) : NaN;
+    componentScores.stBalance = Number.isFinite(metrics.stBalance) ? metrics.stBalance : 1;
+  }
+
+  if (options.useWavefront ?? state.optimizerUseWavefront) {
+    const opd = calculateWavefrontOPD(lenses, system, {
+      fieldAngleDegrees: 0,
+      sampleCount: 5,
+      sampling: "grid",
+      apertureStopIndex: state.apertureStopIndex,
+      apertureDiameter,
+      wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+      spectralLineKey: "d"
+    });
+    metrics.rmsOpdWaves = opd.rmsOpdWaves;
+    metrics.strehl = opd.strehlEstimate;
+    componentScores.wavefront = Number.isFinite(opd.rmsOpdWaves) ? opd.rmsOpdWaves ** 2 : 10;
+  }
+
+  if (options.useDistortion ?? state.optimizerUseDistortion) {
+    const distortion = calculateDistortionCurve(lenses, system, { maxFieldAngleDegrees: 12, fieldStepDegrees: 6, rayCount: 5, apertureDiameter });
+    const values = distortion.samples.map((sample) => Math.abs(sample.distortionPercent)).filter(Number.isFinite);
+    metrics.maxDistortionPercent = values.length ? Math.max(...values) : NaN;
+    componentScores.distortion = Number.isFinite(metrics.maxDistortionPercent) ? (metrics.maxDistortionPercent / 10) ** 2 : 5;
+  }
+
+  if (options.useTransmission ?? state.optimizerUseTransmission) {
+    const transmission = calculateSystemTransmission(lenses, system, { apertureDiameter });
+    metrics.transmission = transmission.dLineTransmission;
+    metrics.tStop = transmission.tStop;
+    componentScores.transmission = Number.isFinite(transmission.dLineTransmission) ? (1 - transmission.dLineTransmission) : 1;
+  }
+
+  if (options.useToleranceRobustness ?? state.optimizerUseToleranceRobustness) {
+    const tolerance = runToleranceMonteCarlo(lenses, system, {
+      settings: { ...state.toleranceSettings, monteCarloRuns: 3 },
+      runs: 3,
+      seed: state.optimizerSeed
+    });
+    metrics.tolerancePassRate = tolerance.passRate;
+    componentScores.tolerance = Number.isFinite(tolerance.passRate) ? 1 - tolerance.passRate : 1;
+  } else {
+    warnings.push("Tolerance robustness is disabled.");
+  }
+
+  const totalScore = Object.values(componentScores).reduce((sum, value) => sum + (Number.isFinite(value) ? value : 100), 0);
+  return { totalScore, componentScores, warnings, metrics };
+};
+
+const evaluateOptimizerCandidate = (candidate, options = {}) => {
+  const system = calculateSystem(candidate.lenses, SPECTRAL_LINES.d.wavelengthNm);
+  if (candidateViolatesConstraints(candidate, system, options)) {
+    return {
+      status: "invalid",
+      score: Infinity,
+      merit: { totalScore: Infinity, componentScores: {}, warnings: ["Candidate violates hard constraints."], metrics: {} },
+      system
+    };
+  }
+  const merit = calculateMeritScore(candidate.lenses, system, { ...options, apertureDiameter: candidate.apertureDiameter });
+  return {
+    status: "valid",
+    score: merit.totalScore,
+    merit,
+    system
+  };
+};
+
+const optimizerOptionsFromState = () => ({
+  algorithm: state.optimizerAlgorithm,
+  iterations: Math.max(0, Math.round(toNumber(state.optimizerIterations) || 0)),
+  seed: Math.trunc(toNumber(state.optimizerSeed) || 1),
+  stepScale: Math.max(0.05, toNumber(state.optimizerStepScale) || 1),
+  targetFocalLength: state.optimizerTargetFocalLength,
+  targetBfd: state.optimizerTargetBfd,
+  useTargetFocalLength: state.optimizerUseTargetFocalLength,
+  useTargetBfd: state.optimizerUseTargetBfd,
+  useMtf: state.optimizerUseMtf,
+  useSpotSize: state.optimizerUseSpotSize,
+  useWavefront: state.optimizerUseWavefront,
+  useDistortion: state.optimizerUseDistortion,
+  useTransmission: state.optimizerUseTransmission,
+  useToleranceRobustness: state.optimizerUseToleranceRobustness,
+  useStBalance: state.optimizerUseStBalance,
+  useApertureDiameter: state.optimizerUseApertureDiameter,
+  maxTrackLength: state.optimizerMaxTrackLength,
+  minBfd: state.optimizerMinBfd,
+  maxDiameter: state.optimizerMaxDiameter
+});
+
+const runRandomOptimizer = (lenses, options = {}) => {
+  const random = createSeededRandom(options.seed || 1);
+  const baseline = clampOptimizationCandidate({ lenses: cloneOptimizerLenses(lenses), apertureDiameter: options.apertureDiameter || state.apertureDiameter });
+  const variables = collectOptimizationVariables(baseline.lenses, options);
+  const baselineEval = evaluateOptimizerCandidate(baseline, options);
+  let best = { candidate: baseline, evaluation: baselineEval };
+  let rejectedCount = 0;
+  const progress = [{ iteration: 0, score: best.evaluation.score }];
+  const iterations = Math.max(0, Math.round(toNumber(options.iterations) || 0));
+
+  for (let iteration = 1; iteration <= iterations; iteration += 1) {
+    if (!variables.length) break;
+    const variable = variables[Math.floor(randomUniform(random) * variables.length)];
+    const direction = randomNormal(random);
+    const candidate = mutateOptimizationCandidate(best.candidate, variable, direction * variable.step);
+    const evaluation = evaluateOptimizerCandidate(candidate, options);
+    if (evaluation.status !== "valid") {
+      rejectedCount += 1;
+    } else if (evaluation.score <= best.evaluation.score) {
+      best = { candidate, evaluation };
+    }
+    progress.push({ iteration, score: best.evaluation.score });
+  }
+
+  return { baseline, baselineEval, best, progress, rejectedCount, variables };
+};
+
+const runCoordinateDescentOptimizer = (lenses, options = {}) => {
+  const baseline = clampOptimizationCandidate({ lenses: cloneOptimizerLenses(lenses), apertureDiameter: options.apertureDiameter || state.apertureDiameter });
+  const variables = collectOptimizationVariables(baseline.lenses, options);
+  const baselineEval = evaluateOptimizerCandidate(baseline, options);
+  let best = { candidate: baseline, evaluation: baselineEval };
+  let rejectedCount = 0;
+  const progress = [{ iteration: 0, score: best.evaluation.score }];
+  const iterations = Math.max(0, Math.round(toNumber(options.iterations) || 0));
+  let stepScale = 1;
+
+  for (let iteration = 1; iteration <= iterations; iteration += 1) {
+    if (!variables.length) break;
+    const variable = variables[(iteration - 1) % variables.length];
+    let improved = false;
+    [1, -1].forEach((direction) => {
+      const candidate = mutateOptimizationCandidate(best.candidate, variable, direction * variable.step * stepScale);
+      const evaluation = evaluateOptimizerCandidate(candidate, options);
+      if (evaluation.status !== "valid") {
+        rejectedCount += 1;
+      } else if (evaluation.score < best.evaluation.score) {
+        best = { candidate, evaluation };
+        improved = true;
+      }
+    });
+    if (!improved && iteration % Math.max(1, variables.length) === 0) stepScale *= 0.7;
+    progress.push({ iteration, score: best.evaluation.score });
+  }
+
+  return { baseline, baselineEval, best, progress, rejectedCount, variables };
+};
+
+const runHybridOptimizer = (lenses, options = {}) => {
+  const iterations = Math.max(0, Math.round(toNumber(options.iterations) || 0));
+  const randomIterations = Math.floor(iterations * 0.55);
+  const randomResult = runRandomOptimizer(lenses, { ...options, iterations: randomIterations });
+  const coordinateResult = runCoordinateDescentOptimizer(randomResult.best.candidate.lenses, {
+    ...options,
+    apertureDiameter: randomResult.best.candidate.apertureDiameter,
+    iterations: iterations - randomIterations
+  });
+  return {
+    baseline: randomResult.baseline,
+    baselineEval: randomResult.baselineEval,
+    best: coordinateResult.best.evaluation.score < randomResult.best.evaluation.score ? coordinateResult.best : randomResult.best,
+    progress: [
+      ...randomResult.progress,
+      ...coordinateResult.progress.slice(1).map((point, index) => ({ iteration: randomIterations + index + 1, score: point.score }))
+    ],
+    rejectedCount: randomResult.rejectedCount + coordinateResult.rejectedCount,
+    variables: randomResult.variables
+  };
+};
+
+const runOptimizer = (lenses, options = {}) => {
+  if ((options.iterations || 0) <= 0) {
+    const baseline = clampOptimizationCandidate({ lenses: cloneOptimizerLenses(lenses), apertureDiameter: options.apertureDiameter || state.apertureDiameter });
+    const baselineEval = evaluateOptimizerCandidate(baseline, options);
+    return { baseline, baselineEval, best: { candidate: baseline, evaluation: baselineEval }, progress: [{ iteration: 0, score: baselineEval.score }], rejectedCount: 0, variables: collectOptimizationVariables(baseline.lenses, options), warnings: ["Zero iterations requested; design was not changed."] };
+  }
+  if (options.algorithm === "random") return runRandomOptimizer(lenses, options);
+  if (options.algorithm === "coordinate") return runCoordinateDescentOptimizer(lenses, options);
+  return runHybridOptimizer(lenses, options);
+};
+
+const optimizerImprovementPercent = (result) => {
+  const previous = result?.baselineEval?.score;
+  const best = result?.best?.evaluation?.score;
+  return Number.isFinite(previous) && Number.isFinite(best) && previous !== 0
+    ? ((previous - best) / Math.abs(previous)) * 100
+    : NaN;
+};
+
+const exportOptimizerCsv = (result) => {
+  const header = ["iteration", "bestScore"];
+  const rows = (result?.progress || []).map((point) => [point.iteration, point.score]);
+  const summary = [
+    [],
+    ["baselineScore", result?.baselineEval?.score ?? ""],
+    ["bestScore", result?.best?.evaluation?.score ?? ""],
+    ["improvementPercent", optimizerImprovementPercent(result)],
+    ["rejectedCandidates", result?.rejectedCount ?? ""],
+    ["bestEfl", result?.best?.evaluation?.merit?.metrics?.effectiveFocalLength ?? ""],
+    ["bestBfd", result?.best?.evaluation?.merit?.metrics?.backFocalLength ?? ""],
+    ["bestMtf40", result?.best?.evaluation?.merit?.metrics?.worstMtf40 ?? ""],
+    ["bestRmsSpot", result?.best?.evaluation?.merit?.metrics?.worstRmsSpotRadius ?? ""]
+  ];
+  return [header, ...rows, ...summary].map((row) => row.map(csvEscape).join(",")).join("\n");
+};
+
+const symmetricChartRange = (series, fallback = 0.1) => {
+  const values = series.flatMap((item) => (item.points || [])
+    .map((point) => point.y)
+    .filter(Number.isFinite)
+    .map(Math.abs));
+  const limit = Math.max(fallback, values.length ? Math.max(...values) * 1.18 : fallback);
+  return { yMin: -limit, yMax: limit };
+};
+
+const calculateSagittalTangentialRayFan3DData = (lenses, system, options = {}) => {
+  const fieldAngleDegrees = selectedSTRayFanFieldAngle();
+  const rayCount = normalizeFanRayCount(options.rayCount || state.stRayFanRayCount);
+  const imagePlaneX = bestFocusPlaneFor3DRayFan(lenses, system, fieldAngleDegrees, rayCount);
+  const lines = rayFanSpectralLines(state.stRayFanWavelengthMode);
+  const commonOptions = {
+    fieldAngleDegrees,
+    rayCount,
+    apertureStopIndex: state.apertureStopIndex,
+    apertureDiameter: state.apertureDiameter,
+    imagePlaneX
+  };
+  const tangentialFans = lines.map(([lineKey, line]) => calculateTangentialRayFan3D(lenses, system, {
+    ...commonOptions,
+    wavelengthNm: line.wavelengthNm,
+    spectralLineKey: lineKey
+  }));
+  const sagittalFans = lines.map(([lineKey, line]) => calculateSagittalRayFan3D(lenses, system, {
+    ...commonOptions,
+    wavelengthNm: line.wavelengthNm,
+    spectralLineKey: lineKey
+  }));
+  const tangentialStats = combineRayFan3DStats(tangentialFans, "tangentialError");
+  const sagittalStats = combineRayFan3DStats(sagittalFans, "sagittalError");
+  const tangentialDiagnostics = aggregateFanDiagnostics(tangentialFans, "tangentialError");
+  const sagittalDiagnostics = aggregateFanDiagnostics(sagittalFans, "sagittalError");
+  const centerComparison = compareCenterFieldRayFans2D3D(lenses, system, {
+    rayCount,
+    apertureStopIndex: state.apertureStopIndex,
+    apertureDiameter: state.apertureDiameter,
+    imagePlaneX
+  });
+  const allFans = [...tangentialFans, ...sagittalFans];
+  const totalRayCount = allFans.reduce((sum, fan) => sum + fan.totalRayCount, 0);
+  const validRayCount = allFans.reduce((sum, fan) => sum + fan.validCount, 0);
+  const clippedCount = allFans.reduce((sum, fan) => sum + fan.clippedCount, 0);
+  const failedCount = allFans.reduce((sum, fan) => sum + fan.failedCount, 0);
+  const warnings = allFans.map((fan) => fan.warning).filter(Boolean);
+  const apertureSensitivity = compareApertureFanSensitivity(lenses, system, {
+    fieldAngleDegrees,
+    rayCount,
+    apertureStopIndex: state.apertureStopIndex,
+    apertureDiameter: state.apertureDiameter,
+    imagePlaneX
+  });
+  const rgbTangentialDifference = maxFanLineDifference(tangentialFans, "tangentialError");
+  const rgbSagittalDifference = maxFanLineDifference(sagittalFans, "sagittalError");
+
+  if (totalRayCount && validRayCount / totalRayCount < 0.5) warnings.push("Most sagittal/tangential fan rays are clipped or failed.");
+  if (tangentialDiagnostics.validCount < 5) warnings.push("Fewer than 5 valid tangential rays; diagnostic values may be unstable.");
+  if (sagittalDiagnostics.validCount < 5) warnings.push("Fewer than 5 valid sagittal rays; diagnostic values may be unstable.");
+  if (tangentialDiagnostics.totalRayCount && tangentialDiagnostics.clippedCount / tangentialDiagnostics.totalRayCount > 0.5) warnings.push("More than 50% of tangential rays are clipped by aperture or clear diameter.");
+  if (sagittalDiagnostics.totalRayCount && sagittalDiagnostics.clippedCount / sagittalDiagnostics.totalRayCount > 0.5) warnings.push("More than 50% of sagittal rays are clipped by aperture or clear diameter.");
+  if (!sagittalFans.some((fan) => fan.validCount >= 3)) warnings.push("Sagittal fan cannot be calculated reliably for the current geometry.");
+  if (Math.abs(fieldAngleDegrees) > 0.000001 && fanErrorsAreAllZero(sagittalFans, "sagittalError")) warnings.push("Sagittal fan is all zero for an off-axis field; check 3D pupil sampling and image plane intersection.");
+  if (!apertureSensitivity.changed) warnings.push("Tangential fan RMS did not change when the aperture diameter was sampled smaller; aperture sensitivity may be weak for this setup.");
+  if (state.stRayFanWavelengthMode === "rgb" && hasHighDispersionGlass(lenses)) {
+    const rgbDifference = Math.max(
+      Number.isFinite(rgbTangentialDifference) ? rgbTangentialDifference : 0,
+      Number.isFinite(rgbSagittalDifference) ? rgbSagittalDifference : 0
+    );
+    if (rgbDifference < 0.000001) warnings.push("RGB overlay lines are nearly identical despite high-dispersion glass; dispersion diagnostics may need review.");
+  }
+  if (centerComparison.status === "Warning") warnings.push("Centre-field 2D meridional and 3D tangential ray fans differ more than the diagnostic tolerance.");
+  warnings.push("These ray fan plots use 3D geometric ray tracing. They do not include diffraction, wavefront phase, coating effects, sensor sampling, or manufacturing tolerances.");
+
+  return {
+    fieldAngleDegrees,
+    rayCount,
+    imagePlaneX,
+    wavelengthMode: state.stRayFanWavelengthMode,
+    tangentialFans,
+    sagittalFans,
+    tangentialStats,
+    sagittalStats,
+    tangentialDiagnostics,
+    sagittalDiagnostics,
+    centerComparison,
+    csvText: "",
+    validRayCount,
+    totalRayCount,
+    clippedCount,
+    failedCount,
+    warnings: [...new Set(warnings)]
+  };
+};
+
+const aggregateRayTraceResults = (rayTraceResults) => {
+  const results = Array.isArray(rayTraceResults) ? rayTraceResults : [rayTraceResults].filter(Boolean);
+  const validRayCount = results.reduce((sum, result) => sum + (result.validRayCount || 0), 0);
+  const totalRayCount = results.reduce((sum, result) => sum + (result.totalRayCount || 0), 0);
+  const missedRayCount = results.reduce((sum, result) => sum + (result.missedRayCount || 0), 0);
+  const finiteRms = results.map((result) => result.rmsSpotRadius).filter(Number.isFinite);
+  const finiteMax = results.map((result) => result.maxSpotRadius).filter(Number.isFinite);
+  const warnings = results.map((result) => result.warning).filter(Boolean);
+  const firstFailedRay = results
+    .flatMap((result) => result.rays || [])
+    .find((ray) => ray.status !== "valid" && ray.failedSurface);
+
+  return {
+    validRayCount,
+    totalRayCount,
+    missedRayCount,
+    rmsSpotRadius: finiteRms.length ? Math.max(...finiteRms) : NaN,
+    maxSpotRadius: finiteMax.length ? Math.max(...finiteMax) : NaN,
+    firstFailedSurface: firstFailedRay?.failedSurface || null,
+    firstFailedStatus: firstFailedRay?.status || "",
+    warning: warnings[0] || ""
+  };
+};
+
+const rayTraceResultsArray = (rayTraceResults) => (
+  Array.isArray(rayTraceResults) ? rayTraceResults : [rayTraceResults].filter(Boolean)
+);
+
+const drawingSurfaceIndex = (traceResult, lens, lensIndex, surfaceIndex) => {
+  const patentSurfaceNumber = surfaceIndex === 0 ? lens.patentSurfaceStart : lens.patentSurfaceEnd;
+  if (Number.isFinite(toNumber(patentSurfaceNumber))) {
+    const patentIndex = (traceResult.surfaces || []).findIndex((surface) => (
+      toNumber(surface.patentSurfaceNumber) === toNumber(patentSurfaceNumber)
+    ));
+    if (patentIndex >= 0) return patentIndex;
+  }
+  return (traceResult.surfaces || []).findIndex((surface) => (
+    surface.lensIndex === lensIndex && surface.surfaceIndex === surfaceIndex
+  ));
+};
+
+const estimateRayEnvelopeSemiDiameter = (rayTraceResults, lens, lensIndex, surfaceIndex) => {
+  let maximumHeight = 0;
+  rayTraceResultsArray(rayTraceResults).forEach((traceResult) => {
+    const surfaceIndexInTrace = drawingSurfaceIndex(traceResult, lens, lensIndex, surfaceIndex);
+    if (surfaceIndexInTrace < 0) return;
+    (traceResult.rays || []).forEach((ray) => {
+      const point = ray.path?.[surfaceIndexInTrace + 1];
+      if (point && Number.isFinite(point.y)) maximumHeight = Math.max(maximumHeight, Math.abs(point.y));
+    });
+  });
+  if (!(maximumHeight > 0)) return NaN;
+  return maximumHeight + Math.max(PATENT_APERTURE_MARGIN_MIN_MM, maximumHeight * PATENT_APERTURE_MARGIN_RATIO);
+};
+
+const prescriptionSurfaceForDrawing = (position, result, lens, side) => {
+  const isFront = side === "front";
+  const radius = isFront ? result.r1 : result.r2;
+  return {
+    x: isFront ? position.end : position.start,
+    radius: Number.isFinite(radius) ? radius : 0,
+    asphere: createAsphereDescriptor(lens, side, Number.isFinite(radius) ? radius : 0)
+  };
+};
+
+const prescriptionDrawingSurfaceXAtHeight = (surface, radialHeight) => {
+  const radius = toNumber(surface.radius) || 0;
+  const y = Math.abs(toNumber(radialHeight) || 0);
+  if (Math.abs(radius) < 1e-9) return surface.x;
+
+  if (isSurfaceAsphereActive(surface)) {
+    const sag = evaluateAsphereSag(radius, surface.asphere, y);
+    return sag.valid ? surface.x - sag.sag : NaN;
+  }
+
+  const underRoot = radius * radius - y * y;
+  if (underRoot < -1e-10) return NaN;
+  const signedSag = radius - Math.sign(radius) * Math.sqrt(Math.max(0, underRoot));
+  return surface.x - signedSag;
+};
+
+const statedSurfaceSemiDiameter = (lens, result, side) => {
+  const patentAperture = toNumber(side === "front" ? lens.patentFrontClearAperture : lens.patentRearClearAperture);
+  if (patentAperture > 0) return patentAperture / 2;
+  if (!lens.patentSurfaceStart) return Math.max(0.05, result.diameter / 2);
+  return NaN;
+};
+
+const bevelGeometryRuns = (bevel = {}) => {
+  if (bevel.enabled === false || !(toNumber(bevel.faceWidthMm) > 0)) {
+    return { faceWidthMm: 0, angleDeg: toNumber(bevel.angleDeg) || DEFAULT_BEVEL_ANGLE_DEG, radialRun: 0, axialRun: 0 };
+  }
+  // Bevel angle is measured relative to the optical axis.
+  const angleDeg = Math.min(89, Math.max(1, toNumber(bevel.angleDeg) || DEFAULT_BEVEL_ANGLE_DEG));
+  const faceWidthMm = Math.max(0, toNumber(bevel.faceWidthMm) || 0);
+  const angle = angleDeg * Math.PI / 180;
+  return {
+    faceWidthMm,
+    angleDeg,
+    radialRun: faceWidthMm * Math.sin(angle),
+    axialRun: faceWidthMm * Math.cos(angle)
+  };
+};
+
+const prescriptionRawEdgeThickness = (frontSurface, rearSurface, semiDiameter) => {
+  const frontX = prescriptionDrawingSurfaceXAtHeight(frontSurface, semiDiameter);
+  const rearX = prescriptionDrawingSurfaceXAtHeight(rearSurface, semiDiameter);
+  return Number.isFinite(frontX) && Number.isFinite(rearX) ? frontX - rearX : NaN;
+};
+
+const resolveManufacturingEdgeGeometry = (frontSurface, rearSurface, lens, requestedSemiDiameter, options = {}) => {
+  const clearApertureRadius = Math.max(
+    0.05,
+    (toNumber(lens.clearApertureDiameter) || toNumber(lens.diameter) || 0.1) / 2
+  );
+  const chipZoneValue = toNumber(lens.chipZoneWidthMm);
+  const minimumFlatLandValue = toNumber(lens.minimumFlatLandMm);
+  const minimumEdgeValue = toNumber(lens.minimumEdgeThicknessMm);
+  const chipZoneWidthMm = Math.max(0, Number.isFinite(chipZoneValue) ? chipZoneValue : DEFAULT_CHIP_ZONE_WIDTH_MM);
+  const chipZoneRadius = clearApertureRadius + chipZoneWidthMm;
+  const displayMode = options.cementedGroupDisplayMode || state.cementedGroupDisplayMode || "opticalLayout";
+  const interfaceBevelMode = options.cementedInterfaceBevelMode || state.cementedInterfaceBevelMode || "estimated";
+  const interfaceFaceWidth = Math.max(
+    0,
+    toNumber(options.cementedInterfaceBevelFaceWidthMm)
+      || toNumber(state.cementedInterfaceBevelFaceWidthMm)
+      || DEFAULT_CEMENTED_INTERFACE_BEVEL_FACE_WIDTH_MM
+  );
+  const interfaceAngle = Math.min(
+    89,
+    Math.max(
+      1,
+      toNumber(options.cementedInterfaceBevelAngleDeg)
+        || toNumber(state.cementedInterfaceBevelAngleDeg)
+        || DEFAULT_CEMENTED_INTERFACE_BEVEL_ANGLE_DEG
+    )
+  );
+  const interfaceBevel = {
+    enabled: displayMode === "individualManufacturing" && interfaceBevelMode !== "hidden",
+    faceWidthMm: interfaceFaceWidth,
+    angleDeg: interfaceAngle,
+    source: interfaceBevelMode === "manual" ? "manual" : "estimated"
+  };
+  const normalizedFrontBevel = normalizeLensBevel(lens, "front", requestedSemiDiameter * 2);
+  const normalizedRearBevel = normalizeLensBevel(lens, "rear", requestedSemiDiameter * 2);
+  const frontBevel = lens.patentFrontSharedCementedSurface === true
+    ? { ...interfaceBevel }
+    : normalizedFrontBevel;
+  const rearBevel = lens.patentRearCementedToNextGlass === true
+    ? { ...interfaceBevel }
+    : normalizedRearBevel;
+  let frontRuns = bevelGeometryRuns(frontBevel);
+  let rearRuns = bevelGeometryRuns(rearBevel);
+  let maximumBevelRadialRun = Math.max(frontRuns.radialRun, rearRuns.radialRun);
+  let minimumMechanicalRadius = chipZoneRadius + maximumBevelRadialRun;
+  const requestedRadius = Math.max(
+    clearApertureRadius,
+    toNumber(requestedSemiDiameter) || minimumMechanicalRadius,
+    minimumMechanicalRadius
+  );
+  const radiusLimits = [frontSurface, rearSurface]
+    .filter((surface) => !isSurfaceAsphereActive(surface) && Math.abs(surface.radius || 0) > 1e-9)
+    .map((surface) => Math.abs(surface.radius) * 0.999999);
+  const geometricLimit = radiusLimits.length ? Math.min(requestedRadius, ...radiusLimits) : requestedRadius;
+  const minimumFlatLandMm = Math.max(0, Number.isFinite(minimumFlatLandValue) ? minimumFlatLandValue : DEFAULT_MINIMUM_FLAT_LAND_MM);
+  const minimumEdgeThicknessMm = Math.max(0, Number.isFinite(minimumEdgeValue) ? minimumEdgeValue : DEFAULT_MINIMUM_EDGE_THICKNESS_MM);
+  let bevelAxialThickness = frontRuns.axialRun + rearRuns.axialRun;
+  let requiredEdgeThickness = Math.max(
+    minimumEdgeThicknessMm,
+    bevelAxialThickness + minimumFlatLandMm
+  );
+  const warnings = [];
+  const validAtRadius = (radius) => {
+    const rawEdgeThickness = prescriptionRawEdgeThickness(frontSurface, rearSurface, radius);
+    return Number.isFinite(rawEdgeThickness) && rawEdgeThickness >= requiredEdgeThickness;
+  };
+
+  const rawAtMinimumRadius = prescriptionRawEdgeThickness(frontSurface, rearSurface, minimumMechanicalRadius);
+  if (
+    Number.isFinite(rawAtMinimumRadius)
+    && rawAtMinimumRadius >= Math.max(minimumEdgeThicknessMm, minimumFlatLandMm)
+    && rawAtMinimumRadius < requiredEdgeThickness
+    && bevelAxialThickness > 0
+  ) {
+    const availableBevelAxialThickness = Math.max(0, rawAtMinimumRadius - minimumFlatLandMm);
+    const scale = Math.min(1, availableBevelAxialThickness / bevelAxialThickness);
+    const scaleRuns = (runs) => ({
+      ...runs,
+      faceWidthMm: runs.faceWidthMm * scale,
+      radialRun: runs.radialRun * scale,
+      axialRun: runs.axialRun * scale
+    });
+    frontRuns = scaleRuns(frontRuns);
+    rearRuns = scaleRuns(rearRuns);
+    maximumBevelRadialRun = Math.max(frontRuns.radialRun, rearRuns.radialRun);
+    minimumMechanicalRadius = chipZoneRadius + maximumBevelRadialRun;
+    bevelAxialThickness = frontRuns.axialRun + rearRuns.axialRun;
+    requiredEdgeThickness = Math.max(minimumEdgeThicknessMm, bevelAxialThickness + minimumFlatLandMm);
+    warnings.push("Bevel reduced to preserve clear aperture.");
+  }
+
+  if (requestedRadius > (toNumber(requestedSemiDiameter) || 0) + 0.001) {
+    warnings.push("Mechanical diameter increased so the bevel remains outside the clear aperture and chip zone.");
+  }
+  if (minimumMechanicalRadius > geometricLimit + 1e-9) {
+    warnings.push("Bevel intrudes into clear aperture because the required mechanical radius exceeds the valid optical surface.");
+    warnings.push("Optical surfaces intersect before the required mechanical diameter.");
+    return {
+      manufacturable: false,
+      warnings,
+      clearApertureRadius,
+      chipZoneRadius,
+      mechanicalRadius: geometricLimit,
+      minimumMechanicalRadius,
+      frontBevel,
+      rearBevel,
+      frontRuns,
+      rearRuns,
+      minimumFlatLandMm,
+      minimumEdgeThicknessMm,
+      requiredEdgeThickness,
+      rawEdgeThickness: prescriptionRawEdgeThickness(frontSurface, rearSurface, geometricLimit),
+      remainingFlatLandMm: NaN
+    };
+  }
+
+  let mechanicalRadius = geometricLimit;
+  if (!validAtRadius(mechanicalRadius)) {
+    if (!validAtRadius(minimumMechanicalRadius)) {
+      warnings.push("Insufficient edge thickness.");
+      warnings.push("The requested clear aperture, centre thickness and bevel cannot coexist without the optical surfaces intersecting.");
+      return {
+        manufacturable: false,
+        warnings,
+        clearApertureRadius,
+        chipZoneRadius,
+        mechanicalRadius: minimumMechanicalRadius,
+        minimumMechanicalRadius,
+        frontBevel,
+        rearBevel,
+        frontRuns,
+        rearRuns,
+        minimumFlatLandMm,
+        minimumEdgeThicknessMm,
+        requiredEdgeThickness,
+        rawEdgeThickness: prescriptionRawEdgeThickness(frontSurface, rearSurface, minimumMechanicalRadius),
+        remainingFlatLandMm: NaN
+      };
+    }
+    let low = minimumMechanicalRadius;
+    let high = mechanicalRadius;
+    for (let iteration = 0; iteration < 56; iteration += 1) {
+      const mid = (low + high) / 2;
+      if (validAtRadius(mid)) low = mid;
+      else high = mid;
+    }
+    mechanicalRadius = low;
+    warnings.push("Mechanical diameter reduced to preserve edge thickness.");
+  }
+
+  const rawEdgeThickness = prescriptionRawEdgeThickness(frontSurface, rearSurface, mechanicalRadius);
+  const remainingFlatLandMm = rawEdgeThickness - bevelAxialThickness;
+  return {
+    manufacturable: true,
+    warnings,
+    clearApertureRadius,
+    chipZoneRadius,
+    mechanicalRadius,
+    minimumMechanicalRadius,
+    frontBevel,
+    rearBevel,
+    frontRuns,
+    rearRuns,
+    frontBevelStartRadius: mechanicalRadius - frontRuns.radialRun,
+    rearBevelStartRadius: mechanicalRadius - rearRuns.radialRun,
+    minimumFlatLandMm,
+    minimumEdgeThicknessMm,
+    requiredEdgeThickness,
+    rawEdgeThickness,
+    remainingFlatLandMm
+  };
+};
+
+const maximumValidPrescriptionSemiDiameter = (frontSurface, rearSurface, requestedSemiDiameter, thickness, lens = {}) => (
+  resolveManufacturingEdgeGeometry(frontSurface, rearSurface, {
+    ...lens,
+    clearApertureDiameter: lens.clearApertureDiameter || Math.min(requestedSemiDiameter * 2, Math.max(0.1, requestedSemiDiameter * 2 - 1)),
+    minimumEdgeThicknessMm: lens.minimumEdgeThicknessMm ?? Math.min(0.12, Math.max(0.015, thickness * 0.02)),
+    minimumFlatLandMm: lens.minimumFlatLandMm ?? 0,
+    chipZoneWidthMm: lens.chipZoneWidthMm ?? 0,
+    frontBevelEnabled: lens.frontBevelEnabled ?? false,
+    rearBevelEnabled: lens.rearBevelEnabled ?? false
+  }, requestedSemiDiameter).mechanicalRadius
+);
+
+const svgPathFromPoints = (points, close = false) => {
+  const path = points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
+  return close ? `${path} Z` : path;
+};
+
+const polygonOrientation = (a, b, c) => (
+  (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
+);
+
+const polygonSegmentsCross = (a, b, c, d, tolerance = 1e-8) => {
+  const abC = polygonOrientation(a, b, c);
+  const abD = polygonOrientation(a, b, d);
+  const cdA = polygonOrientation(c, d, a);
+  const cdB = polygonOrientation(c, d, b);
+  return (
+    ((abC > tolerance && abD < -tolerance) || (abC < -tolerance && abD > tolerance))
+    && ((cdA > tolerance && cdB < -tolerance) || (cdA < -tolerance && cdB > tolerance))
+  );
+};
+
+const pointInsidePolygon = (point, polygon) => {
+  let inside = false;
+  for (let index = 0, previous = polygon.length - 1; index < polygon.length; previous = index, index += 1) {
+    const currentPoint = polygon[index];
+    const previousPoint = polygon[previous];
+    const crosses = (
+      (currentPoint.y > point.y) !== (previousPoint.y > point.y)
+      && point.x < (
+        (previousPoint.x - currentPoint.x) * (point.y - currentPoint.y)
+          / ((previousPoint.y - currentPoint.y) || Number.EPSILON)
+        + currentPoint.x
+      )
+    );
+    if (crosses) inside = !inside;
+  }
+  return inside;
+};
+
+const pointOnPolygonBoundary = (point, polygon, tolerance = 1e-6) => polygon.some((start, index) => {
+  const end = polygon[(index + 1) % polygon.length];
+  const cross = Math.abs(polygonOrientation(start, end, point));
+  if (cross > tolerance) return false;
+  return point.x >= Math.min(start.x, end.x) - tolerance
+    && point.x <= Math.max(start.x, end.x) + tolerance
+    && point.y >= Math.min(start.y, end.y) - tolerance
+    && point.y <= Math.max(start.y, end.y) + tolerance;
+});
+
+const polygonContainsPoint = (point, polygon) => (
+  pointOnPolygonBoundary(point, polygon) || pointInsidePolygon(point, polygon)
+);
+
+const polygonsOverlap = (polygonA, polygonB) => {
+  if (!Array.isArray(polygonA) || !Array.isArray(polygonB) || polygonA.length < 3 || polygonB.length < 3) {
+    return false;
+  }
+  for (let aIndex = 0; aIndex < polygonA.length; aIndex += 1) {
+    const a = polygonA[aIndex];
+    const b = polygonA[(aIndex + 1) % polygonA.length];
+    for (let bIndex = 0; bIndex < polygonB.length; bIndex += 1) {
+      const c = polygonB[bIndex];
+      const d = polygonB[(bIndex + 1) % polygonB.length];
+      if (polygonSegmentsCross(a, b, c, d)) return true;
+    }
+  }
+  return pointInsidePolygon(polygonA[0], polygonB) || pointInsidePolygon(polygonB[0], polygonA);
+};
+
+const polygonSelfIntersects = (polygon) => {
+  if (!Array.isArray(polygon) || polygon.length < 4) return false;
+  for (let firstIndex = 0; firstIndex < polygon.length; firstIndex += 1) {
+    const firstNext = (firstIndex + 1) % polygon.length;
+    for (let secondIndex = firstIndex + 1; secondIndex < polygon.length; secondIndex += 1) {
+      const secondNext = (secondIndex + 1) % polygon.length;
+      if (
+        firstIndex === secondIndex
+        || firstNext === secondIndex
+        || secondNext === firstIndex
+      ) continue;
+      if (polygonSegmentsCross(
+        polygon[firstIndex],
+        polygon[firstNext],
+        polygon[secondIndex],
+        polygon[secondNext]
+      )) return true;
+    }
+  }
+  return false;
+};
+
+const patentGeometryIsEstimated = (item = {}) => (
+  item.apertureSource !== "patent"
+  || item.geometrySource === "Estimated — not supplied by patent"
+  || item.geometrySource === "estimated"
+  || item.manufacturingGeometrySource !== "patent"
+);
+
+const getSafePatentDrawingSemiDiameter = (
+  lensOrGroup,
+  adjacentAirGapConstraints = [],
+  polygonValidation = {}
+) => {
+  const requestedSemiDiameter = Math.max(
+    0.05,
+    toNumber(lensOrGroup?.requestedSemiDiameter)
+      || toNumber(lensOrGroup?.requestedMechanicalDiameter) / 2
+      || toNumber(lensOrGroup?.mechanicalDiameter) / 2
+      || toNumber(lensOrGroup?.diameter) / 2
+      || 0.05
+  );
+  const airGapLimit = adjacentAirGapConstraints
+    .map((constraint) => toNumber(constraint?.renderSafeRadiusMm))
+    .filter((value) => Number.isFinite(value) && value > 0)
+    .reduce((limit, value) => Math.min(limit, value), Infinity);
+  const polygonLimit = Number.isFinite(toNumber(polygonValidation.maximumSafeRadiusMm))
+    ? Math.max(0.05, toNumber(polygonValidation.maximumSafeRadiusMm))
+    : Infinity;
+  const semiDiameter = Math.max(0.05, Math.min(requestedSemiDiameter, airGapLimit, polygonLimit));
+  const polygonInvalid = polygonValidation.valid === false
+    || polygonValidation.polygonGeometryValid === false
+    || polygonValidation.filledPolygonOverlap === true;
+  const estimatedGeometry = patentGeometryIsEstimated(lensOrGroup);
+  const lineOnly = Boolean(polygonInvalid && estimatedGeometry);
+  const warnings = [];
+  if (lineOnly) {
+    warnings.push("Estimated patent mechanical geometry is unsafe at the requested diameter; optical surfaces are drawn line-only to avoid fake overlapping glass.");
+  }
+  adjacentAirGapConstraints.forEach((constraint) => {
+    if (constraint?.selectedClearanceAchievable === false) {
+      warnings.push("Patent air gap is smaller than the selected mechanical clearance; drawing is clipped to the non-overlap radius.");
+    }
+  });
+  return {
+    requestedSemiDiameter,
+    semiDiameter,
+    constrained: semiDiameter + 1e-9 < requestedSemiDiameter,
+    lineOnly,
+    renderFilledGlass: !lineOnly,
+    warnings
+  };
+};
+
+const shouldUseMechanicalValidation = (
+  preset = PRESETS[state.preset],
+  lenses = state.lenses,
+  prescription = state.prescription
+) => (
+  prescription?.prescriptionType === "surface"
+  || preset?.prescriptionType === "surface"
+  || preset?.sourceType === "patent"
+  || lenses.some((lens) => (
+    Number.isFinite(toNumber(lens.patentSurfaceStart))
+    || Number.isFinite(toNumber(lens.patentSurfaceEnd))
+  ))
+);
+
+const buildPrescriptionLensRenderModel = (position, mapper, result, lens, lensIndex, rayTraceResults, options = {}) => {
+  const frontSurface = prescriptionSurfaceForDrawing(position, result, lens, "front");
+  const rearSurface = prescriptionSurfaceForDrawing(position, result, lens, "rear");
+  const statedFront = statedSurfaceSemiDiameter(lens, result, "front");
+  const statedRear = statedSurfaceSemiDiameter(lens, result, "rear");
+  const envelopeFront = estimateRayEnvelopeSemiDiameter(rayTraceResults, lens, lensIndex, 0);
+  const envelopeRear = estimateRayEnvelopeSemiDiameter(rayTraceResults, lens, lensIndex, 1);
+  const statedValues = [statedFront, statedRear].filter(Number.isFinite);
+  const envelopeValues = [envelopeFront, envelopeRear].filter(Number.isFinite);
+  const clearApertureSemiDiameter = Math.max(
+    0.05,
+    (toNumber(lens.clearApertureDiameter) || toNumber(lens.diameter) || result.diameter) / 2
+  );
+  const fallbackSemiDiameter = Math.max(clearApertureSemiDiameter, (toNumber(lens.visualDiameter) || result.diameter) / 2);
+  const unconstrainedRequestedSemiDiameter = Math.max(
+    clearApertureSemiDiameter,
+    toNumber(lens.mechanicalDiameter) > 0 ? toNumber(lens.mechanicalDiameter) / 2 : fallbackSemiDiameter
+  );
+  if (options.mechanicalValidation === false) {
+    const sphericalLimits = [frontSurface, rearSurface]
+      .filter((surface) => !isSurfaceAsphereActive(surface) && Math.abs(surface.radius || 0) > 1e-9)
+      .map((surface) => Math.abs(surface.radius) * 0.999999);
+    const semiDiameter = Math.max(
+      0.05,
+      sphericalLimits.length
+        ? Math.min(unconstrainedRequestedSemiDiameter, ...sphericalLimits)
+        : unconstrainedRequestedSemiDiameter
+    );
+    const sampleCount = 48;
+    const sampleSurface = (surface, reverse = false) => {
+      const values = Array.from({ length: sampleCount + 1 }, (_, sampleIndex) => (
+        -semiDiameter + semiDiameter * 2 * (sampleIndex / sampleCount)
+      ));
+      if (reverse) values.reverse();
+      return values.map((y) => ({ x: prescriptionDrawingSurfaceXAtHeight(surface, Math.abs(y)), y }));
+    };
+    const frontMm = sampleSurface(frontSurface);
+    const rearMm = sampleSurface(rearSurface, true);
+    if ([...frontMm, ...rearMm].some((point) => !Number.isFinite(point.x))) return null;
+    const frontPoints = frontMm.map((point) => ({ x: mapper.x(point.x), y: mapper.y(point.y) }));
+    const rearPoints = rearMm.map((point) => ({ x: mapper.x(point.x), y: mapper.y(point.y) }));
+    const polygonPoints = [...frontPoints, ...rearPoints];
+    const fallbackFill = buildOpticalFillFallbackPath(frontSurface, rearSurface, clearApertureSemiDiameter, mapper);
+    const frontTop = frontPoints[frontPoints.length - 1];
+    const frontBottom = frontPoints[0];
+    const rearTop = rearPoints[0];
+    const rearBottom = rearPoints[rearPoints.length - 1];
+    return {
+      frontSurface,
+      rearSurface,
+      semiDiameter,
+      requestedSemiDiameter: unconstrainedRequestedSemiDiameter,
+      edgeClipped: semiDiameter + 1e-9 < unconstrainedRequestedSemiDiameter,
+      apertureSource: "manual",
+      clearApertureSemiDiameter,
+      chipZoneRadius: clearApertureSemiDiameter,
+      geometryWarning: "",
+      geometryWarnings: [],
+      geometrySource: "educational optical layout",
+      manufacturable: true,
+      safeInvalidGeometry: false,
+      cleanOpticalLayout: true,
+      frontBevel: { enabled: false, faceWidthMm: 0, angleDeg: DEFAULT_BEVEL_ANGLE_DEG },
+      rearBevel: { enabled: false, faceWidthMm: 0, angleDeg: DEFAULT_BEVEL_ANGLE_DEG },
+      frontRuns: { faceWidthMm: 0, angleDeg: DEFAULT_BEVEL_ANGLE_DEG, radialRun: 0, axialRun: 0 },
+      rearRuns: { faceWidthMm: 0, angleDeg: DEFAULT_BEVEL_ANGLE_DEG, radialRun: 0, axialRun: 0 },
+      minimumFlatLandMm: 0,
+      remainingFlatLandMm: prescriptionRawEdgeThickness(frontSurface, rearSurface, semiDiameter),
+      centerThicknessMm: position.thickness,
+      edgeThicknessMm: prescriptionRawEdgeThickness(frontSurface, rearSurface, semiDiameter),
+      polygonPoints,
+      polygonPath: svgPathFromPoints(polygonPoints, true),
+      opticalFillFallbackPath: fallbackFill.path,
+      opticalFillFallbackSemiDiameter: fallbackFill.radius,
+      frontPath: svgPathFromPoints(frontPoints),
+      rearPath: svgPathFromPoints(rearPoints),
+      frontBevelTop: { optical: frontTop, outer: frontTop },
+      frontBevelBottom: { optical: frontBottom, outer: frontBottom },
+      rearBevelTop: { optical: rearTop, outer: rearTop },
+      rearBevelBottom: { optical: rearBottom, outer: rearBottom },
+      topEdge: { front: frontTop, rear: rearTop },
+      bottomEdge: { front: frontBottom, rear: rearBottom }
+    };
+  }
+  const baseEdgeGeometry = resolveManufacturingEdgeGeometry(
+    frontSurface,
+    rearSurface,
+    lens,
+    unconstrainedRequestedSemiDiameter,
+    options
+  );
+  const maximumMechanicalRadiusMm = Number.isFinite(toNumber(options.maximumMechanicalRadiusMm))
+    ? Math.max(0.05, toNumber(options.maximumMechanicalRadiusMm))
+    : Infinity;
+  const airGapCollision = maximumMechanicalRadiusMm + 1e-9 < baseEdgeGeometry.minimumMechanicalRadius;
+  const constrainedMechanicalRadius = Math.min(baseEdgeGeometry.mechanicalRadius, maximumMechanicalRadiusMm);
+  const edgeGeometry = airGapCollision && Number.isFinite(constrainedMechanicalRadius)
+    ? {
+      ...baseEdgeGeometry,
+      mechanicalRadius: constrainedMechanicalRadius,
+      frontBevelStartRadius: Math.max(
+        0,
+        constrainedMechanicalRadius - Math.min(baseEdgeGeometry.frontRuns.radialRun, constrainedMechanicalRadius)
+      ),
+      rearBevelStartRadius: Math.max(
+        0,
+        constrainedMechanicalRadius - Math.min(baseEdgeGeometry.rearRuns.radialRun, constrainedMechanicalRadius)
+      ),
+      rawEdgeThickness: prescriptionRawEdgeThickness(frontSurface, rearSurface, constrainedMechanicalRadius),
+      remainingFlatLandMm: NaN,
+      manufacturable: false,
+      safeInvalidGeometry: true,
+      warnings: [
+        ...baseEdgeGeometry.warnings,
+        "Air-gap collision: filled mechanical outline clipped at the maximum safe radius; optical clear aperture unchanged."
+      ]
+    }
+    : baseEdgeGeometry;
+  const semiDiameter = edgeGeometry.mechanicalRadius;
+  const sampleCount = 48;
+  const sampleSurface = (surface, radius, reverse = false) => {
+    const values = Array.from({ length: sampleCount + 1 }, (_, sampleIndex) => (
+      -radius + radius * 2 * (sampleIndex / sampleCount)
+    ));
+    if (reverse) values.reverse();
+    return values.map((y) => ({ x: prescriptionDrawingSurfaceXAtHeight(surface, Math.abs(y)), y }));
+  };
+  const frontMm = sampleSurface(frontSurface, edgeGeometry.frontBevelStartRadius ?? semiDiameter);
+  const rearMm = sampleSurface(rearSurface, edgeGeometry.rearBevelStartRadius ?? semiDiameter, true);
+  const frontTop = frontMm[frontMm.length - 1];
+  const frontBottom = frontMm[0];
+  const rearTop = rearMm[0];
+  const rearBottom = rearMm[rearMm.length - 1];
+  const frontOuterTop = {
+    x: frontTop.x - edgeGeometry.frontRuns.axialRun,
+    y: semiDiameter
+  };
+  const rearOuterTop = {
+    x: rearTop.x + edgeGeometry.rearRuns.axialRun,
+    y: semiDiameter
+  };
+  const frontOuterBottom = { ...frontOuterTop, y: -semiDiameter };
+  const rearOuterBottom = { ...rearOuterTop, y: -semiDiameter };
+  const valid = [...frontMm, ...rearMm].every((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
+  if (!valid) return null;
+
+  const frontPoints = frontMm.map((point) => ({ x: mapper.x(point.x), y: mapper.y(point.y) }));
+  const rearPoints = rearMm.map((point) => ({ x: mapper.x(point.x), y: mapper.y(point.y) }));
+  const mappedFrontOuterTop = { x: mapper.x(frontOuterTop.x), y: mapper.y(frontOuterTop.y) };
+  const mappedRearOuterTop = { x: mapper.x(rearOuterTop.x), y: mapper.y(rearOuterTop.y) };
+  const mappedRearOuterBottom = { x: mapper.x(rearOuterBottom.x), y: mapper.y(rearOuterBottom.y) };
+  const mappedFrontOuterBottom = { x: mapper.x(frontOuterBottom.x), y: mapper.y(frontOuterBottom.y) };
+  const polygonPoints = [
+    ...frontPoints,
+    mappedFrontOuterTop,
+    mappedRearOuterTop,
+    ...rearPoints,
+    mappedRearOuterBottom,
+    mappedFrontOuterBottom
+  ];
+  const polygonGeometryValid = !polygonSelfIntersects(polygonPoints);
+  const drawingSafety = getSafePatentDrawingSemiDiameter(lens, options.airGapConstraints || [], {
+    valid: polygonGeometryValid,
+    polygonGeometryValid
+  });
+  const centerThicknessMm = position.thickness;
+  const edgeThicknessMm = edgeGeometry.rawEdgeThickness;
+  const fallbackFill = buildOpticalFillFallbackPath(frontSurface, rearSurface, clearApertureSemiDiameter, mapper);
+
+  return {
+    frontSurface,
+    rearSurface,
+    semiDiameter,
+    requestedSemiDiameter: unconstrainedRequestedSemiDiameter,
+    edgeClipped: edgeGeometry.warnings.some((warning) => warning.startsWith("Mechanical diameter reduced")),
+    apertureSource: lens.apertureSource || (statedValues.length ? "patent" : envelopeValues.length ? "rayEnvelope" : "estimated"),
+    clearApertureSemiDiameter,
+    chipZoneRadius: edgeGeometry.chipZoneRadius,
+    geometryWarning: edgeGeometry.warnings.join(" "),
+    geometryWarnings: [
+      ...edgeGeometry.warnings,
+      ...(polygonGeometryValid ? [] : ["Final patent lens polygon would self-intersect at the estimated mechanical diameter."]),
+      ...drawingSafety.warnings
+    ],
+    geometrySource: lens.manufacturingGeometrySource || "estimated",
+    manufacturable: edgeGeometry.manufacturable && polygonGeometryValid,
+    safeInvalidGeometry: edgeGeometry.safeInvalidGeometry === true || drawingSafety.lineOnly,
+    polygonGeometryValid,
+    lineOnlyOpticalFallback: drawingSafety.lineOnly,
+    renderFilledGlass: polygonGeometryValid && !drawingSafety.lineOnly && (edgeGeometry.manufacturable || edgeGeometry.safeInvalidGeometry),
+    frontBevel: edgeGeometry.frontBevel,
+    rearBevel: edgeGeometry.rearBevel,
+    frontRuns: edgeGeometry.frontRuns,
+    rearRuns: edgeGeometry.rearRuns,
+    minimumFlatLandMm: edgeGeometry.minimumFlatLandMm,
+    remainingFlatLandMm: edgeGeometry.remainingFlatLandMm,
+    centerThicknessMm,
+    edgeThicknessMm,
+    polygonPoints,
+    polygonPath: polygonGeometryValid && (edgeGeometry.manufacturable || edgeGeometry.safeInvalidGeometry)
+      ? svgPathFromPoints(polygonPoints, true)
+      : "",
+    opticalFillFallbackPath: fallbackFill.path,
+    opticalFillFallbackSemiDiameter: fallbackFill.radius,
+    frontPath: svgPathFromPoints(frontPoints),
+    rearPath: svgPathFromPoints(rearPoints),
+    frontBevelTop: { optical: frontPoints[frontPoints.length - 1], outer: mappedFrontOuterTop },
+    frontBevelBottom: { optical: frontPoints[0], outer: mappedFrontOuterBottom },
+    rearBevelTop: { optical: rearPoints[0], outer: mappedRearOuterTop },
+    rearBevelBottom: { optical: rearPoints[rearPoints.length - 1], outer: mappedRearOuterBottom },
+    topEdge: {
+      front: mappedFrontOuterTop,
+      rear: mappedRearOuterTop
+    },
+    bottomEdge: {
+      front: mappedFrontOuterBottom,
+      rear: mappedRearOuterBottom
+    }
+  };
+};
+
+const samplePrescriptionSurfacePoints = (surface, semiDiameter, mapper, reverse = false, sampleCount = 48) => {
+  const heights = Array.from({ length: sampleCount + 1 }, (_, index) => (
+    -semiDiameter + semiDiameter * 2 * (index / sampleCount)
+  ));
+  if (reverse) heights.reverse();
+  return heights.map((y) => {
+    const x = prescriptionDrawingSurfaceXAtHeight(surface, Math.abs(y));
+    return {
+      mm: { x, y },
+      mapped: { x: mapper.x(x), y: mapper.y(y) }
+    };
+  });
+};
+
+const OPTICAL_FILL_FALLBACK_NOTE = "Optical fill estimated from clear aperture only; mechanical body not verified.";
+
+const buildOpticalFillFallbackPath = (frontSurface, rearSurface, requestedSemiDiameter, mapper) => {
+  const requestedRadius = Math.max(0.05, toNumber(requestedSemiDiameter) || 0.05);
+  const sphericalLimit = [frontSurface, rearSurface]
+    .filter((surface) => !isSurfaceAsphereActive(surface) && Math.abs(surface?.radius || 0) > 1e-9)
+    .reduce((limit, surface) => Math.min(limit, Math.abs(surface.radius) * 0.999999), Infinity);
+  const maxRadius = Math.max(0.05, Math.min(requestedRadius, sphericalLimit));
+  const sampleAt = (radius) => {
+    const frontSamples = samplePrescriptionSurfacePoints(frontSurface, radius, mapper);
+    const rearSamples = samplePrescriptionSurfacePoints(rearSurface, radius, mapper, true);
+    if ([...frontSamples, ...rearSamples].some((point) => !Number.isFinite(point.mm.x))) return null;
+    return {
+      radius,
+      path: svgPathFromPoints([
+        ...frontSamples.map((point) => point.mapped),
+        ...rearSamples.map((point) => point.mapped)
+      ], true)
+    };
+  };
+
+  const initial = sampleAt(maxRadius);
+  if (initial) return initial;
+
+  let low = 0.05;
+  let high = maxRadius;
+  let best = sampleAt(low);
+  if (!best) return { radius: 0, path: "" };
+  for (let iteration = 0; iteration < 48; iteration += 1) {
+    const mid = (low + high) / 2;
+    const candidate = sampleAt(mid);
+    if (candidate) {
+      best = candidate;
+      low = mid;
+    } else {
+      high = mid;
+    }
+  }
+  return best;
+};
+
+const solveAdjacentSurfaceClearanceRadius = (surfaceA, surfaceB, maximumRadiusMm, minimumClearanceMm) => {
+  const xA0 = prescriptionDrawingSurfaceXAtHeight(surfaceA, 0);
+  const xB0 = prescriptionDrawingSurfaceXAtHeight(surfaceB, 0);
+  const orderSign = Math.sign(xB0 - xA0);
+  if (!Number.isFinite(xA0) || !Number.isFinite(xB0) || orderSign === 0) {
+    return {
+      valid: false,
+      maximumSafeRadiusMm: 0,
+      limitingHeightMm: 0,
+      minimumSeparationMm: NaN
+    };
+  }
+  const signedGapAtHeight = (height) => {
+    const xA = prescriptionDrawingSurfaceXAtHeight(surfaceA, height);
+    const xB = prescriptionDrawingSurfaceXAtHeight(surfaceB, height);
+    return Number.isFinite(xA) && Number.isFinite(xB)
+      ? orderSign * (xB - xA)
+      : NaN;
+  };
+  const radius = Math.max(0, toNumber(maximumRadiusMm) || 0);
+  const clearance = Math.max(0, toNumber(minimumClearanceMm) || 0);
+  const sampleCount = 320;
+  let previousHeight = 0;
+  let previousGap = signedGapAtHeight(0);
+  let minimumSeparationMm = previousGap;
+  if (!Number.isFinite(previousGap) || previousGap < clearance) {
+    return {
+      valid: false,
+      maximumSafeRadiusMm: 0,
+      limitingHeightMm: 0,
+      minimumSeparationMm: previousGap
+    };
+  }
+
+  for (let sampleIndex = 1; sampleIndex <= sampleCount; sampleIndex += 1) {
+    const height = radius * sampleIndex / sampleCount;
+    const gap = signedGapAtHeight(height);
+    if (Number.isFinite(gap)) minimumSeparationMm = Math.min(minimumSeparationMm, gap);
+    if (!Number.isFinite(gap) || gap < clearance) {
+      let low = previousHeight;
+      let high = height;
+      for (let iteration = 0; iteration < 60; iteration += 1) {
+        const mid = (low + high) / 2;
+        const midGap = signedGapAtHeight(mid);
+        if (Number.isFinite(midGap) && midGap >= clearance) low = mid;
+        else high = mid;
+      }
+      return {
+        valid: false,
+        maximumSafeRadiusMm: low,
+        limitingHeightMm: low,
+        minimumSeparationMm
+      };
+    }
+    previousHeight = height;
+    previousGap = gap;
+  }
+
+  return {
+    valid: true,
+    maximumSafeRadiusMm: radius,
+    limitingHeightMm: radius,
+    minimumSeparationMm
+  };
+};
+
+const resolveAdjacentAirGapConstraints = (
+  lenses,
+  system,
+  mapper,
+  requestedGroupRadii,
+  options = {}
+) => {
+  const groups = options.groups || buildCementedMechanicalGroups(lenses);
+  const minimumAirGapClearanceMm = Math.max(
+    0,
+    Number.isFinite(toNumber(options.minimumAirGapClearanceMm))
+      ? toNumber(options.minimumAirGapClearanceMm)
+      : 0.5
+  );
+  const constraints = [];
+
+  groups.slice(0, -1).forEach((leftGroup, groupIndex) => {
+    const rightGroup = groups[groupIndex + 1];
+    const leftLensIndex = leftGroup.elements[leftGroup.elements.length - 1];
+    const rightLensIndex = rightGroup.elements[0];
+    const leftLens = lenses[leftLensIndex];
+    const rightLens = lenses[rightLensIndex];
+    if (
+      leftLens.patentRearCementedToNextGlass
+      || rightLens.patentFrontSharedCementedSurface
+      || !(toNumber(leftLens.gapAfter) > 0)
+    ) return;
+
+    const surfaceA = prescriptionSurfaceForDrawing(
+      mapper.positions[leftLensIndex],
+      system.results[leftLensIndex],
+      leftLens,
+      "rear"
+    );
+    const surfaceB = prescriptionSurfaceForDrawing(
+      mapper.positions[rightLensIndex],
+      system.results[rightLensIndex],
+      rightLens,
+      "front"
+    );
+    const leftRequestedRadius = requestedGroupRadii[groupIndex] || leftGroup.mechanicalDiameter / 2;
+    const rightRequestedRadius = requestedGroupRadii[groupIndex + 1] || rightGroup.mechanicalDiameter / 2;
+    const requestedRadiusMm = Math.min(leftRequestedRadius, rightRequestedRadius);
+    const xA0 = prescriptionDrawingSurfaceXAtHeight(surfaceA, 0);
+    const xB0 = prescriptionDrawingSurfaceXAtHeight(surfaceB, 0);
+    const vertexGapMm = Math.abs(xB0 - xA0);
+    const zeroContact = solveAdjacentSurfaceClearanceRadius(surfaceA, surfaceB, requestedRadiusMm, 0);
+    const selectedClearance = solveAdjacentSurfaceClearanceRadius(
+      surfaceA,
+      surfaceB,
+      requestedRadiusMm,
+      minimumAirGapClearanceMm
+    );
+    const valid = selectedClearance.valid;
+    const selectedClearanceAchievable = vertexGapMm + 1e-9 >= minimumAirGapClearanceMm;
+    const renderSafeRadiusMm = selectedClearance.maximumSafeRadiusMm > 0
+      ? selectedClearance.maximumSafeRadiusMm
+      : zeroContact.maximumSafeRadiusMm;
+    constraints.push({
+      leftGroupIndex: groupIndex,
+      rightGroupIndex: groupIndex + 1,
+      leftElementIndices: [...leftGroup.elements],
+      rightElementIndices: [...rightGroup.elements],
+      leftSurfaceNumber: leftLens.patentSurfaceEnd ?? null,
+      rightSurfaceNumber: rightLens.patentSurfaceStart ?? null,
+      surfaceA,
+      surfaceB,
+      vertexGapMm,
+      requestedRadiusMm,
+      requestedDiameterMm: requestedRadiusMm * 2,
+      maximumZeroContactRadiusMm: zeroContact.maximumSafeRadiusMm,
+      maximumZeroContactDiameterMm: zeroContact.maximumSafeRadiusMm * 2,
+      maximumSafeRadiusMm: selectedClearance.maximumSafeRadiusMm,
+      maximumSafeDiameterMm: selectedClearance.maximumSafeRadiusMm * 2,
+      renderSafeRadiusMm,
+      renderSafeDiameterMm: renderSafeRadiusMm * 2,
+      selectedClearanceAchievable,
+      minimumClearanceMm: minimumAirGapClearanceMm,
+      minimumSeparationMm: selectedClearance.minimumSeparationMm,
+      limitingHeightMm: selectedClearance.limitingHeightMm,
+      valid,
+      geometrySource: "Patent optical prescription; estimated mechanical aperture",
+      warning: valid
+        ? ""
+        : selectedClearanceAchievable
+          ? "Air-gap collision: the estimated clear aperture is larger than the maximum non-intersecting diameter allowed by the patent surfaces and axial spacing."
+          : "The selected minimum clearance exceeds the patent vertex air gap. The drawing preserves non-intersection at the zero-contact radius, but the requested clearance is not achievable without changing axial spacing."
+    });
+  });
+
+  return constraints;
+};
+
+const buildCementedGroupRenderModel = (group, system, mapper, rayTraceResults, options = {}) => {
+  const displayMode = options.cementedGroupDisplayMode || state.cementedGroupDisplayMode || "opticalLayout";
+  const interfaceBevelMode = displayMode === "opticalLayout"
+    ? "hidden"
+    : options.cementedInterfaceBevelMode || state.cementedInterfaceBevelMode || "estimated";
+  const elementIndices = [...group.elements];
+  if (elementIndices.length < 2) return null;
+  const firstIndex = elementIndices[0];
+  const lastIndex = elementIndices[elementIndices.length - 1];
+  const members = elementIndices.map((index) => {
+    const lens = state.lenses[index];
+    const position = mapper.positions[index];
+    const result = system.results[index];
+    return {
+      index,
+      lens,
+      position,
+      result,
+      frontSurface: prescriptionSurfaceForDrawing(position, result, lens, "front"),
+      rearSurface: prescriptionSurfaceForDrawing(position, result, lens, "rear")
+    };
+  });
+  if (members.some((member) => !member.position || !member.result?.valid)) return null;
+
+  const first = members[0];
+  const last = members[members.length - 1];
+  const clearApertureDiameter = Math.max(...members.map(({ lens }) => (
+    toNumber(lens.clearApertureDiameter) || toNumber(lens.diameter) || 0.1
+  )));
+  const requiredChipRadii = members.map(({ lens }) => (
+    (toNumber(lens.clearApertureDiameter) || toNumber(lens.diameter) || 0.1) / 2
+      + Math.max(0, Number.isFinite(toNumber(lens.chipZoneWidthMm)) ? toNumber(lens.chipZoneWidthMm) : DEFAULT_CHIP_ZONE_WIDTH_MM)
+  ));
+  let frontExternalBevel = normalizeLensBevel(first.lens, "front", group.mechanicalDiameter);
+  let rearExternalBevel = normalizeLensBevel(last.lens, "rear", group.mechanicalDiameter);
+  let frontRuns = bevelGeometryRuns(frontExternalBevel);
+  let rearRuns = bevelGeometryRuns(rearExternalBevel);
+  const surfaceRadiusLimits = members.flatMap((member) => (
+    [member.frontSurface, member.rearSurface]
+      .filter((surface) => !isSurfaceAsphereActive(surface) && Math.abs(surface.radius || 0) > 1e-9)
+      .map((surface) => Math.abs(surface.radius) * 0.999999)
+  ));
+  const groupGeometricRadiusLimit = surfaceRadiusLimits.length ? Math.min(...surfaceRadiusLimits) : Infinity;
+  const warnings = [];
+  const reduceExternalBevelToFit = (runs, chipRadius, label) => {
+    if (!(runs.radialRun > 0) || !Number.isFinite(groupGeometricRadiusLimit)) return runs;
+    const availableRadialRun = Math.max(0, groupGeometricRadiusLimit - chipRadius);
+    if (runs.radialRun <= availableRadialRun + 1e-9) return runs;
+    const scale = Math.min(1, availableRadialRun / runs.radialRun);
+    warnings.push(`${label} external bevel reduced to preserve the cemented-group clear aperture.`);
+    return {
+      ...runs,
+      faceWidthMm: runs.faceWidthMm * scale,
+      radialRun: runs.radialRun * scale,
+      axialRun: runs.axialRun * scale
+    };
+  };
+  frontRuns = reduceExternalBevelToFit(frontRuns, requiredChipRadii[0], "Front");
+  rearRuns = reduceExternalBevelToFit(rearRuns, requiredChipRadii[requiredChipRadii.length - 1], "Rear");
+  frontExternalBevel = { ...frontExternalBevel, faceWidthMm: frontRuns.faceWidthMm };
+  rearExternalBevel = { ...rearExternalBevel, faceWidthMm: rearRuns.faceWidthMm };
+  const minimumMechanicalRadius = Math.max(
+    ...requiredChipRadii,
+    requiredChipRadii[0] + frontRuns.radialRun,
+    requiredChipRadii[requiredChipRadii.length - 1] + rearRuns.radialRun
+  );
+  const unconstrainedRequestedMechanicalRadius = Math.min(
+    groupGeometricRadiusLimit,
+    Math.max(
+      minimumMechanicalRadius,
+      ...members.map(({ lens }) => (toNumber(lens.mechanicalDiameter) || clearApertureDiameter) / 2)
+    )
+  );
+  const adjacentAirGapRadiusLimit = Number.isFinite(toNumber(options.maximumMechanicalRadiusMm))
+    ? Math.max(0, toNumber(options.maximumMechanicalRadiusMm))
+    : Infinity;
+  const requestedMechanicalRadius = Math.min(
+    unconstrainedRequestedMechanicalRadius,
+    adjacentAirGapRadiusLimit
+  );
+  const airGapCollision = adjacentAirGapRadiusLimit + 1e-9 < minimumMechanicalRadius;
+  const minimumFlatLandMm = Math.max(
+    ...members.map(({ lens }) => Math.max(
+      0,
+      Number.isFinite(toNumber(lens.minimumFlatLandMm)) ? toNumber(lens.minimumFlatLandMm) : DEFAULT_MINIMUM_FLAT_LAND_MM
+    ))
+  );
+  if (displayMode === "opticalLayout") {
+    warnings.push("Internal interface bevel hidden in optical-layout mode.");
+  } else if (interfaceBevelMode === "estimated") {
+    warnings.push("Estimated cemented-interface bevel.");
+  }
+  if (members.some(({ lens }) => lens.apertureSource !== "patent" || lens.manufacturingGeometrySource !== "patent")) {
+    warnings.push("Mechanical data not supplied by patent.");
+  }
+  if (airGapCollision) {
+    warnings.push("Air-gap collision: the estimated clear aperture is larger than the maximum non-intersecting diameter allowed by the patent surfaces and axial spacing.");
+    warnings.push("Estimated clear aperture exceeds the maximum non-intersecting diameter allowed by the patent surface geometry.");
+    warnings.push("Reduce the estimated clear aperture and retrace rays; accept additional vignetting; reduce the tested field angle or image format; supply manual mechanical-diameter data; or keep the current optical aperture and mark the assembly as not manufacturable.");
+  }
+
+  const evaluateRadius = (radius) => {
+    const memberResults = members.map((member) => {
+      const rawEdgeThickness = prescriptionRawEdgeThickness(member.frontSurface, member.rearSurface, radius);
+      const minimumEdgeThicknessMm = Math.max(
+        0,
+        Number.isFinite(toNumber(member.lens.minimumEdgeThicknessMm))
+          ? toNumber(member.lens.minimumEdgeThicknessMm)
+          : DEFAULT_MINIMUM_EDGE_THICKNESS_MM
+      );
+      return {
+        index: member.index,
+        rawEdgeThickness,
+        minimumEdgeThicknessMm,
+        valid: Number.isFinite(rawEdgeThickness) && rawEdgeThickness >= minimumEdgeThicknessMm
+      };
+    });
+    const externalRawEdgeThickness = prescriptionRawEdgeThickness(first.frontSurface, last.rearSurface, radius);
+    const externalRequiredThickness = frontRuns.axialRun + rearRuns.axialRun + minimumFlatLandMm;
+    return {
+      valid: memberResults.every((item) => item.valid)
+        && Number.isFinite(externalRawEdgeThickness)
+        && externalRawEdgeThickness >= externalRequiredThickness,
+      memberResults,
+      externalRawEdgeThickness,
+      externalRequiredThickness
+    };
+  };
+
+  let mechanicalRadius = requestedMechanicalRadius;
+  let radiusEvaluation = evaluateRadius(mechanicalRadius);
+  let opticalLayoutFallback = false;
+  if (!radiusEvaluation.valid) {
+    if (displayMode === "opticalLayout") {
+      opticalLayoutFallback = true;
+      warnings.push(airGapCollision
+        ? "The air-gap-safe outline also violates this group's manufacturing edge requirement; optical layout fallback is shown without bevel/chip-zone enforcement."
+        : "Cemented group manufacturing edge requirement is not met; optical layout fallback is shown without hiding glass elements.");
+      frontRuns = { faceWidthMm: 0, angleDeg: DEFAULT_BEVEL_ANGLE_DEG, radialRun: 0, axialRun: 0 };
+      rearRuns = { faceWidthMm: 0, angleDeg: DEFAULT_BEVEL_ANGLE_DEG, radialRun: 0, axialRun: 0 };
+      frontExternalBevel = { ...frontExternalBevel, enabled: false, faceWidthMm: 0 };
+      rearExternalBevel = { ...rearExternalBevel, enabled: false, faceWidthMm: 0 };
+      mechanicalRadius = Math.max(
+        0.05,
+        Math.min(
+          requestedMechanicalRadius,
+          Number.isFinite(groupGeometricRadiusLimit) ? groupGeometricRadiusLimit : requestedMechanicalRadius
+        )
+      );
+      radiusEvaluation = evaluateRadius(mechanicalRadius);
+    } else if (airGapCollision) {
+      warnings.push("The air-gap-safe outline also violates this group's own edge-thickness requirement.");
+      return {
+        elementIndices,
+        sharedSurfaceNumbers: group.sharedSurfaces,
+        clearApertureDiameter,
+        requestedMechanicalDiameter: unconstrainedRequestedMechanicalRadius * 2,
+        requiredOpticalRadius: minimumMechanicalRadius,
+        mechanicalDiameter: mechanicalRadius * 2,
+        frontExternalBevel,
+        rearExternalBevel,
+        interfaceBevelMode,
+        manufacturable: false,
+        safeInvalidGeometry: false,
+        adjacentAirGapRadiusLimit,
+        airGapConstraints: options.airGapConstraints || [],
+        warnings,
+        memberEdgeResults: radiusEvaluation.memberResults,
+        geometrySource: "Estimated — not supplied by patent",
+        internalGlassRegions: [],
+        sharedInterfacePaths: [],
+        outerPolygonPath: ""
+      };
+    }
+    const minimumEvaluation = opticalLayoutFallback ? { valid: true } : evaluateRadius(minimumMechanicalRadius);
+    if (!opticalLayoutFallback && !minimumEvaluation.valid) {
+      const conflicts = minimumEvaluation.memberResults
+        .filter((item) => !item.valid)
+        .map((item) => `L${item.index + 1} requires ${formatNumber(item.minimumEdgeThicknessMm, 3)} mm but has ${formatNumber(item.rawEdgeThickness, 3)} mm`)
+        .join("; ");
+      warnings.push(`Cemented group diameter conflict${conflicts ? `: ${conflicts}` : ""}.`);
+      warnings.push("Individual element valid but group assembly invalid.");
+      return {
+        elementIndices,
+        sharedSurfaceNumbers: group.sharedSurfaces,
+        clearApertureDiameter,
+        requestedMechanicalDiameter: unconstrainedRequestedMechanicalRadius * 2,
+        requiredOpticalRadius: minimumMechanicalRadius,
+        mechanicalDiameter: requestedMechanicalRadius * 2,
+        frontExternalBevel,
+        rearExternalBevel,
+        interfaceBevelMode,
+        manufacturable: false,
+        safeInvalidGeometry: false,
+        adjacentAirGapRadiusLimit,
+        airGapConstraints: options.airGapConstraints || [],
+        warnings,
+        memberEdgeResults: minimumEvaluation.memberResults,
+        geometrySource: "Estimated — not supplied by patent",
+        internalGlassRegions: [],
+        sharedInterfacePaths: [],
+        outerPolygonPath: ""
+      };
+    }
+    if (!opticalLayoutFallback) {
+      let low = minimumMechanicalRadius;
+      let high = requestedMechanicalRadius;
+      for (let iteration = 0; iteration < 56; iteration += 1) {
+        const mid = (low + high) / 2;
+        if (evaluateRadius(mid).valid) low = mid;
+        else high = mid;
+      }
+      mechanicalRadius = low;
+      radiusEvaluation = evaluateRadius(mechanicalRadius);
+      warnings.push("Mechanical diameter reduced to preserve cemented-group edge thickness.");
+    }
+  }
+
+  const frontStartRadius = mechanicalRadius - frontRuns.radialRun;
+  const rearStartRadius = mechanicalRadius - rearRuns.radialRun;
+  const internalGlassRegions = members.map((member, memberIndex) => {
+    const isFirst = memberIndex === 0;
+    const isLast = memberIndex === members.length - 1;
+    const frontRadius = isFirst ? frontStartRadius : mechanicalRadius;
+    const rearRadius = isLast ? rearStartRadius : mechanicalRadius;
+    const frontSamples = samplePrescriptionSurfacePoints(member.frontSurface, frontRadius, mapper);
+    const rearSamples = samplePrescriptionSurfacePoints(member.rearSurface, rearRadius, mapper, true);
+    if ([...frontSamples, ...rearSamples].some((point) => !Number.isFinite(point.mm.x))) return null;
+    const opticalFallbackRadius = Math.max(
+      0.05,
+      (toNumber(member.lens.clearApertureDiameter) || toNumber(member.lens.diameter) || clearApertureDiameter || 0.1) / 2
+    );
+    const opticalFallbackFill = buildOpticalFillFallbackPath(
+      member.frontSurface,
+      member.rearSurface,
+      opticalFallbackRadius,
+      mapper
+    );
+    const frontTop = frontSamples[frontSamples.length - 1];
+    const frontBottom = frontSamples[0];
+    const rearTop = rearSamples[0];
+    const rearBottom = rearSamples[rearSamples.length - 1];
+    const frontOuterTop = {
+      x: mapper.x(frontTop.mm.x - (isFirst ? frontRuns.axialRun : 0)),
+      y: mapper.y(mechanicalRadius)
+    };
+    const rearOuterTop = {
+      x: mapper.x(rearTop.mm.x + (isLast ? rearRuns.axialRun : 0)),
+      y: mapper.y(mechanicalRadius)
+    };
+    const frontOuterBottom = { ...frontOuterTop, y: mapper.y(-mechanicalRadius) };
+    const rearOuterBottom = { ...rearOuterTop, y: mapper.y(-mechanicalRadius) };
+    const polygonPoints = [
+      ...frontSamples.map((point) => point.mapped),
+      frontOuterTop,
+      rearOuterTop,
+      ...rearSamples.map((point) => point.mapped),
+      rearOuterBottom,
+      frontOuterBottom
+    ];
+    return {
+      elementIndex: member.index,
+      glassClass: `glass-tone-${member.index % 3}`,
+      frontAsphereActive: isSurfaceAsphereActive(member.frontSurface),
+      rearAsphereActive: isSurfaceAsphereActive(member.rearSurface),
+      polygonPoints,
+      polygonPath: svgPathFromPoints(polygonPoints, true),
+      opticalFillFallbackPath: opticalFallbackFill.path,
+      opticalFillFallbackSemiDiameter: opticalFallbackFill.radius,
+      frontPoints: frontSamples.map((point) => point.mapped),
+      rearPoints: rearSamples.map((point) => point.mapped),
+      frontPath: svgPathFromPoints(frontSamples.map((point) => point.mapped)),
+      rearPath: svgPathFromPoints(rearSamples.map((point) => point.mapped)),
+      frontOuterTop,
+      rearOuterTop,
+      frontOuterBottom,
+      rearOuterBottom
+    };
+  });
+  if (internalGlassRegions.some((region) => !region)) {
+    if (!opticalLayoutFallback && displayMode === "opticalLayout") {
+      const validSurfaceLimits = members.flatMap((member) => (
+        [member.frontSurface, member.rearSurface]
+          .filter((surface) => !isSurfaceAsphereActive(surface) && Math.abs(surface.radius || 0) > 1e-9)
+          .map((surface) => Math.abs(surface.radius) * 0.98)
+      ));
+      mechanicalRadius = Math.max(
+        0.05,
+        Math.min(
+          ...validSurfaceLimits,
+          mechanicalRadius,
+          clearApertureDiameter / 2
+        )
+      );
+      opticalLayoutFallback = true;
+      warnings.push("Cemented group optical layout radius reduced because a shared surface has no valid sag at the estimated diameter.");
+      return buildCementedGroupRenderModel(
+        {
+          ...group,
+          clearApertureDiameter: Math.min(group.clearApertureDiameter, mechanicalRadius * 2),
+          mechanicalDiameter: mechanicalRadius * 2
+        },
+        system,
+        mapper,
+        rayTraceResults,
+        {
+          ...options,
+          maximumMechanicalRadiusMm: mechanicalRadius,
+          cementedGroupDisplayMode: "opticalLayout"
+        }
+      );
+    }
+    warnings.push("Cemented group diameter conflict: a shared surface has no valid sag at the common diameter.");
+    return {
+      elementIndices,
+      sharedSurfaceNumbers: group.sharedSurfaces,
+      clearApertureDiameter,
+      requestedMechanicalDiameter: unconstrainedRequestedMechanicalRadius * 2,
+      requiredOpticalRadius: minimumMechanicalRadius,
+      mechanicalDiameter: mechanicalRadius * 2,
+      frontExternalBevel,
+      rearExternalBevel,
+      interfaceBevelMode,
+      manufacturable: false,
+      safeInvalidGeometry: false,
+      adjacentAirGapRadiusLimit,
+      airGapConstraints: options.airGapConstraints || [],
+      warnings,
+      memberEdgeResults: radiusEvaluation.memberResults,
+      geometrySource: "Estimated — not supplied by patent",
+      internalGlassRegions: [],
+      sharedInterfacePaths: [],
+      outerPolygonPath: ""
+    };
+  }
+
+  const firstRegion = internalGlassRegions[0];
+  const lastRegion = internalGlassRegions[internalGlassRegions.length - 1];
+  const externalFrontSamples = samplePrescriptionSurfacePoints(first.frontSurface, frontStartRadius, mapper);
+  const externalRearSamples = samplePrescriptionSurfacePoints(last.rearSurface, rearStartRadius, mapper, true);
+  const outerPolygonPoints = [
+    ...externalFrontSamples.map((point) => point.mapped),
+    firstRegion.frontOuterTop,
+    lastRegion.rearOuterTop,
+    ...externalRearSamples.map((point) => point.mapped),
+    lastRegion.rearOuterBottom,
+    firstRegion.frontOuterBottom
+  ];
+  const outerPolygonPath = svgPathFromPoints(outerPolygonPoints, true);
+  const sharedInterfacePaths = internalGlassRegions.slice(0, -1).map((region, index) => ({
+    surfaceNumber: group.sharedSurfaces[index],
+    points: region.rearPoints,
+    path: region.rearPath
+  }));
+  const internalInterfacesContained = sharedInterfacePaths.every((surface) => (
+    surface.points.every((point) => polygonContainsPoint(point, outerPolygonPoints))
+  ));
+  const polygonGeometryValid = !polygonSelfIntersects(outerPolygonPoints)
+    && internalGlassRegions.every((region) => !polygonSelfIntersects(region.polygonPoints))
+    && internalInterfacesContained;
+  const drawingSafety = getSafePatentDrawingSemiDiameter({
+    requestedMechanicalDiameter: unconstrainedRequestedMechanicalRadius * 2,
+    mechanicalDiameter: mechanicalRadius * 2,
+    apertureSource: members.every(({ lens }) => lens.apertureSource === "patent")
+      ? "patent"
+      : members.every(({ lens }) => lens.apertureSource === "svgEstimated")
+        ? "svgEstimated"
+        : "rayEnvelope",
+    geometrySource: members.every(({ lens }) => lens.manufacturingGeometrySource === "patent")
+      ? "Patent value"
+      : "Estimated — not supplied by patent",
+    manufacturingGeometrySource: members.every(({ lens }) => lens.manufacturingGeometrySource === "patent") ? "patent" : "estimated"
+  }, options.airGapConstraints || [], {
+    valid: polygonGeometryValid,
+    polygonGeometryValid
+  });
+  if (!polygonGeometryValid) {
+    warnings.push("Final cemented-group polygon failed silhouette containment validation.");
+  }
+  warnings.push(...drawingSafety.warnings);
+
+  return {
+    elementIndices,
+    sharedSurfaceNumbers: group.sharedSurfaces,
+    clearApertureDiameter,
+    requestedMechanicalDiameter: unconstrainedRequestedMechanicalRadius * 2,
+    requiredOpticalRadius: minimumMechanicalRadius,
+    mechanicalDiameter: mechanicalRadius * 2,
+    frontExternalBevel,
+    rearExternalBevel,
+    frontRuns,
+    rearRuns,
+    interfaceBevelMode,
+    outerPolygonPoints,
+    outerPolygonPath,
+    internalGlassRegions,
+    sharedInterfacePaths,
+    topEdge: { front: firstRegion.frontOuterTop, rear: lastRegion.rearOuterTop },
+    bottomEdge: { front: firstRegion.frontOuterBottom, rear: lastRegion.rearOuterBottom },
+    frontBevelTop: {
+      optical: externalFrontSamples[externalFrontSamples.length - 1].mapped,
+      outer: firstRegion.frontOuterTop
+    },
+    frontBevelBottom: {
+      optical: externalFrontSamples[0].mapped,
+      outer: firstRegion.frontOuterBottom
+    },
+    rearBevelTop: {
+      optical: externalRearSamples[0].mapped,
+      outer: lastRegion.rearOuterTop
+    },
+    rearBevelBottom: {
+      optical: externalRearSamples[externalRearSamples.length - 1].mapped,
+      outer: lastRegion.rearOuterBottom
+    },
+    memberEdgeResults: radiusEvaluation.memberResults,
+    manufacturable: !opticalLayoutFallback && !airGapCollision && polygonGeometryValid,
+    safeInvalidGeometry: opticalLayoutFallback || airGapCollision || drawingSafety.lineOnly,
+    polygonGeometryValid,
+    opticalLayoutFallback,
+    lineOnlyOpticalFallback: drawingSafety.lineOnly,
+    renderFilledGlass: polygonGeometryValid && drawingSafety.renderFilledGlass,
+    internalInterfacesContained,
+    adjacentAirGapRadiusLimit,
+    airGapConstraints: options.airGapConstraints || [],
+    warnings,
+    geometrySource: "Estimated — not supplied by patent"
+  };
+};
+
+const resolveOpticalLayoutGeometry = (system, mapper, rayTraceResults, options = {}) => {
+  const groups = buildCementedMechanicalGroups(state.lenses);
+  const initialModels = groups.map((group) => (
+    group.elements.length > 1
+      ? buildCementedGroupRenderModel(group, system, mapper, rayTraceResults, {
+        ...options,
+        cementedGroupDisplayMode: "opticalLayout"
+      })
+      : buildPrescriptionLensRenderModel(
+        mapper.positions[group.elements[0]],
+        mapper,
+        system.results[group.elements[0]],
+        state.lenses[group.elements[0]],
+        group.elements[0],
+        rayTraceResults,
+        { cementedGroupDisplayMode: "opticalLayout" }
+      )
+  ));
+  const requestedGroupRadii = groups.map((group, index) => {
+    const model = initialModels[index];
+    if (model) {
+      return Math.max(
+        0.05,
+        model.requestedSemiDiameter
+          || (model.requestedMechanicalDiameter || model.mechanicalDiameter || group.mechanicalDiameter) / 2
+      );
+    }
+    const lens = state.lenses[group.elements[0]];
+    return Math.max(
+      0.05,
+      (toNumber(lens.mechanicalDiameter) || toNumber(lens.diameter) || group.mechanicalDiameter || 0.1) / 2
+    );
+  });
+  const airGapConstraints = resolveAdjacentAirGapConstraints(
+    state.lenses,
+    system,
+    mapper,
+    requestedGroupRadii,
+    {
+      groups,
+      minimumAirGapClearanceMm: Number.isFinite(toNumber(options.minimumAirGapClearanceMm))
+        ? Math.max(0, toNumber(options.minimumAirGapClearanceMm))
+        : state.minimumAirGapClearanceMm
+    }
+  );
+  const groupRadiusLimits = groups.map(() => Infinity);
+  airGapConstraints.forEach((constraint) => {
+    groupRadiusLimits[constraint.leftGroupIndex] = Math.min(
+      groupRadiusLimits[constraint.leftGroupIndex],
+      constraint.renderSafeRadiusMm
+    );
+    groupRadiusLimits[constraint.rightGroupIndex] = Math.min(
+      groupRadiusLimits[constraint.rightGroupIndex],
+      constraint.renderSafeRadiusMm
+    );
+  });
+  const models = groups.map((group, index) => {
+    if (group.elements.length === 1) return null;
+    const relatedConstraints = airGapConstraints.filter((constraint) => (
+      constraint.leftGroupIndex === index || constraint.rightGroupIndex === index
+    ));
+    return buildCementedGroupRenderModel(group, system, mapper, rayTraceResults, {
+      ...options,
+      cementedGroupDisplayMode: "opticalLayout",
+      maximumMechanicalRadiusMm: groupRadiusLimits[index],
+      airGapConstraints: relatedConstraints
+    });
+  });
+  const individualModels = groups.map((group, index) => {
+    if (group.elements.length !== 1) return null;
+    const lensIndex = group.elements[0];
+    return buildPrescriptionLensRenderModel(
+      mapper.positions[lensIndex],
+      mapper,
+      system.results[lensIndex],
+      state.lenses[lensIndex],
+      lensIndex,
+      rayTraceResults,
+      {
+        cementedGroupDisplayMode: "opticalLayout",
+        maximumMechanicalRadiusMm: groupRadiusLimits[index]
+      }
+    );
+  });
+  const filledPolygonsForGroup = (groupIndex) => {
+    const groupModel = models[groupIndex];
+    if (groupModel) {
+      return groupModel.renderFilledGlass === false
+        ? []
+        : groupModel.internalGlassRegions.map((region) => region.polygonPoints);
+    }
+    const individualModel = individualModels[groupIndex];
+    if (individualModel?.renderFilledGlass === false) return [];
+    return individualModel?.polygonPoints?.length ? [individualModel.polygonPoints] : [];
+  };
+  airGapConstraints.forEach((constraint) => {
+    const leftPolygons = filledPolygonsForGroup(constraint.leftGroupIndex);
+    const rightPolygons = filledPolygonsForGroup(constraint.rightGroupIndex);
+    constraint.filledPolygonOverlap = leftPolygons.some((leftPolygon) => (
+      rightPolygons.some((rightPolygon) => polygonsOverlap(leftPolygon, rightPolygon))
+    ));
+    constraint.collisionStatus = constraint.filledPolygonOverlap
+      ? "Unsafe polygon overlap suppressed"
+      : constraint.valid
+        ? "Clear"
+        : "Constrained without filled overlap";
+    if (constraint.filledPolygonOverlap) {
+      [constraint.leftGroupIndex, constraint.rightGroupIndex].forEach((groupIndex) => {
+        const model = models[groupIndex] || individualModels[groupIndex];
+        if (!model) return;
+        model.suppressUnsafeGeometry = true;
+        model.manufacturable = false;
+        model.safeInvalidGeometry = true;
+        model.lineOnlyOpticalFallback = true;
+        model.renderFilledGlass = false;
+        model.warnings = [
+          ...(model.warnings || []),
+          "Estimated patent mechanical geometry is unsafe at the requested diameter; optical surfaces are drawn line-only to avoid fake overlapping glass.",
+          "Final filled polygon overlap detected; unsafe glass fill suppressed."
+        ];
+      });
+    }
+  });
+  return {
+    groups,
+    models,
+    initialModels,
+    requestedGroupRadii,
+    groupRadiusLimits,
+    airGapConstraints,
+    individualModels
+  };
+};
+
+const renderCementedGroupSvg = (model, mapper, annotationLanes = {}) => {
+  const renderLayer = annotationLanes.renderLayer || "all";
+  const diagramViewMode = normalizeDiagramViewMode(annotationLanes.diagramViewMode);
+  const elementLabel = model.elementIndices.map((index) => `L${index + 1}`).join(" + ");
+  if (!model.manufacturable && !model.safeInvalidGeometry && !model.lineOnlyOpticalFallback) {
+    if (suppressInDiagramDiagnostics(diagramViewMode)) return "";
+    if (!["all", "warnings"].includes(renderLayer)) return "";
+    const centerX = model.elementIndices.reduce((sum, index) => sum + mapper.positions[index].center, 0) / model.elementIndices.length;
+    return `
+      <g class="cemented-group is-not-manufacturable" data-elements="${model.elementIndices.join(",")}">
+        <title>${escapeHtml(`${elementLabel}: ${model.warnings.join(" ")}`)}</title>
+        <text class="geometry-warning-marker" x="${mapper.x(centerX)}" y="${mapper.y(model.clearApertureDiameter / 2) - 10}" text-anchor="middle">GROUP EDGE !</text>
+      </g>
+    `;
+  }
+  const centerX = model.elementIndices.reduce((sum, index) => sum + mapper.positions[index].center, 0) / model.elementIndices.length;
+  const groupClass = model.safeInvalidGeometry
+    ? isDebugDiagramViewMode(diagramViewMode)
+      ? "cemented-group is-air-gap-constrained"
+      : isMechanicalDiagnosticViewMode(diagramViewMode)
+        ? "cemented-group is-mechanically-constrained"
+        : "cemented-group is-optical-estimate"
+    : "cemented-group is-manufacturable";
+  const labelY = Number.isFinite(annotationLanes.lensLabelY)
+    ? annotationLanes.lensLabelY
+    : mapper.y(-model.mechanicalDiameter / 2) + 18;
+  const title = `<title>${escapeHtml(`${elementLabel}; common mechanical ${formatNumber(model.mechanicalDiameter, 3)} mm; clear ${formatNumber(model.clearApertureDiameter, 3)} mm; ${model.geometrySource}`)}</title>`;
+  if (renderLayer === "glass") {
+    const useOpticalFallbackFill = isOpticalRayViewMode(diagramViewMode)
+      && (model.renderFilledGlass === false || model.lineOnlyOpticalFallback);
+    const glassFill = useOpticalFallbackFill
+      ? model.internalGlassRegions
+        .filter((region) => region.opticalFillFallbackPath)
+        .map((region) => `
+          <path class="optical-fill-fallback ${region.glassClass}" data-element-index="${region.elementIndex}" d="${region.opticalFillFallbackPath}">
+            <title>${OPTICAL_FILL_FALLBACK_NOTE}</title>
+          </path>
+        `).join("")
+      : model.renderFilledGlass === false
+        ? ""
+        : model.internalGlassRegions.map((region) => `<path class="glass-fill ${region.glassClass}" data-element-index="${region.elementIndex}" d="${region.polygonPath}" />`).join("");
+    return `<g class="${groupClass}" data-elements="${model.elementIndices.join(",")}">${title}${glassFill}</g>`;
+  }
+  if (renderLayer === "optical") {
+    const fallbackSurfaces = model.lineOnlyOpticalFallback
+      ? model.internalGlassRegions.map((region) => `
+        <path class="surface-outline patent-line-only-surface ${region.frontAsphereActive ? "asphere-surface-outline" : ""}" data-element-index="${region.elementIndex}" d="${region.frontPath}" />
+        <path class="surface-outline patent-line-only-surface ${region.rearAsphereActive ? "asphere-surface-outline" : ""}" data-element-index="${region.elementIndex}" d="${region.rearPath}" />
+      `).join("")
+      : "";
+    const asphereSurfaces = model.lineOnlyOpticalFallback
+      ? ""
+      : model.internalGlassRegions.map((region) => `
+        ${region.frontAsphereActive ? `<path class="surface-outline asphere-surface-outline" data-element-index="${region.elementIndex}" d="${region.frontPath}" />` : ""}
+        ${region.rearAsphereActive ? `<path class="surface-outline asphere-surface-outline" data-element-index="${region.elementIndex}" d="${region.rearPath}" />` : ""}
+      `).join("");
+    return `<g class="${groupClass}" data-elements="${model.elementIndices.join(",")}">${fallbackSurfaces}${asphereSurfaces}${model.sharedInterfacePaths.map((surface) => `<path class="surface-outline cemented-shared-interface" data-surface-number="${surface.surfaceNumber}" d="${surface.path}" />`).join("")}</g>`;
+  }
+  if (renderLayer === "mechanical") {
+    if (model.lineOnlyOpticalFallback && isOpticalRayViewMode(diagramViewMode)) return "";
+    return `
+      <g class="${groupClass}" data-elements="${model.elementIndices.join(",")}">
+        <path class="cemented-group-outer-outline" d="${model.outerPolygonPath}" />
+        ${model.frontRuns.radialRun > 0 ? `
+          <line class="bevel-edge" x1="${model.frontBevelTop.optical.x}" y1="${model.frontBevelTop.optical.y}" x2="${model.frontBevelTop.outer.x}" y2="${model.frontBevelTop.outer.y}" />
+          <line class="bevel-edge" x1="${model.frontBevelBottom.optical.x}" y1="${model.frontBevelBottom.optical.y}" x2="${model.frontBevelBottom.outer.x}" y2="${model.frontBevelBottom.outer.y}" />
+        ` : ""}
+        ${model.rearRuns.radialRun > 0 ? `
+          <line class="bevel-edge" x1="${model.rearBevelTop.outer.x}" y1="${model.rearBevelTop.outer.y}" x2="${model.rearBevelTop.optical.x}" y2="${model.rearBevelTop.optical.y}" />
+          <line class="bevel-edge" x1="${model.rearBevelBottom.outer.x}" y1="${model.rearBevelBottom.outer.y}" x2="${model.rearBevelBottom.optical.x}" y2="${model.rearBevelBottom.optical.y}" />
+        ` : ""}
+        <line class="mechanical-edge" x1="${model.topEdge.front.x}" y1="${model.topEdge.front.y}" x2="${model.topEdge.rear.x}" y2="${model.topEdge.rear.y}" />
+        <line class="mechanical-edge" x1="${model.bottomEdge.front.x}" y1="${model.bottomEdge.front.y}" x2="${model.bottomEdge.rear.x}" y2="${model.bottomEdge.rear.y}" />
+      </g>
+    `;
+  }
+  if (renderLayer === "annotations") {
+    return `<text class="cemented-group-label" x="${mapper.x(centerX)}" y="${labelY}" text-anchor="middle">${elementLabel}</text>`;
+  }
+  if (renderLayer === "warnings") return "";
+  return `
+    <g class="${groupClass}" data-elements="${model.elementIndices.join(",")}" data-interface-bevel-mode="${model.interfaceBevelMode}">
+      ${title}
+      ${isOpticalRayViewMode(diagramViewMode) && (model.renderFilledGlass === false || model.lineOnlyOpticalFallback)
+        ? model.internalGlassRegions
+          .filter((region) => region.opticalFillFallbackPath)
+          .map((region) => `
+            <path class="optical-fill-fallback ${region.glassClass}" data-element-index="${region.elementIndex}" d="${region.opticalFillFallbackPath}">
+              <title>${OPTICAL_FILL_FALLBACK_NOTE}</title>
+            </path>
+          `).join("")
+        : model.renderFilledGlass === false ? "" : model.internalGlassRegions.map((region) => `<path class="glass-fill ${region.glassClass}" data-element-index="${region.elementIndex}" d="${region.polygonPath}" />`).join("")}
+      ${model.lineOnlyOpticalFallback ? model.internalGlassRegions.map((region) => `
+        <path class="surface-outline patent-line-only-surface ${region.frontAsphereActive ? "asphere-surface-outline" : ""}" data-element-index="${region.elementIndex}" d="${region.frontPath}" />
+        <path class="surface-outline patent-line-only-surface ${region.rearAsphereActive ? "asphere-surface-outline" : ""}" data-element-index="${region.elementIndex}" d="${region.rearPath}" />
+      `).join("") : `<path class="cemented-group-outer-outline" d="${model.outerPolygonPath}" />`}
+      ${model.lineOnlyOpticalFallback ? "" : model.internalGlassRegions.map((region) => `
+        ${region.frontAsphereActive ? `<path class="surface-outline asphere-surface-outline" data-element-index="${region.elementIndex}" d="${region.frontPath}" />` : ""}
+        ${region.rearAsphereActive ? `<path class="surface-outline asphere-surface-outline" data-element-index="${region.elementIndex}" d="${region.rearPath}" />` : ""}
+      `).join("")}
+      ${model.sharedInterfacePaths.map((surface) => `<path class="surface-outline cemented-shared-interface" data-surface-number="${surface.surfaceNumber}" d="${surface.path}" />`).join("")}
+      ${model.frontRuns.radialRun > 0 ? `
+        <line class="bevel-edge" x1="${model.frontBevelTop.optical.x}" y1="${model.frontBevelTop.optical.y}" x2="${model.frontBevelTop.outer.x}" y2="${model.frontBevelTop.outer.y}" />
+        <line class="bevel-edge" x1="${model.frontBevelBottom.optical.x}" y1="${model.frontBevelBottom.optical.y}" x2="${model.frontBevelBottom.outer.x}" y2="${model.frontBevelBottom.outer.y}" />
+      ` : ""}
+      ${model.rearRuns.radialRun > 0 ? `
+        <line class="bevel-edge" x1="${model.rearBevelTop.outer.x}" y1="${model.rearBevelTop.outer.y}" x2="${model.rearBevelTop.optical.x}" y2="${model.rearBevelTop.optical.y}" />
+        <line class="bevel-edge" x1="${model.rearBevelBottom.outer.x}" y1="${model.rearBevelBottom.outer.y}" x2="${model.rearBevelBottom.optical.x}" y2="${model.rearBevelBottom.optical.y}" />
+      ` : ""}
+      <line class="mechanical-edge" x1="${model.topEdge.front.x}" y1="${model.topEdge.front.y}" x2="${model.topEdge.rear.x}" y2="${model.topEdge.rear.y}" />
+      <line class="mechanical-edge" x1="${model.bottomEdge.front.x}" y1="${model.bottomEdge.front.y}" x2="${model.bottomEdge.rear.x}" y2="${model.bottomEdge.rear.y}" />
+      <text class="cemented-group-label" x="${mapper.x(centerX)}" y="${labelY}" text-anchor="middle">${elementLabel}</text>
+    </g>
+  `;
+};
+
+const buildCementedGroupRenderModels = (system, mapper, rayTraceResults, options = {}) => (
+  resolveOpticalLayoutGeometry(system, mapper, rayTraceResults, options).models.filter(Boolean)
+);
+
+const renderCementedGroupControls = (groupModels, airGapConstraints = [], patentWarnings = []) => `
+  <details class="cemented-display-control mechanical-diagnostics" ${suppressInDiagramDiagnostics(state.diagramViewMode) ? "" : "open"}>
+    <summary>Mechanical diagnostics</summary>
+    <div class="cemented-display-grid">
+      <label>
+        Interface bevel
+        <select data-action="update-cemented-display" data-field="cementedInterfaceBevelMode" ${state.cementedGroupDisplayMode === "opticalLayout" ? "disabled" : ""}>
+          <option value="hidden" ${state.cementedInterfaceBevelMode === "hidden" ? "selected" : ""}>Hidden</option>
+          <option value="estimated" ${state.cementedInterfaceBevelMode === "estimated" ? "selected" : ""}>Estimated</option>
+          <option value="manual" ${state.cementedInterfaceBevelMode === "manual" ? "selected" : ""}>Manual</option>
+        </select>
+      </label>
+      <label>
+        Interface bevel width
+        <input type="number" min="0" step="0.05" value="${state.cementedInterfaceBevelFaceWidthMm}" data-action="update-cemented-display-number" data-field="cementedInterfaceBevelFaceWidthMm" ${state.cementedGroupDisplayMode === "opticalLayout" ? "disabled" : ""}>
+        <span class="unit">mm</span>
+      </label>
+      <label>
+        Interface bevel angle
+        <input type="number" min="1" max="89" step="1" value="${state.cementedInterfaceBevelAngleDeg}" data-action="update-cemented-display-number" data-field="cementedInterfaceBevelAngleDeg" ${state.cementedGroupDisplayMode === "opticalLayout" ? "disabled" : ""}>
+        <span class="unit">deg</span>
+      </label>
+      <label>
+        Minimum air clearance
+        <input type="number" min="0" step="0.1" value="${state.minimumAirGapClearanceMm}" data-action="update-cemented-display-number" data-field="minimumAirGapClearanceMm">
+        <span class="unit">mm</span>
+      </label>
+    </div>
+    <p class="diagram-note">Optical layout uses one continuous mechanical silhouette per cemented assembly. Individual manufacturing can show estimated peripheral cement-filled edge relief without adding an optical air gap.</p>
+    <p class="diagram-note">The clean optical view suppresses construction markers. Mechanical and debug views expose estimated manufacturing limits without changing the patent prescription.</p>
+    ${groupModels.map((model) => `
+      <div class="cemented-group-diagnostic">
+        <strong>${model.elementIndices.map((index) => `L${index + 1}`).join(" + ")}</strong>
+        <span>Requested mechanical ${formatNumber(model.requestedMechanicalDiameter, 3)} mm</span>
+        <span>Final rendered mechanical ${formatNumber(model.mechanicalDiameter, 3)} mm</span>
+        <span>Required clear ${formatNumber(model.clearApertureDiameter, 3)} mm</span>
+        <span>Limiting constraint ${model.airGapConstraints?.length ? model.airGapConstraints.map((item) => `S${item.leftSurfaceNumber}–S${item.rightSurfaceNumber}`).join(", ") : "Element / group edge"}</span>
+        <span>Front bevel ${formatNumber(model.frontExternalBevel?.faceWidthMm, 3)} mm @ ${formatNumber(model.frontExternalBevel?.angleDeg, 1)}°</span>
+        <span>Rear bevel ${formatNumber(model.rearExternalBevel?.faceWidthMm, 3)} mm @ ${formatNumber(model.rearExternalBevel?.angleDeg, 1)}°</span>
+        <span>Interface ${model.interfaceBevelMode}</span>
+        <span>${model.memberEdgeResults.map((item) => `L${item.index + 1}: ${formatNumber(item.rawEdgeThickness, 3)} / ${formatNumber(item.minimumEdgeThicknessMm, 3)} mm`).join(" · ")}</span>
+        <span class="${model.manufacturable ? "status-good" : "status-bad"}">${model.manufacturable ? "Manufacturable estimate" : "Group assembly invalid"}</span>
+        <span>${escapeHtml(model.geometrySource)}</span>
+      </div>
+      ${model.warnings.map((warning) => `<p class="warning manufacturing-warning">${escapeHtml(warning)}</p>`).join("")}
+    `).join("")}
+    ${airGapConstraints.length ? `
+      <h4 class="air-gap-diagnostic-heading">Adjacent air-gap clearance</h4>
+      ${airGapConstraints.map((constraint) => `
+        <div class="cemented-group-diagnostic air-gap-diagnostic">
+          <strong>Surface ${constraint.leftSurfaceNumber ?? "?"} → ${constraint.rightSurfaceNumber ?? "?"}</strong>
+          <span>Vertex gap ${formatNumber(constraint.vertexGapMm, 3)} mm</span>
+          <span>Requested diameter ${formatNumber(constraint.requestedDiameterMm, 3)} mm</span>
+          <span>Zero-contact limit ${formatNumber(constraint.maximumZeroContactDiameterMm, 3)} mm</span>
+          <span>${formatNumber(constraint.minimumClearanceMm, 3)} mm clearance limit ${formatNumber(constraint.maximumSafeDiameterMm, 3)} mm</span>
+          <span>Limiting radial height ${formatNumber(constraint.limitingHeightMm, 3)} mm</span>
+          ${constraint.selectedClearanceAchievable ? "" : `<span>Non-intersecting fallback ${formatNumber(constraint.renderSafeDiameterMm, 3)} mm</span>`}
+          <span>Minimum sampled separation ${formatNumber(constraint.minimumSeparationMm, 3)} mm</span>
+          <span class="${constraint.valid && !constraint.filledPolygonOverlap ? "status-good" : "status-bad"}">${escapeHtml(constraint.collisionStatus || (constraint.valid ? "Clear" : "Collision constrained"))}</span>
+          <span>${escapeHtml(constraint.geometrySource)}</span>
+        </div>
+        ${constraint.warning ? `<p class="warning manufacturing-warning">${escapeHtml(constraint.warning)}</p>` : ""}
+      `).join("")}
+      <p class="diagram-note">Aperture assumptions: target ${escapeHtml(PRESETS[state.preset]?.apertureRatio || "not specified")}; physical stop ${formatNumber(state.apertureDiameter, 3)} mm; entrance pupil ${formatNumber(state.entrancePupilResult?.entrancePupilDiameter, 3)} mm; field ${formatNumber(PRESETS[state.preset]?.fieldAngleDeg, 2)}°${PRESETS[state.preset]?.imageFormat ? `; image format ${escapeHtml(PRESETS[state.preset].imageFormat)}` : ""}; ray-envelope safety margin 8% minimum 0.5 mm.</p>
+      <p class="diagram-note"><strong>Patent optical prescription</strong> preserves radii and axial spaces. <strong>Estimated optical aperture</strong> comes from traced rays. <strong>Estimated mechanical diameter</strong> adds chip-zone and bevel allowances.</p>
+    ` : ""}
+    ${patentWarnings.map((warning) => `<p class="warning manufacturing-warning">${escapeHtml(warning)}</p>`).join("")}
+  </details>
+`;
+
+const renderIndividualLensSvg = (system, mapper, rayTraceResults, index, options = {}) => {
+  const position = mapper.positions[index];
+  const result = system.results[index];
+  if (!result.valid) return "";
+  const lens = state.lenses[index];
+  const type = lens.type;
+  const patentClass = lens.patentSurfaceStart ? " is-patent-derived" : "";
+  const frontAsphere = createAsphereDescriptor(lens, "front", result.r1);
+  const rearAsphere = createAsphereDescriptor(lens, "rear", result.r2);
+  let model = options.prebuiltModel || buildPrescriptionLensRenderModel(
+    position,
+    mapper,
+    result,
+    lens,
+    index,
+    rayTraceResults,
+    options
+  );
+  if (!model) return "";
+  const diagramViewMode = normalizeDiagramViewMode(options.annotationLanes?.diagramViewMode);
+  if (isOpticalRayViewMode(diagramViewMode) && !(model.manufacturable || model.safeInvalidGeometry)) {
+    model = buildPrescriptionLensRenderModel(
+      position,
+      mapper,
+      result,
+      lens,
+      index,
+      rayTraceResults,
+      { ...options, mechanicalValidation: false }
+    ) || model;
+  }
+  const edgeClass = model.edgeClipped ? " is-edge-clipped" : "";
+  const manufacturabilityClass = model.manufacturable
+    ? " is-manufacturable"
+    : model.safeInvalidGeometry
+      ? isDebugDiagramViewMode(diagramViewMode)
+        ? " is-air-gap-constrained"
+        : isMechanicalDiagnosticViewMode(diagramViewMode)
+          ? " is-mechanically-constrained"
+          : " is-optical-estimate"
+      : " is-not-manufacturable";
+  const bevelClass = model.frontRuns.radialRun > 0 || model.rearRuns.radialRun > 0 ? " has-bevel" : " has-mathematical-edge";
+  const apertureLabel = {
+    patent: "Patent value",
+    rayEnvelope: "Ray-envelope estimate",
+    manual: "Manual value",
+    svgEstimated: "SVG-estimated",
+    estimated: "Fallback estimate"
+  }[model.apertureSource] || "Fallback estimate";
+  const glassClass = ` glass-tone-${index % 3}`;
+  const hideSharedFrontOutline = lens.patentFrontSharedCementedSurface === true;
+  const lensLabelY = Number.isFinite(options.annotationLanes?.lensLabelY)
+    ? options.annotationLanes.lensLabelY
+    : mapper.y(-model.semiDiameter) + 18;
+  const renderLayer = options.renderLayer || "all";
+  const cleanClass = model.cleanOpticalLayout ? " is-clean-optical-layout" : "";
+  const groupClass = `lens-shape lens-${type}${patentClass}${edgeClass}${manufacturabilityClass}${bevelClass}${cleanClass}`;
+  const title = `<title>L${index + 1}: ${apertureLabel}; clear ${formatNumber(model.clearApertureSemiDiameter * 2)} mm; mechanical ${formatNumber(model.semiDiameter * 2)} mm${model.geometryWarning ? `; ${model.geometryWarning}` : ""}</title>`;
+  if (renderLayer === "glass") {
+    const shouldFill = model.renderFilledGlass !== false && model.polygonPath;
+    const fallbackFill = isOpticalRayViewMode(diagramViewMode)
+      && (model.renderFilledGlass === false || model.lineOnlyOpticalFallback)
+      && model.opticalFillFallbackPath
+      ? `
+        <path class="optical-fill-fallback${glassClass}" data-element-index="${index}" d="${model.opticalFillFallbackPath}">
+          <title>${OPTICAL_FILL_FALLBACK_NOTE}</title>
+        </path>
+      `
+      : "";
+    return `<g class="${groupClass}" data-aperture-source="${model.apertureSource}">${title}${shouldFill ? `<path class="glass-fill${glassClass}" data-element-index="${index}" d="${model.polygonPath}" />` : fallbackFill}</g>`;
+  }
+  if (renderLayer === "optical") {
+    return `
+      <g class="${groupClass}">
+        ${hideSharedFrontOutline ? "" : `<path class="surface-outline front-surface-outline ${frontAsphere.active ? "asphere-surface-outline" : ""}" data-element-index="${index}" d="${model.frontPath}" />`}
+        <path class="surface-outline rear-surface-outline ${rearAsphere.active ? "asphere-surface-outline" : ""}" data-element-index="${index}" d="${model.rearPath}" />
+      </g>
+    `;
+  }
+  if (renderLayer === "mechanical") {
+    if (model.lineOnlyOpticalFallback && isOpticalRayViewMode(diagramViewMode)) return "";
+    if (!(model.manufacturable || model.safeInvalidGeometry)) return "";
+    return `
+      <g class="${groupClass}">
+        ${model.frontRuns.radialRun > 0 ? `
+          <line class="bevel-edge front-bevel-edge" x1="${model.frontBevelTop.optical.x}" y1="${model.frontBevelTop.optical.y}" x2="${model.frontBevelTop.outer.x}" y2="${model.frontBevelTop.outer.y}" />
+          <line class="bevel-edge front-bevel-edge" x1="${model.frontBevelBottom.optical.x}" y1="${model.frontBevelBottom.optical.y}" x2="${model.frontBevelBottom.outer.x}" y2="${model.frontBevelBottom.outer.y}" />
+        ` : ""}
+        ${model.rearRuns.radialRun > 0 ? `
+          <line class="bevel-edge rear-bevel-edge" x1="${model.rearBevelTop.outer.x}" y1="${model.rearBevelTop.outer.y}" x2="${model.rearBevelTop.optical.x}" y2="${model.rearBevelTop.optical.y}" />
+          <line class="bevel-edge rear-bevel-edge" x1="${model.rearBevelBottom.outer.x}" y1="${model.rearBevelBottom.outer.y}" x2="${model.rearBevelBottom.optical.x}" y2="${model.rearBevelBottom.optical.y}" />
+        ` : ""}
+        <line class="mechanical-edge" x1="${model.topEdge.front.x}" y1="${model.topEdge.front.y}" x2="${model.topEdge.rear.x}" y2="${model.topEdge.rear.y}" />
+        <line class="mechanical-edge" x1="${model.bottomEdge.front.x}" y1="${model.bottomEdge.front.y}" x2="${model.bottomEdge.rear.x}" y2="${model.bottomEdge.rear.y}" />
+      </g>
+    `;
+  }
+  if (renderLayer === "annotations") {
+    return `
+      <g class="${groupClass}">
+        <text class="individual-lens-label" x="${mapper.x(position.center)}" y="${lensLabelY}" text-anchor="middle">L${index + 1}</text>
+        ${frontAsphere.active ? `<text class="asphere-label" x="${mapper.x(position.end)}" y="${mapper.y(model.semiDiameter) - 8}" text-anchor="middle">ASP</text>` : ""}
+        ${rearAsphere.active ? `<text class="asphere-label" x="${mapper.x(position.start)}" y="${mapper.y(model.semiDiameter) - 8}" text-anchor="middle">ASP</text>` : ""}
+      </g>
+    `;
+  }
+  if (renderLayer === "warnings") {
+    if (suppressInDiagramDiagnostics(diagramViewMode)) return "";
+    return model.manufacturable || model.safeInvalidGeometry
+      ? ""
+      : `<text class="geometry-warning-marker" x="${mapper.x(position.center)}" y="${mapper.y(-model.semiDiameter) - 8}" text-anchor="middle">EDGE !</text>`;
+  }
+
+  return `
+    <g class="${groupClass}" data-aperture-source="${model.apertureSource}">
+      ${title}
+      ${model.renderFilledGlass !== false && model.polygonPath ? `<path class="glass-fill${glassClass}" data-element-index="${index}" d="${model.polygonPath}" />` : isOpticalRayViewMode(diagramViewMode) && model.opticalFillFallbackPath ? `
+        <path class="optical-fill-fallback${glassClass}" data-element-index="${index}" d="${model.opticalFillFallbackPath}">
+          <title>${OPTICAL_FILL_FALLBACK_NOTE}</title>
+        </path>
+      ` : ""}
+      ${hideSharedFrontOutline ? "" : `<path class="surface-outline front-surface-outline ${frontAsphere.active ? "asphere-surface-outline" : ""}" d="${model.frontPath}" />`}
+      <path class="surface-outline rear-surface-outline ${rearAsphere.active ? "asphere-surface-outline" : ""}" d="${model.rearPath}" />
+      ${(model.manufacturable || model.safeInvalidGeometry) && !model.lineOnlyOpticalFallback ? `
+        ${model.frontRuns.radialRun > 0 ? `
+          <line class="bevel-edge front-bevel-edge" x1="${model.frontBevelTop.optical.x}" y1="${model.frontBevelTop.optical.y}" x2="${model.frontBevelTop.outer.x}" y2="${model.frontBevelTop.outer.y}" />
+          <line class="bevel-edge front-bevel-edge" x1="${model.frontBevelBottom.optical.x}" y1="${model.frontBevelBottom.optical.y}" x2="${model.frontBevelBottom.outer.x}" y2="${model.frontBevelBottom.outer.y}" />
+        ` : ""}
+        ${model.rearRuns.radialRun > 0 ? `
+          <line class="bevel-edge rear-bevel-edge" x1="${model.rearBevelTop.outer.x}" y1="${model.rearBevelTop.outer.y}" x2="${model.rearBevelTop.optical.x}" y2="${model.rearBevelTop.optical.y}" />
+          <line class="bevel-edge rear-bevel-edge" x1="${model.rearBevelBottom.outer.x}" y1="${model.rearBevelBottom.outer.y}" x2="${model.rearBevelBottom.optical.x}" y2="${model.rearBevelBottom.optical.y}" />
+        ` : ""}
+        <line class="mechanical-edge" x1="${model.topEdge.front.x}" y1="${model.topEdge.front.y}" x2="${model.topEdge.rear.x}" y2="${model.topEdge.rear.y}" />
+        <line class="mechanical-edge" x1="${model.bottomEdge.front.x}" y1="${model.bottomEdge.front.y}" x2="${model.bottomEdge.rear.x}" y2="${model.bottomEdge.rear.y}" />
+      ` : `<text class="geometry-warning-marker" x="${mapper.x(position.center)}" y="${mapper.y(-model.semiDiameter) - 8}" text-anchor="middle">EDGE !</text>`}
+      <text class="individual-lens-label" x="${mapper.x(position.center)}" y="${lensLabelY}" text-anchor="middle">L${index + 1}</text>
+      ${frontAsphere.active ? `<text class="asphere-label" x="${mapper.x(position.end)}" y="${mapper.y(model.semiDiameter) - 8}" text-anchor="middle">ASP</text>` : ""}
+      ${rearAsphere.active ? `<text class="asphere-label" x="${mapper.x(position.start)}" y="${mapper.y(model.semiDiameter) - 8}" text-anchor="middle">ASP</text>` : ""}
+    </g>
+  `;
+};
+
+const renderCementedInterfaceReliefSvg = (system, mapper, rayTraceResults) => {
+  if (state.cementedInterfaceBevelMode === "hidden") return "";
+  const options = {
+    cementedGroupDisplayMode: "individualManufacturing",
+    cementedInterfaceBevelMode: state.cementedInterfaceBevelMode,
+    cementedInterfaceBevelFaceWidthMm: state.cementedInterfaceBevelFaceWidthMm,
+    cementedInterfaceBevelAngleDeg: state.cementedInterfaceBevelAngleDeg
+  };
+  return buildCementedMechanicalGroups(state.lenses).flatMap((group) => (
+    group.elements.slice(0, -1).map((leftIndex, pairIndex) => {
+      const rightIndex = group.elements[pairIndex + 1];
+      const leftModel = buildPrescriptionLensRenderModel(
+        mapper.positions[leftIndex],
+        mapper,
+        system.results[leftIndex],
+        state.lenses[leftIndex],
+        leftIndex,
+        rayTraceResults,
+        options
+      );
+      const rightModel = buildPrescriptionLensRenderModel(
+        mapper.positions[rightIndex],
+        mapper,
+        system.results[rightIndex],
+        state.lenses[rightIndex],
+        rightIndex,
+        rayTraceResults,
+        options
+      );
+      if (!leftModel?.manufacturable || !rightModel?.manufacturable) return "";
+      const topPath = svgPathFromPoints([
+        leftModel.rearBevelTop.optical,
+        leftModel.rearBevelTop.outer,
+        rightModel.frontBevelTop.outer,
+        rightModel.frontBevelTop.optical
+      ], true);
+      const bottomPath = svgPathFromPoints([
+        leftModel.rearBevelBottom.optical,
+        leftModel.rearBevelBottom.outer,
+        rightModel.frontBevelBottom.outer,
+        rightModel.frontBevelBottom.optical
+      ], true);
+      return `
+        <g class="cement-edge-relief" data-elements="${leftIndex},${rightIndex}">
+          <title>${state.cementedInterfaceBevelMode === "manual" ? "Manual" : "Estimated"} cement-filled edge relief; optical glass-to-glass interface unchanged</title>
+          <path d="${topPath}" />
+          <path d="${bottomPath}" />
+        </g>
+      `;
+    })
+  )).join("");
+};
+
+const renderAirGapConstraintWarningsSvg = (layoutResolution, mapper, diagramViewMode = "optical") => {
+  if (suppressInDiagramDiagnostics(diagramViewMode)) return "";
+  return (
+  (layoutResolution?.airGapConstraints || [])
+    .filter((constraint) => !constraint.valid)
+    .map((constraint) => {
+      const safeRadius = constraint.renderSafeRadiusMm;
+      const leftSafeX = prescriptionDrawingSurfaceXAtHeight(constraint.surfaceA, safeRadius);
+      const rightSafeX = prescriptionDrawingSurfaceXAtHeight(constraint.surfaceB, safeRadius);
+      const markerX = mapper.x((leftSafeX + rightSafeX) / 2);
+      const markerY = mapper.y(safeRadius);
+      if (isMechanicalDiagnosticViewMode(diagramViewMode)) {
+        return `
+          <g class="air-gap-mechanical-warning" data-left-surface="${constraint.leftSurfaceNumber}" data-right-surface="${constraint.rightSurfaceNumber}">
+            <line class="air-gap-mechanical-marker" x1="${mapper.x(leftSafeX)}" y1="${markerY}" x2="${mapper.x(rightSafeX)}" y2="${markerY}" />
+          </g>
+        `;
+      }
+      const requestedRadius = Math.max(safeRadius, constraint.requestedRadiusMm || safeRadius);
+      const leftConstruction = samplePrescriptionSurfacePoints(constraint.surfaceA, requestedRadius, mapper);
+      const rightConstruction = samplePrescriptionSurfacePoints(constraint.surfaceB, requestedRadius, mapper);
+      return `
+        <g class="air-gap-collision-warning" data-left-surface="${constraint.leftSurfaceNumber}" data-right-surface="${constraint.rightSurfaceNumber}">
+          <path class="air-gap-debug-construction" d="${svgPathFromPoints(leftConstruction.map((point) => point.mapped))}" />
+          <path class="air-gap-debug-construction" d="${svgPathFromPoints(rightConstruction.map((point) => point.mapped))}" />
+          <line class="air-gap-clearance-marker" x1="${mapper.x(leftSafeX)}" y1="${markerY}" x2="${mapper.x(rightSafeX)}" y2="${markerY}" />
+          <text class="air-gap-warning-marker" x="${markerX}" y="${markerY - 9}" text-anchor="middle">AIR GAP ! S${constraint.leftSurfaceNumber}–S${constraint.rightSurfaceNumber}</text>
+        </g>
+      `;
+    })
+    .join("")
+  );
+};
+
+const renderLensStackSvg = (
+  system,
+  mapper,
+  rayTraceResults,
+  layoutResolution = null,
+  annotationLanes = {},
+  renderLayer = "all"
+) => {
+  const mechanicalValidation = shouldUseMechanicalValidation();
+  if (!mechanicalValidation) {
+    return mapper.positions.map((position, index) => renderIndividualLensSvg(
+      system,
+      mapper,
+      rayTraceResults,
+      index,
+      {
+        mechanicalValidation: false,
+        renderLayer,
+        annotationLanes
+      }
+    )).join("");
+  }
+
+  if (state.cementedGroupDisplayMode === "individualManufacturing") {
+    const elements = mapper.positions.map((position, index) => renderIndividualLensSvg(
+      system,
+      mapper,
+      rayTraceResults,
+      index,
+      {
+        cementedGroupDisplayMode: "individualManufacturing",
+        cementedInterfaceBevelMode: state.cementedInterfaceBevelMode,
+        cementedInterfaceBevelFaceWidthMm: state.cementedInterfaceBevelFaceWidthMm,
+        cementedInterfaceBevelAngleDeg: state.cementedInterfaceBevelAngleDeg,
+        renderLayer,
+        annotationLanes
+      }
+    )).join("");
+    return `${elements}${["all", "mechanical"].includes(renderLayer) ? renderCementedInterfaceReliefSvg(system, mapper, rayTraceResults) : ""}`;
+  }
+
+  const resolution = layoutResolution || resolveOpticalLayoutGeometry(system, mapper, rayTraceResults);
+  const groups = resolution.groups;
+  return groups.map((group) => {
+    const groupIndex = groups.indexOf(group);
+    if (group.elements.length === 1) {
+      return renderIndividualLensSvg(system, mapper, rayTraceResults, group.elements[0], {
+        cementedGroupDisplayMode: "opticalLayout",
+        renderLayer,
+        annotationLanes,
+        prebuiltModel: resolution.individualModels[groupIndex]
+      });
+    }
+    const model = resolution.models[groupIndex];
+    return model ? renderCementedGroupSvg(model, mapper, { ...annotationLanes, renderLayer }) : "";
+  }).join("") + (["all", "warnings"].includes(renderLayer)
+    ? renderAirGapConstraintWarningsSvg(resolution, mapper, annotationLanes.diagramViewMode)
+    : "");
+};
+
+const buildOpticalPrescriptionModel = (preset = PRESETS[state.preset], prescription = state.prescription) => ({
+  name: preset?.name || state.designName || "Custom design",
+  sourcePatent: prescription?.sourcePatent || preset?.sourcePatent || null,
+  scaleFactor: preset?.focalLength === 50 && preset?.sourcePatent === "US2600610" ? 0.5 : null,
+  prescriptionType: prescription?.prescriptionType || preset?.prescriptionType || "element",
+  surfaces: prescription?.surfaces || preset?.surfaces || [],
+  lenses: state.lenses,
+  apertureStop: resolveApertureStopConfiguration(state, prescription),
+  focalLengthTarget: preset?.focalLength || prescription?.focalLength || null,
+  fNumber: parseApertureNumber(preset?.apertureRatio || prescription?.apertureRatio)
+});
+
+const buildVisualLensLayout = (system, mapper, rayTraceResults, layoutResolution = null, options = {}) => {
+  const mechanicalValidation = options.mechanicalValidation ?? shouldUseMechanicalValidation();
+  const resolution = mechanicalValidation
+    ? layoutResolution || resolveOpticalLayoutGeometry(system, mapper, rayTraceResults, options)
+    : null;
+  const visualElements = state.prescription?.prescriptionType === "visualOnly"
+    ? state.prescription.visualLayout?.elements || []
+    : [];
+  const visualGroups = visualElements.length
+    ? Object.values(visualElements.reduce((acc, element, index) => {
+      const key = Number.isFinite(toNumber(element.groupIndex)) ? String(element.groupIndex) : String(index);
+      acc[key] = acc[key] || { elements: [] };
+      acc[key].elements.push(index);
+      return acc;
+    }, {}))
+    : null;
+  const groups = resolution?.groups || visualGroups || mapper.positions.map((position, index) => ({ elements: [index] }));
+  const elements = groups.map((group, groupIndex) => {
+    if (resolution && group.elements.length > 1) {
+      const model = resolution.models[groupIndex];
+      return {
+        group,
+        model,
+        type: "cementedGroup",
+        paths: (model?.internalGlassRegions || []).map((region) => ({
+          elementIndex: region.elementIndex,
+          path: region.polygonPath || region.opticalFillFallbackPath,
+          glassClass: region.glassClass || `glass-tone-${region.elementIndex % 3}`
+        })).filter((item) => item.path),
+        sharedInterfaces: model?.sharedInterfacePaths || [],
+        label: group.elements.map((index) => `L${index + 1}`).join(" + ")
+      };
+    }
+
+    if (!resolution && group.elements.length > 1) {
+      const paths = group.elements.map((index) => {
+        const model = buildPrescriptionLensRenderModel(
+          mapper.positions[index],
+          mapper,
+          system.results[index],
+          state.lenses[index],
+          index,
+          rayTraceResults,
+          { mechanicalValidation: false }
+        );
+        return model ? {
+          elementIndex: index,
+          path: model.polygonPath || model.opticalFillFallbackPath,
+          glassClass: `glass-tone-${index % 3}`
+        } : null;
+      }).filter((item) => item?.path);
+      return {
+        group,
+        model: null,
+        type: "visualGroup",
+        paths,
+        sharedInterfaces: [],
+        label: group.elements.map((index) => `L${index + 1}`).join(" + ")
+      };
+    }
+
+    const index = group.elements[0];
+    const model = resolution?.individualModels?.[groupIndex] || buildPrescriptionLensRenderModel(
+      mapper.positions[index],
+      mapper,
+      system.results[index],
+      state.lenses[index],
+      index,
+      rayTraceResults,
+      { mechanicalValidation: false }
+    );
+    return {
+      group,
+      model,
+      type: "single",
+      paths: model ? [{
+        elementIndex: index,
+        path: model.polygonPath || model.opticalFillFallbackPath,
+        glassClass: `glass-tone-${index % 3}`
+      }].filter((item) => item.path) : [],
+      sharedInterfaces: [],
+      label: `L${index + 1}`
+    };
+  });
+
+  return {
+    opticalPrescription: buildOpticalPrescriptionModel(),
+    elements,
+    visualOnly: state.prescription?.prescriptionType === "visualOnly",
+    notes: state.prescription?.prescriptionType === "visualOnly"
+      ? ["Visual reference only; no full ray-trace prescription is supplied."]
+      : []
+  };
+};
+
+const renderProductionCutawayStackSvg = (system, mapper, rayTraceResults, layoutResolution, annotationLanes = {}, renderLayer = "glass") => {
+  const layout = buildVisualLensLayout(system, mapper, rayTraceResults, layoutResolution, {
+    cementedGroupDisplayMode: state.cementedGroupDisplayMode,
+    minimumAirGapClearanceMm: 0
+  });
+
+  if (renderLayer === "glass") {
+    return layout.elements.map((element) => `
+      <g class="production-cutaway-group" data-elements="${element.group.elements.join(",")}">
+        ${element.paths.map((item) => `
+          <path class="production-cutaway-lens ${item.glassClass}" data-element-index="${item.elementIndex}" d="${item.path}">
+            <title>${escapeHtml(layout.visualOnly ? "Visual reference silhouette only; not an optical prescription." : "Production cutaway silhouette; visual layer only.")}</title>
+          </path>
+        `).join("")}
+      </g>
+    `).join("");
+  }
+
+  if (renderLayer === "optical") {
+    return layout.elements.flatMap((element) => element.sharedInterfaces.map((surface) => `
+      <path class="production-cement-line" data-surface-number="${surface.surfaceNumber}" d="${surface.path}" />
+    `)).join("");
+  }
+
+  if (renderLayer === "annotations") {
+    return layout.elements.map((element) => {
+      const centers = element.group.elements.map((index) => mapper.positions[index]?.center).filter(Number.isFinite);
+      if (!centers.length) return "";
+      const center = centers.reduce((sum, value) => sum + value, 0) / centers.length;
+      return `<text class="production-lens-label" x="${mapper.x(center)}" y="${annotationLanes.lensLabelY}" text-anchor="middle">${escapeHtml(element.label)}</text>`;
+    }).join("");
+  }
+
+  return "";
+};
+
+const renderProductionApertureStopMarkerSvg = (rayTraceResults, mapper, annotationLanes = {}) => {
+  const results = Array.isArray(rayTraceResults) ? rayTraceResults : [rayTraceResults].filter(Boolean);
+  const stopSurface = results.flatMap((result) => result?.surfaces || []).find((surface) => surface.isStop);
+  if (!stopSurface || !Number.isFinite(stopSurface.x)) return "";
+
+  const semiDiameter = Math.max(0.1, stopSurface.stopSemiDiameter || stopSurface.semiDiameter || state.apertureDiameter / 2);
+  const x = mapper.x(stopSurface.x);
+  const top = mapper.y(semiDiameter);
+  const bottom = mapper.y(-semiDiameter);
+  const blade = Math.min(18, Math.max(6, (bottom - top) * 0.18));
+  return `
+    <g class="production-stop-marker">
+      <line x1="${x}" y1="${top}" x2="${x}" y2="${top + blade}" />
+      <line x1="${x}" y1="${bottom - blade}" x2="${x}" y2="${bottom}" />
+    </g>
+  `;
+};
+
+const visualCurveControl = (curve, width, side) => {
+  const base = width * 0.42;
+  if (curve === "near-flat") return width * 0.04 * (side === "front" ? 1 : -1);
+  if (curve === "convex-left") return side === "front" ? -base : -base * 0.45;
+  if (curve === "convex-right") return side === "front" ? base * 0.45 : base;
+  if (curve === "concave-left") return side === "front" ? base : base * 0.4;
+  if (curve === "concave-right") return side === "front" ? -base * 0.4 : -base;
+  if (curve === "slight-convex-left") return side === "front" ? -base * 0.42 : -base * 0.18;
+  return side === "front" ? -base * 0.32 : base * 0.32;
+};
+
+const visualReferenceElementPath = (element, x, axisY, scale) => {
+  const width = element.width * scale;
+  const semi = element.diameter * scale / 2;
+  const bevel = Math.min(semi * 0.12, Math.max(1.5, element.bevelSize * scale));
+  const top = axisY - semi;
+  const bottom = axisY + semi;
+  const xFront = x;
+  const xRear = x + width;
+  const frontCtrl = visualCurveControl(element.frontCurve, width, "front");
+  const rearCtrl = visualCurveControl(element.rearCurve, width, "rear");
+  return [
+    `M ${xFront + bevel} ${top}`,
+    `C ${xFront + frontCtrl} ${axisY - semi * 0.58}, ${xFront + frontCtrl} ${axisY + semi * 0.58}, ${xFront + bevel} ${bottom}`,
+    `L ${xRear - bevel} ${bottom}`,
+    `C ${xRear + rearCtrl} ${axisY + semi * 0.58}, ${xRear + rearCtrl} ${axisY - semi * 0.58}, ${xRear - bevel} ${top}`,
+    "Z"
+  ].join(" ");
+};
+
+const svgReferenceFitToOpticalGroup = (svgReference, mapper, system, lenses = state.lenses) => {
+  const normalizedReference = normalizeSvgReference(svgReference);
+  if (!normalizedReference?.href || !mapper || !system) return null;
+  const positions = (mapper.positions?.length ? mapper.positions : lensPositions(system, lenses)).filter(Boolean);
+  if (!positions.length) return null;
+
+  const groupStart = Math.min(...positions.map((position) => position.start));
+  const groupEnd = Math.max(...positions.map((position) => position.end));
+  const targetStart = mapper.x(groupStart);
+  const targetEnd = mapper.x(groupEnd);
+  const targetWidth = Math.max(1, Math.abs(targetEnd - targetStart));
+  const viewBox = normalizedReference.viewBox;
+  const contentBounds = normalizedReference.contentBounds || viewBox;
+  const contentWidthRatio = clamp(contentBounds.width / viewBox.width, 0.001, 1);
+  const imageWidth = targetWidth / contentWidthRatio;
+  const imageHeight = imageWidth * (viewBox.height / viewBox.width);
+  const minRatio = clamp((contentBounds.x - viewBox.x) / viewBox.width, 0, 1);
+  const centerYRatio = clamp((contentBounds.y + contentBounds.height / 2 - viewBox.y) / viewBox.height, 0, 1);
+  const imageX = Math.min(targetStart, targetEnd) - minRatio * imageWidth;
+  const imageY = mapper.axisY - centerYRatio * imageHeight;
+  const transform = normalizedReference.visualFlipX
+    ? `translate(${Math.min(targetStart, targetEnd) + Math.max(targetStart, targetEnd)} 0) scale(-1 1)`
+    : "";
+
+  return {
+    normalizedReference,
+    groupStart,
+    groupEnd,
+    targetStart: Math.min(targetStart, targetEnd),
+    targetEnd: Math.max(targetStart, targetEnd),
+    imageX,
+    imageY,
+    imageWidth,
+    imageHeight,
+    transform
+  };
+};
+
+const renderSvgProductionReferenceCutaway = ({
+  preset = PRESETS[state.preset],
+  svgReference = getProductionSvgReferenceForPreset(preset) || state.visualLayout?.svgReference,
+  includeFullViewSelector = true,
+  system = null,
+  mapper = null
+} = {}) => {
+  const normalizedReference = normalizeSvgReference(svgReference);
+  if (!normalizedReference?.href) return "";
+  const width = DIAGRAM_SIZE.width;
+  const height = DIAGRAM_SIZE.height;
+  const margin = { left: 110, right: 110, top: 72, bottom: 86 };
+  const axisY = height / 2;
+  const opticalFit = svgReferenceFitToOpticalGroup(normalizedReference, mapper, system);
+  const referenceAspect = normalizedReference.viewBox.width / normalizedReference.viewBox.height;
+  const maxWidth = width - margin.left - margin.right;
+  const maxHeight = height - margin.top - margin.bottom;
+  let imageWidth = opticalFit?.imageWidth || maxWidth;
+  let imageHeight = opticalFit?.imageHeight || (imageWidth / referenceAspect);
+  let imageX = opticalFit?.imageX ?? ((width - imageWidth) / 2);
+  let imageY = opticalFit?.imageY ?? (axisY - imageHeight / 2);
+  if (!opticalFit && imageHeight > maxHeight) {
+    imageHeight = maxHeight;
+    imageWidth = imageHeight * referenceAspect;
+    imageX = (width - imageWidth) / 2;
+    imageY = axisY - imageHeight / 2;
+  }
+  const flipTransform = opticalFit?.transform || (normalizedReference.visualFlipX
+    ? `translate(${imageX + imageWidth / 2} ${imageY + imageHeight / 2}) scale(-1 1) translate(${-imageWidth / 2} ${-imageHeight / 2})`
+    : `translate(${imageX} ${imageY})`);
+  const imageXInGroup = opticalFit ? imageX : 0;
+  const imageYInGroup = opticalFit ? imageY : 0;
+  const sourceFile = normalizedReference.sourceFile
+    ? ` Source: ${normalizedReference.sourceFile}.`
+    : "";
+  const viewBox = mapper ? diagramViewBox(mapper) : `0 0 ${width} ${height}`;
+  const diagramWidth = mapper?.width || width;
+  const diagramHeight = mapper?.height || height;
+  const axisLineX1 = mapper ? mapper.x(mapper.minX) : margin.left - 32;
+  const axisLineX2 = mapper ? mapper.x(mapper.maxX) : width - margin.right + 32;
+  const axisLineY = mapper?.axisY || axisY;
+
+  return `
+    <section class="diagram-panel ${state.diagramExpanded ? "is-expanded" : ""}">
+      <div class="panel-heading">
+        <div>
+          <h2 class="diagram-design-name">${escapeHtml(preset?.name || "Visual reference")}</h2>
+        </div>
+        <div class="diagram-actions">
+          <label class="diagram-view-mode-control">
+            <span>View</span>
+            <select data-action="update-diagram-view-mode" aria-label="Optical diagram view mode">
+              ${includeFullViewSelector
+                ? DIAGRAM_VIEW_OPTIONS.map((option) => `
+                  <option value="${option.value}" ${normalizeDiagramViewMode(state.diagramViewMode) === option.value ? "selected" : ""}>${option.label}</option>
+                `).join("")
+                : `<option value="productionCutaway" selected>Production Cutaway View</option>`}
+            </select>
+          </label>
+          ${includeFullViewSelector ? renderProductionSilhouetteSourceControl(preset) : ""}
+        </div>
+      </div>
+      <svg class="ray-diagram view-productionCutaway svg-production-reference" viewBox="${viewBox}" role="img" aria-label="Visual SVG production silhouette reference" data-visual-flip-x="${normalizedReference.visualFlipX ? "true" : "false"}">
+        <g class="layer-background">
+          <rect class="diagram-bg" x="0" y="0" width="${diagramWidth}" height="${diagramHeight}" />
+          <line class="axis-line" x1="${axisLineX1}" y1="${axisLineY}" x2="${axisLineX2}" y2="${axisLineY}" />
+        </g>
+        <g class="layer-glass-fill">
+          <g class="svg-reference-image"${flipTransform ? ` transform="${flipTransform}"` : ""}${opticalFit ? ` data-target-start="${opticalFit.targetStart}" data-target-end="${opticalFit.targetEnd}"` : ""}>
+            <image href="${escapeHtml(normalizedReference.href)}" x="${imageXInGroup}" y="${imageYInGroup}" width="${imageWidth}" height="${imageHeight}" preserveAspectRatio="xMidYMid meet">
+              <title>${escapeHtml(`${normalizedReference.label}; visual-only layer, not optical prescription data.${sourceFile}`)}</title>
+            </image>
+          </g>
+        </g>
+        <g class="layer-annotations">
+          <text class="svg-reference-label" x="${opticalFit ? (opticalFit.targetStart + opticalFit.targetEnd) / 2 : width / 2}" y="${imageY + imageHeight + 28}" text-anchor="middle">${escapeHtml(normalizedReference.label)}</text>
+          ${opticalFit ? `<text class="svg-reference-fit-label" x="${(opticalFit.targetStart + opticalFit.targetEnd) / 2}" y="${imageY + imageHeight + 44}" text-anchor="middle">SVG length aligned to optical prescription group</text>` : ""}
+        </g>
+      </svg>
+      <p class="diagram-note visual-reference-note">Visual reference only. This uploaded SVG silhouette is not used for ray tracing, BFD, MTF, flange distance, sensor coverage, or focus calculations.</p>
+    </section>
+  `;
+};
+
+const renderSvgReferenceOpticalOverlay = (preset, mapper, system) => {
+  const svgReference = getProductionSvgReferenceForPreset(preset);
+  if (!svgReference?.href || !state.showSvgReferenceOverlay) return "";
+  const fit = svgReferenceFitToOpticalGroup(svgReference, mapper, system);
+  if (!fit) return "";
+  return `
+    <g class="svg-optical-overlay" data-visual-flip-x="${fit.normalizedReference.visualFlipX ? "true" : "false"}"${fit.transform ? ` transform="${fit.transform}"` : ""} data-target-start="${fit.targetStart}" data-target-end="${fit.targetEnd}">
+      <image href="${escapeHtml(fit.normalizedReference.href)}" x="${fit.imageX}" y="${fit.imageY}" width="${fit.imageWidth}" height="${fit.imageHeight}" preserveAspectRatio="xMidYMid meet">
+        <title>${escapeHtml("Semi-transparent SVG production silhouette overlay; visual reference only.")}</title>
+      </image>
+    </g>
+  `;
+};
+
+const renderVisualReferenceCutaway = (layout = state.visualLayout, preset = PRESETS[state.preset]) => {
+  const normalizedLayout = normalizePrescription({
+    prescriptionType: "visualOnly",
+    focalLength: preset?.focalLength,
+    apertureRatio: preset?.apertureRatio,
+    svgReference: preset?.svgReference || layout?.svgReference || null,
+    visualLayout: layout || { elements: [] }
+  }).visualLayout;
+  if (normalizedLayout.svgReference?.href) {
+    return renderSvgProductionReferenceCutaway({
+      preset,
+      svgReference: normalizedLayout.svgReference,
+      includeFullViewSelector: false
+    });
+  }
+  const elements = normalizedLayout.elements || [];
+  const width = DIAGRAM_SIZE.width;
+  const height = DIAGRAM_SIZE.height;
+  const margin = { left: 118, right: 118, top: 76, bottom: 96 };
+  const totalUnits = elements.reduce((sum, element) => sum + element.width + element.gapAfter, 0);
+  const maxDiameter = Math.max(1, ...elements.map((element) => element.diameter));
+  const scale = Math.min(
+    (width - margin.left - margin.right) / Math.max(1, totalUnits),
+    (height - margin.top - margin.bottom) / Math.max(1, maxDiameter)
+  );
+  const axisY = height / 2;
+  let cursor = margin.left + ((width - margin.left - margin.right) - totalUnits * scale) / 2;
+  const stopAfterLabel = normalizedLayout.stop?.afterElement || "L3";
+  let stopX = null;
+  const elementMarkup = elements.map((element) => {
+    const x = cursor;
+    const path = visualReferenceElementPath(element, x, axisY, scale);
+    const labelX = x + element.width * scale / 2;
+    const label = element.label || "";
+    cursor += (element.width + element.gapAfter) * scale;
+    if (label === stopAfterLabel) stopX = x + (element.width + element.gapAfter / 2) * scale;
+    return `
+      <g class="visual-reference-element" data-label="${escapeHtml(label)}">
+        <path class="production-cutaway-lens" d="${path}">
+          <title>${escapeHtml(`${label}: visual-only production silhouette, not optical prescription data`)}</title>
+        </path>
+        <text class="production-lens-label" x="${labelX}" y="${axisY + maxDiameter * scale / 2 + 28}" text-anchor="middle">${escapeHtml(label)}</text>
+      </g>
+    `;
+  }).join("");
+  const stopDiameter = Math.max(1, normalizedLayout.stop?.diameter || 22) * scale;
+  const stopTop = axisY - stopDiameter / 2;
+  const stopBottom = axisY + stopDiameter / 2;
+  const stopBlade = Math.max(10, stopDiameter * 0.2);
+  const stopMarkup = Number.isFinite(stopX) ? `
+    <g class="production-stop-marker visual-reference-stop">
+      <line x1="${stopX}" y1="${stopTop}" x2="${stopX}" y2="${stopTop + stopBlade}" />
+      <line x1="${stopX}" y1="${stopBottom - stopBlade}" x2="${stopX}" y2="${stopBottom}" />
+    </g>
+  ` : "";
+
+  return `
+    <section class="diagram-panel visual-reference-panel">
+      <div class="panel-heading">
+        <div>
+          <h2 class="diagram-design-name">${escapeHtml(preset?.name || "Visual reference")}</h2>
+        </div>
+        <div class="diagram-actions">
+          <label class="diagram-view-mode-control">
+            <span>View</span>
+            <select data-action="update-diagram-view-mode" aria-label="Optical diagram view mode">
+              <option value="productionCutaway" selected>Production Cutaway View</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      <svg class="ray-diagram view-productionCutaway visual-reference-cutaway" viewBox="0 0 ${width} ${height}" role="img" aria-label="Visual-only production cutaway reference">
+        <g class="layer-background">
+          <rect class="diagram-bg" x="0" y="0" width="${width}" height="${height}" />
+          <line class="axis-line" x1="${margin.left - 24}" y1="${axisY}" x2="${width - margin.right + 24}" y2="${axisY}" />
+        </g>
+        <g class="layer-glass-fill">${elementMarkup}</g>
+        <g class="layer-stop">${stopMarkup}</g>
+        <g class="layer-annotations">
+          <text class="visual-reference-direction" x="${margin.left - 18}" y="${axisY - maxDiameter * scale / 2 - 22}" text-anchor="start">Object side → Image side</text>
+        </g>
+      </svg>
+      <p class="diagram-note visual-reference-note">Visual reference only / no full optical prescription. This production silhouette is not used for ray tracing, BFD, MTF, flange, sensor, or focus calculations.</p>
+    </section>
+  `;
+};
+
+const renderGapGuidesSvg = (mapper, annotationLanes = {}) => state.lenses.slice(0, -1).map((lens, index) => {
+  const nextPosition = mapper.positions[index + 1];
+  const currentPosition = mapper.positions[index];
+  if (!nextPosition || !currentPosition) return "";
+
+  const guideY = Number.isFinite(annotationLanes.dimensionY) ? annotationLanes.dimensionY : mapper.y(-30);
+  return `
+    <g class="gap-guide">
+      <line x1="${mapper.x(nextPosition.end)}" y1="${guideY}" x2="${mapper.x(currentPosition.start)}" y2="${guideY}" />
+      <text x="${mapper.x((nextPosition.end + currentPosition.start) / 2)}" y="${guideY + 14}" text-anchor="middle">${formatNumber(toNumber(lens.gapAfter) || 0)} mm</text>
+    </g>
+  `;
+}).join("");
+
+const renderGroupLengthSvg = () => "";
+
+const renderApertureStopMarkerSvg = (rayTraceResults, mapper, annotationLanes = {}, renderLayer = "all") => {
+  const results = Array.isArray(rayTraceResults) ? rayTraceResults : [rayTraceResults].filter(Boolean);
+  const stopSurface = results.flatMap((result) => result?.surfaces || []).find((surface) => surface.isStop);
+  if (!stopSurface || !Number.isFinite(stopSurface.x)) return "";
+
+  const semiDiameter = Math.max(0.1, stopSurface.stopSemiDiameter || stopSurface.semiDiameter || state.apertureDiameter / 2);
+  const x = mapper.x(stopSurface.x);
+  const openingTop = mapper.y(semiDiameter);
+  const openingBottom = mapper.y(-semiDiameter);
+  const outerSemiDiameter = Math.max(
+    semiDiameter + 5,
+    FULL_FRAME_SENSOR.height / 2,
+    Math.min(28, Math.max(16, semiDiameter * 1.18))
+  );
+  const outerTop = mapper.y(outerSemiDiameter);
+  const outerBottom = mapper.y(-outerSemiDiameter);
+  const cap = 7;
+
+  const geometry = `
+    <g class="aperture-stop-marker">
+      <line class="aperture-stop-bar" x1="${x}" y1="${outerTop}" x2="${x}" y2="${openingTop}" />
+      <line class="aperture-stop-bar" x1="${x}" y1="${openingBottom}" x2="${x}" y2="${outerBottom}" />
+      <line class="aperture-stop-cap" x1="${x - cap}" y1="${openingTop}" x2="${x + cap}" y2="${openingTop}" />
+      <line class="aperture-stop-cap" x1="${x - cap}" y1="${openingBottom}" x2="${x + cap}" y2="${openingBottom}" />
+    </g>
+  `;
+  const annotations = "";
+  if (renderLayer === "geometry") return geometry;
+  if (renderLayer === "annotations") return annotations;
+  return `${geometry}${annotations}`;
+};
+
+const renderRayPathsSvg = (system, spectralSystems, mapper) => {
+  if (!Number.isFinite(system.backFocalLength) || system.validCount === 0) return "";
+
+  const bendX = mapper.positions[0]?.center ?? system.backFocalLength;
+  const entryX = mapper.maxX - 4;
+  const rayHeights = [-FULL_FRAME_SENSOR.height / 2, 0, FULL_FRAME_SENSOR.height / 2];
+
+  return Object.entries(spectralSystems).map(([lineKey, lineSystem], colorIndex) => {
+    if (!Number.isFinite(lineSystem.backFocalLength)) return "";
+
+    const focusX = system.backFocalLength - lineSystem.backFocalLength;
+    const colorName = lineSystem.line?.color || SPECTRAL_LINES[lineKey]?.color || "green";
+    const yOffset = (colorIndex - 1) * 0.55;
+
+    const rays = rayHeights.map((height) => `
+      <polyline
+        class="ray ray-${colorName}"
+        points="${mapper.x(entryX)},${mapper.y(height + yOffset)} ${mapper.x(bendX)},${mapper.y(height + yOffset)} ${mapper.x(focusX)},${mapper.y(0)}"
+      />
+    `).join("");
+
+    return `
+      <g>
+        ${rays}
+        <circle class="focus-dot focus-${colorName}" cx="${mapper.x(focusX)}" cy="${mapper.y(0)}" r="4.5" />
+      </g>
+    `;
+  }).join("");
+};
+
+const renderRealRayPathsSvg = (rayTraceResults, mapper, options = {}) => {
+  const results = Array.isArray(rayTraceResults) ? rayTraceResults : [rayTraceResults].filter(Boolean);
+  const diagramViewMode = normalizeDiagramViewMode(options.diagramViewMode);
+  const samePoint = (a, b) => a && b
+    && Math.abs(a.x - b.x) < 1e-9
+    && Math.abs(a.y - b.y) < 1e-9;
+  const pointToSvg = (point) => `${mapper.x(point.x)},${mapper.y(point.y)}`;
+
+  return results
+    .flatMap((result) => (result.rays || []).map((ray) => ({ ray, result })))
+    .map(({ ray, result }) => {
+      const isValid = ray.status === "valid" && ray.sensorPoint;
+      const pathPoints = (ray.path || [])
+        .map((point) => ({ x: point.x, y: point.y }))
+        .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
+      const terminalPoint = isValid
+        ? ray.sensorPoint
+        : ray.hitPoint || ray.failurePoint || ray.failedPoint || null;
+      if (terminalPoint && Number.isFinite(terminalPoint.x) && Number.isFinite(terminalPoint.y)) {
+        const terminal2d = { x: terminalPoint.x, y: terminalPoint.y };
+        if (!samePoint(pathPoints[pathPoints.length - 1], terminal2d)) pathPoints.push(terminal2d);
+      }
+      if (pathPoints.length < 2) return "";
+      const points = pathPoints.map(pointToSvg).join(" ");
+      const roleClass = ray.role ? ` ${ray.role.split(" ").map((role) => `real-ray-${role}`).join(" ")}` : "";
+      const fieldClass = result.fieldKey ? ` real-ray-${result.fieldKey}` : "";
+      const spectralLine = SPECTRAL_LINES[result.spectralLineKey] || result.spectralLine;
+      const colorClass = spectralLine?.color ? ` real-ray-${spectralLine.color}` : "";
+      const failedClass = isValid ? "" : " real-ray-failed";
+      const statusTitle = isValid ? "" : `<title>${escapeHtml(`Ray stopped: ${ray.status || "invalid"}`)}</title>`;
+      const lastPoint = pathPoints[pathPoints.length - 1];
+      const marker = !isValid && isDebugDiagramViewMode(diagramViewMode)
+        ? `<circle class="real-ray-failure-marker" cx="${mapper.x(lastPoint.x)}" cy="${mapper.y(lastPoint.y)}" r="2.4"><title>${escapeHtml(ray.status || "ray failed")}</title></circle>`
+        : "";
+
+      return `<polyline class="real-ray${fieldClass}${colorClass}${roleClass}${failedClass}" points="${points}">${statusTitle}</polyline>${marker}`;
+    })
+    .join("");
+};
+
+const diagramViewBox = (mapper, diagramViewMode = state.diagramViewMode) => {
+  const mode = normalizeDiagramViewMode(diagramViewMode);
+  const baseZoom = isOpticalRayViewMode(mode) ? OPTICAL_SIDE_VIEW_DEFAULT_ZOOM : 1;
+  const zoom = clamp(baseZoom * clamp(state.diagramZoom, 1, 6), 1, 6);
+  const width = mapper.width / zoom;
+  const height = mapper.height / zoom;
+  const maxX = mapper.width - width;
+  const maxY = mapper.height - height;
+  const x = clamp(Number.isFinite(state.diagramViewX) ? state.diagramViewX : maxX / 2, 0, maxX);
+  const y = clamp(Number.isFinite(state.diagramViewY) ? state.diagramViewY : maxY / 2, 0, maxY);
+  return `${x} ${y} ${width} ${height}`;
+};
+
+const diagramAnnotationLanes = (mapper, maximumDrawnRadius) => {
+  const lensBottomY = mapper.y(-maximumDrawnRadius);
+  const lensLabelY = Math.min(mapper.height - 92, lensBottomY + 20);
+  const stopDiameterY = Math.min(mapper.height - 70, lensLabelY + 23);
+  const dimensionY = Math.min(mapper.height - 54, stopDiameterY + 16);
+  const groupLengthY = mapper.height - 12;
+  return {
+    topLabelY: 24,
+    secondaryTopLabelY: 48,
+    lensLabelY,
+    stopDiameterY,
+    dimensionY,
+    groupLengthY
+  };
+};
+
+const validateSequentialDisplayConvention = (system, mapper, lenses = state.lenses, preset = PRESETS[state.preset]) => {
+  const warnings = [];
+  const positions = (mapper?.positions?.length ? mapper.positions : lensPositions(system, lenses)).filter(Boolean);
+  if (positions.length >= 2) {
+    const l1X = mapper.x(positions[0].center);
+    const lastLensX = mapper.x(positions[positions.length - 1].center);
+    if (!(l1X < lastLensX)) {
+      warnings.push("Display order does not match sequential optical order. Expected L1 at object side / left.");
+    }
+    const imagePlaneX = mapper.x(0);
+    if (!(imagePlaneX > lastLensX)) {
+      warnings.push("Image plane is not displayed to the right of the last element.");
+    }
+  }
+  return { warnings, valid: warnings.length === 0 };
+};
+
+const renderOpticalDiagram = (system, spectralSystems, rayTraceResult) => {
+  const mapper = createSvgPointMapper(system, spectralSystems);
+  const selectedPreset = PRESETS[state.preset] || PRESETS[DEFAULT_PRESET_KEY];
+  const mechanicalValidation = shouldUseMechanicalValidation(selectedPreset, state.lenses, state.prescription);
+  const diagramViewMode = normalizeDiagramViewMode(state.diagramViewMode);
+  const displayValidation = validateSequentialDisplayConvention(system, mapper, state.lenses, selectedPreset);
+  const isOpticalRayView = isOpticalRayViewMode(diagramViewMode);
+  const isPatentLineView = isPatentLineViewMode(diagramViewMode);
+  const isProductionCutawayView = isProductionCutawayViewMode(diagramViewMode);
+  const productionSvgReference = isProductionCutawayView
+    && normalizeProductionSilhouetteSource(state.productionSilhouetteSource, selectedPreset) === "svgReference"
+    ? getProductionSvgReferenceForPreset(selectedPreset)
+    : null;
+  if (productionSvgReference?.href) {
+    return renderSvgProductionReferenceCutaway({
+      preset: selectedPreset,
+      svgReference: productionSvgReference,
+      includeFullViewSelector: true,
+      system,
+      mapper
+    });
+  }
+  const layoutClearanceMm = suppressInDiagramDiagnostics(diagramViewMode)
+    ? 0
+    : state.minimumAirGapClearanceMm;
+  const layoutResolution = mechanicalValidation
+    ? resolveOpticalLayoutGeometry(system, mapper, rayTraceResult, {
+      cementedGroupDisplayMode: state.cementedGroupDisplayMode,
+      cementedInterfaceBevelMode: state.cementedInterfaceBevelMode,
+      minimumAirGapClearanceMm: layoutClearanceMm
+    })
+    : null;
+  const cementedGroupModels = layoutResolution?.models.filter(Boolean) || [];
+  const maximumDrawnRadius = Math.max(
+    FULL_FRAME_SENSOR.diagonal / 2,
+    ...(layoutResolution
+      ? layoutResolution.groups.map((group, groupIndex) => {
+        const model = layoutResolution.models[groupIndex];
+        if (model) return model.mechanicalDiameter / 2;
+        const individualModel = layoutResolution.individualModels[groupIndex];
+        if (individualModel) return individualModel.semiDiameter;
+        const lens = state.lenses[group.elements[0]];
+        return (toNumber(lens.mechanicalDiameter) || toNumber(lens.diameter) || 0) / 2;
+      })
+      : state.lenses.map((lens) => (
+        (toNumber(lens.mechanicalDiameter) || toNumber(lens.diameter) || 0) / 2
+      )))
+  );
+  const annotationLanes = {
+    ...diagramAnnotationLanes(mapper, maximumDrawnRadius),
+    diagramViewMode
+  };
+  const focusWarning = Number.isFinite(system.backFocalLength) && system.backFocalLength < -1
+    ? "Possible radius sign convention or prescription error: paraxial back focal distance is on the object side."
+    : "";
+  const hasValidFocus = Number.isFinite(system.backFocalLength) && system.validCount > 0;
+  const sensorX = mapper.x(0);
+  const sonyFlangeX = mapper.x(SONY_E_FLANGE_DISTANCE);
+  const sensorTop = mapper.y(FULL_FRAME_SENSOR.height / 2);
+  const sensorBottom = mapper.y(-FULL_FRAME_SENSOR.height / 2);
+  const diagonalTop = mapper.y(FULL_FRAME_SENSOR.diagonal / 2);
+  const diagonalBottom = mapper.y(-FULL_FRAME_SENSOR.diagonal / 2);
+  const diagonalGuideX = sensorX - 13;
+  const bflX = hasValidFocus ? mapper.x(system.backFocalLength) : mapper.x(55);
+  const sonyLineTop = mapper.axisY - Math.min(96, mapper.height * 0.22);
+  const sonyLineBottom = mapper.axisY + Math.min(104, mapper.height * 0.24);
+  const bfdGuideY = mapper.axisY + Math.min(38, mapper.height * 0.11);
+  const zoomPercent = Math.round(clamp(state.diagramZoom, 1, 6) * 100);
+
+  return `
+    <section class="diagram-panel ${state.diagramExpanded ? "is-expanded" : ""}">
+      <div class="panel-heading">
+        <div>
+          <h2 class="diagram-design-name">${escapeHtml(selectedPreset?.name || "Custom design")}</h2>
+        </div>
+        <div class="diagram-actions">
+          <label class="diagram-view-mode-control">
+            <span>View</span>
+            <select data-action="update-diagram-view-mode" aria-label="Optical diagram view mode">
+              ${DIAGRAM_VIEW_OPTIONS.map((option) => `
+                <option value="${option.value}" ${diagramViewMode === option.value ? "selected" : ""}>${option.label}</option>
+              `).join("")}
+            </select>
+          </label>
+          ${isOpticalRayView && getProductionSvgReferenceForPreset(selectedPreset)?.href ? `
+            <button
+              class="diagram-icon-toggle ${state.showSvgReferenceOverlay ? "is-active" : ""}"
+              type="button"
+              data-action="toggle-svg-reference-overlay"
+              aria-pressed="${state.showSvgReferenceOverlay ? "true" : "false"}"
+              title="Toggle semi-transparent SVG reference overlay"
+            >SVG</button>
+          ` : ""}
+          ${mechanicalValidation && state.prescription?.prescriptionType !== "visualOnly" ? `
+            <button
+              class="diagram-icon-toggle ${state.cementedGroupDisplayMode === "individualManufacturing" ? "is-active" : ""}"
+              type="button"
+              data-action="toggle-cemented-layout"
+              aria-pressed="${state.cementedGroupDisplayMode === "individualManufacturing" ? "true" : "false"}"
+              aria-label="${state.cementedGroupDisplayMode === "individualManufacturing" ? "Switch to Optical layout" : "Switch to Individual manufacturing"}"
+              title="${state.cementedGroupDisplayMode === "individualManufacturing" ? "Switch to Optical layout" : "Switch to Individual manufacturing"}"
+            >◧</button>
+          ` : ""}
+          ${isProductionCutawayView ? renderProductionSilhouetteSourceControl(selectedPreset) : ""}
+          ${state.diagramExpanded || state.diagramZoom > 1.001 ? `<span class="zoom-badge">${zoomPercent}%</span>` : ""}
+        </div>
+      </div>
+      <svg class="ray-diagram view-${diagramViewMode}" viewBox="${diagramViewBox(mapper, diagramViewMode)}" role="img" aria-label="RGB ray path side view with full-frame sensor and focus markers">
+        <defs>
+          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#dfe8e8" stroke-width="1" />
+          </pattern>
+          <linearGradient id="sensorGradient" x1="0" x2="1">
+            <stop offset="0%" stop-color="#263238" />
+            <stop offset="100%" stop-color="#48626a" />
+          </linearGradient>
+        </defs>
+
+        <g class="layer-background">
+          <rect class="diagram-bg" x="0" y="0" width="${mapper.width}" height="${mapper.height}" />
+          ${isProductionCutawayView || isPatentLineView ? "" : `<rect x="0" y="0" width="${mapper.width}" height="${mapper.height}" fill="url(#grid)" opacity="0.55" />`}
+          <line class="axis-line" x1="${mapper.x(mapper.minX)}" y1="${mapper.axisY}" x2="${mapper.x(mapper.maxX)}" y2="${mapper.axisY}" />
+          ${isProductionCutawayView ? "" : `
+            <line class="sensor-line" x1="${sensorX}" y1="${sensorTop}" x2="${sensorX}" y2="${sensorBottom}" />
+            <line class="sensor-diagonal" x1="${diagonalGuideX}" y1="${diagonalTop}" x2="${diagonalGuideX}" y2="${diagonalBottom}" />
+            <line class="sony-flange-line" x1="${sonyFlangeX}" y1="${sonyLineTop}" x2="${sonyFlangeX}" y2="${sonyLineBottom}" />
+            ${hasValidFocus ? `<line class="bfd-guide-line" x1="${Math.min(sensorX, bflX)}" y1="${bfdGuideY}" x2="${Math.max(sensorX, bflX)}" y2="${bfdGuideY}" />` : ""}
+          `}
+        </g>
+        <g class="layer-glass-fill">${
+          isProductionCutawayView
+            ? renderProductionCutawayStackSvg(system, mapper, rayTraceResult, layoutResolution, annotationLanes, "glass")
+            : isPatentLineView
+              ? ""
+              : `${renderLensStackSvg(system, mapper, rayTraceResult, layoutResolution, annotationLanes, "glass")}${renderSvgReferenceOpticalOverlay(selectedPreset, mapper, system)}`
+        }</g>
+        <g class="layer-rays">
+          ${isProductionCutawayView || isPatentLineView
+            ? ""
+            : state.showRealRays
+            ? renderRealRayPathsSvg(rayTraceResult, mapper, { diagramViewMode })
+            : renderRayPathsSvg(system, spectralSystems, mapper)}
+        </g>
+        <g class="layer-optical-surfaces">
+          ${isProductionCutawayView
+            ? renderProductionCutawayStackSvg(system, mapper, rayTraceResult, layoutResolution, annotationLanes, "optical")
+            : renderLensStackSvg(system, mapper, rayTraceResult, layoutResolution, annotationLanes, "optical")}
+        </g>
+        <g class="layer-mechanical-edges">${isProductionCutawayView || isPatentLineView ? "" : renderLensStackSvg(system, mapper, rayTraceResult, layoutResolution, annotationLanes, "mechanical")}</g>
+        <g class="layer-stop">${isProductionCutawayView ? renderProductionApertureStopMarkerSvg(rayTraceResult, mapper, annotationLanes) : renderApertureStopMarkerSvg(rayTraceResult, mapper, annotationLanes, "geometry")}</g>
+        <g class="layer-annotations">
+          ${isProductionCutawayView
+            ? renderProductionCutawayStackSvg(system, mapper, rayTraceResult, layoutResolution, annotationLanes, "annotations")
+            : renderLensStackSvg(system, mapper, rayTraceResult, layoutResolution, annotationLanes, "annotations")}
+          ${isProductionCutawayView ? "" : renderApertureStopMarkerSvg(rayTraceResult, mapper, annotationLanes, "annotations")}
+          ${isOpticalRayView ? "" : renderGapGuidesSvg(mapper, annotationLanes)}
+          ${isProductionCutawayView ? "" : `
+            <text class="diagram-label sony-e-label" x="${sonyFlangeX}" y="${sonyLineTop - 8}" text-anchor="middle">Sony E</text>
+          `}
+        </g>
+        <g class="layer-warnings">${renderLensStackSvg(system, mapper, rayTraceResult, layoutResolution, annotationLanes, "warnings")}</g>
+      </svg>
+      ${state.prescription?.prescriptionType === "visualOnly" ? `<p class="diagram-note visual-reference-note">Visual reference only / no full optical prescription. Production layout is not used for ray tracing accuracy.</p>` : ""}
+      ${focusWarning ? `<p class="warning manufacturing-warning">${escapeHtml(focusWarning)}</p>` : ""}
+      ${displayValidation.warnings.map((warning) => `<p class="warning manufacturing-warning">${escapeHtml(warning)}</p>`).join("")}
+    </section>
+  `;
+};
+
+const renderMechanicalDiagnosticsPanel = (system, rayTraceResult) => {
+  const selectedPreset = PRESETS[state.preset] || PRESETS[DEFAULT_PRESET_KEY];
+  const mechanicalValidation = shouldUseMechanicalValidation(selectedPreset, state.lenses, state.prescription);
+  if (!mechanicalValidation) {
+    return `
+      <div class="empty-analysis-note">
+        <strong>No patent mechanical diagnostics for this preset</strong>
+        <span>Educational element presets use a clean optical teaching layout without patent manufacturing constraints.</span>
+      </div>
+    `;
+  }
+
+  const mapper = createSvgPointMapper(system, getSpectralSystems());
+  const diagramViewMode = normalizeDiagramViewMode(state.diagramViewMode);
+  const layoutClearanceMm = suppressInDiagramDiagnostics(diagramViewMode)
+    ? 0
+    : state.minimumAirGapClearanceMm;
+  const layoutResolution = resolveOpticalLayoutGeometry(system, mapper, rayTraceResult, {
+    cementedGroupDisplayMode: state.cementedGroupDisplayMode,
+    cementedInterfaceBevelMode: state.cementedInterfaceBevelMode,
+    minimumAirGapClearanceMm: layoutClearanceMm
+  });
+
+  return renderCementedGroupControls(
+    layoutResolution.models.filter(Boolean),
+    layoutResolution.airGapConstraints,
+    state.patentApertureWarnings || []
+  );
+};
+
+const presetMetaBadges = (preset) => {
+  const badges = [];
+  if (preset.sourceType === "patent") {
+    badges.push("Patent-based", "Surface prescription");
+    if (preset.sourcePatent) badges.push(`Source: ${preset.sourcePatent}`);
+    if (preset.example) badges.push(`Example: ${preset.example}`);
+    if ((preset.surfaces || []).some((surface) => surface.apertureEstimated !== false)) badges.push("Estimated aperture");
+  } else if (preset.sourceType === "visualReference") {
+    badges.push("Visual reference", "Production layout only");
+  } else if (preset.sourceType === "educational") {
+    badges.push("Educational", "Approximate layout");
+  }
+  return badges.map((badge) => `<span>${escapeHtml(badge)}</span>`).join("");
+};
+
+const presetHasDrawablePrescription = (preset) => (
+  preset?.prescriptionType === "visualOnly"
+  || preset?.sourceType === "visualReference"
+  ||
+  preset?.sourceType !== "patent"
+  || (preset.surfaces || []).some((surface) => (
+    toNumber(surface.nAfter) > 1
+    && toNumber(surface.distanceToNext) > 0
+  ))
+);
+
+const presetMenuLabel = (preset) => {
+  const name = preset?.name || "Preset";
+  return name
+    .replace(/\s+—\s+US[A-Z0-9-]+.*$/i, "")
+    .replace(/\s+—\s+DE[A-Z0-9-]+.*$/i, "")
+    .replace(/\s+—\s+FR[A-Z0-9-]+.*$/i, "")
+    .replace(/\s+—\s+WO[A-Z0-9-]+.*$/i, "")
+    .replace(/\s+Example\s+\d+$/i, "")
+    .trim();
+};
+
+const presetSelectEntries = () => (
+  Object.entries(PRESETS).filter(([key, preset]) => (
+    key !== "custom"
+    && !OLD_MISLEADING_ZEISS_PRESET_KEYS.includes(key)
+    && ["patent", "visualReference"].includes(preset.sourceType)
+    && presetHasDrawablePrescription(preset)
+  ))
+);
+
+const renderPresetSelect = () => {
+  const presetEntries = Object.entries(PRESETS).filter(([key, preset]) => (
+    key !== "custom"
+    && !OLD_MISLEADING_ZEISS_PRESET_KEYS.includes(key)
+    && ["patent", "visualReference"].includes(preset.sourceType)
+    && presetHasDrawablePrescription(preset)
+  ));
+
+  return `
+    <label class="header-select-control preset-select-control">
+      <span>${tx("classicPreset")}</span>
+      <select data-action="select-preset" aria-label="${tx("classicPreset")}">
+        ${presetEntries.map(([key, preset]) => `
+          <option value="${key}" ${state.preset === key ? "selected" : ""}>${escapeHtml(presetMenuLabel(preset))}</option>
+        `).join("")}
+      </select>
+    </label>
+  `;
+};
+
+const selectedSavedDesign = () => (
+  state.savedDesigns.find((design) => design.id === state.selectedSavedDesignId) || state.savedDesigns[0] || null
+);
+
+const renderHeaderSaveControls = () => {
+  const selectedDesign = selectedSavedDesign();
+  return `
+    <div class="header-save-controls" aria-label="Saved designs">
+      <input
+        class="header-design-name"
+        type="text"
+        value="${escapeHtml(state.designName)}"
+        data-action="update-design-name"
+        aria-label="Design name"
+        placeholder="Design name"
+      >
+      <button class="save-button compact-save-button" type="button" data-action="save-design">Save</button>
+      <button class="update-button compact-save-button" type="button" data-action="update-design">Update</button>
+      <select class="saved-design-select" data-action="select-saved-design" aria-label="Saved designs">
+        <option value="">Saved designs</option>
+        ${state.savedDesigns.map((design) => `
+          <option value="${design.id}" ${selectedDesign?.id === design.id ? "selected" : ""}>${escapeHtml(design.name)}</option>
+        `).join("")}
+      </select>
+      <button class="saved-delete compact-delete-button" type="button" data-action="delete-design" data-id="${selectedDesign?.id || ""}" aria-label="Delete selected saved design" ${selectedDesign ? "" : "disabled"}>×</button>
+    </div>
+  `;
+};
+
+const renderStackedPanel = (panelId, title, bodyHtml, options = {}) => {
+  const collapsed = options.collapsed ?? state.collapsedPanels?.[panelId] === true;
+  const badges = [
+    options.isExperimental ? "Experimental" : "",
+    options.badge || ""
+  ].filter(Boolean);
+  return `
+    <section class="stack-panel ${collapsed ? "is-collapsed" : ""}" data-panel="${panelId}">
+      <button class="stack-panel-header" type="button" data-action="toggle-panel" data-panel="${panelId}" aria-expanded="${collapsed ? "false" : "true"}">
+        <span class="stack-panel-title">${escapeHtml(title)}</span>
+        ${options.summary ? `<span class="stack-panel-summary">${escapeHtml(options.summary)}</span>` : ""}
+        ${badges.length ? `<span class="stack-panel-badges">${badges.map((badge) => `<span>${escapeHtml(badge)}</span>`).join("")}</span>` : ""}
+        <span class="stack-chevron" aria-hidden="true">${collapsed ? "▸" : "▾"}</span>
+      </button>
+      <div class="stack-panel-body">
+        ${bodyHtml}
+      </div>
+    </section>
+  `;
+};
+
+const ANALYSIS_PANEL_REGISTRY = [
+  { id: "lensData", group: "Design", title: "Lens Data", priority: 1 },
+  { id: "apertureField", group: "Design", title: "Aperture & Field Setup", priority: 2 },
+  { id: "rayTraceSpot", group: "Analyse", title: "Ray Trace & Spot", priority: 1 },
+  { id: "rayFanAberrations", group: "Analyse", title: "Ray Fan / Aberrations", priority: 2 },
+  { id: "mtfResolution", group: "Analyse", title: "MTF / Resolution", priority: 3 },
+  { id: "coverageIllumination", group: "Analyse", title: "Coverage / Illumination", priority: 4 },
+  { id: "wavefrontDiagnostics", group: "Advanced", title: "Wavefront Diagnostics", priority: 1, isExperimental: true },
+  { id: "debugTools", group: "Advanced", title: "3D / Debug Tools", priority: 2, isExperimental: true },
+  { id: "optimizerBuild", group: "Build", title: "Lens Optimizer", priority: 1, isExperimental: true },
+  { id: "toleranceBuild", group: "Build", title: "Tolerance / Manufacturing", priority: 2, isExperimental: true },
+  { id: "sagittaUtility", group: "Utility", title: "Sagitta / Radius Calculator", priority: 1 }
+];
+
+const ANALYSIS_PANEL_BY_ID = Object.fromEntries(ANALYSIS_PANEL_REGISTRY.map((panel) => [panel.id, panel]));
+const ANALYSIS_GROUP_ORDER = ["Design", "Analyse", "Advanced", "Build", "Utility"];
+
+const isPanelExpanded = (panelId) => state.collapsedPanels?.[panelId] !== true;
+
+const renderWorkflowPanel = (panelId, bodyHtml, options = {}) => {
+  const panel = ANALYSIS_PANEL_BY_ID[panelId] || { title: panelId };
+  const expanded = isPanelExpanded(panelId);
+  return renderStackedPanel(panelId, panel.title, expanded ? bodyHtml : "", {
+    ...options,
+    isExperimental: options.isExperimental ?? panel.isExperimental,
+    collapsed: !expanded
+  });
+};
+
+const renderWorkflowGroup = (group, panelHtml) => `
+  <section class="workflow-group" data-workflow-group="${escapeHtml(group)}">
+    <h2 class="workflow-group-title">${escapeHtml(group)}</h2>
+    <div class="workflow-group-panels">
+      ${panelHtml}
+    </div>
+  </section>
+`;
+
+const lensAnalysisSignature = () => state.lenses.map((lens) => [
+  lens.id,
+  lens.r1,
+  lens.r2,
+  lens.thickness,
+  lens.gapAfter,
+  lens.diameter,
+  lens.clearApertureDiameter,
+  lens.mechanicalDiameter,
+  lens.glassKey,
+  lens.customNd,
+  lens.customVd,
+  lens.frontAsphereEnabled,
+  lens.rearAsphereEnabled,
+  lens.frontConicK,
+  lens.rearConicK,
+  lens.frontA4,
+  lens.frontA6,
+  lens.frontA8,
+  lens.frontA10,
+  lens.rearA4,
+  lens.rearA6,
+  lens.rearA8,
+  lens.rearA10
+].join(":")).join("|");
+
+const cachedAnalysis = (id, settings, calculate) => {
+  const key = JSON.stringify({
+    id,
+    revision: state.analysisCacheRevision || 0,
+    lens: lensAnalysisSignature(),
+    aperture: {
+      mode: state.apertureStopMode,
+      index: state.apertureStopIndex,
+      surface: state.apertureStopSurfaceNumber,
+      offset: state.apertureStopSurfaceOffsetMm,
+      sensor: state.apertureStopDistanceFromSensorMm,
+      front: state.apertureStopDistanceFromFrontMm,
+      diameter: state.apertureDiameter
+    },
+    settings
+  });
+  if (!state.analysisCache) state.analysisCache = {};
+  if (Object.prototype.hasOwnProperty.call(state.analysisCache, key)) return state.analysisCache[key];
+  const value = calculate();
+  state.analysisCache[key] = value;
+  return value;
+};
+
+const calculateSagitta = () => {
+  const diameter = toNumber(state.sagDiameter);
+  const sag = toNumber(state.sagHeight);
+  const valid = diameter > 0 && sag > 0;
+
+  if (!valid) {
+    return {
+      valid: false,
+      radius: NaN,
+      angleDegrees: NaN,
+      chord: diameter,
+      sag
+    };
+  }
+
+  const halfChord = diameter / 2;
+  const radius = (halfChord ** 2 + sag ** 2) / (2 * sag);
+  const angleRadians = 2 * Math.asin(clamp(halfChord / radius, -1, 1));
+
+  return {
+    valid: true,
+    radius,
+    angleDegrees: angleRadians * 180 / Math.PI,
+    chord: diameter,
+    sag
+  };
+};
+
+const degreesToRadians = (degrees) => degrees * Math.PI / 180;
+
+const radiansToDegrees = (radians) => radians * 180 / Math.PI;
+
+const calculateImageCircleFromFov = (focalLength, angleDegrees) => {
+  const focal = toNumber(focalLength);
+  const angle = clamp(toNumber(angleDegrees) || 0, 0.1, 178.9);
+  if (!(focal > 0)) return NaN;
+  return 2 * focal * Math.tan(degreesToRadians(angle) / 2);
+};
+
+const calculateFovFromFocalLength = (focalLength, sensorDimension) => {
+  const focal = toNumber(focalLength);
+  const dimension = toNumber(sensorDimension);
+  if (!(focal > 0) || !(dimension > 0)) return NaN;
+  return radiansToDegrees(2 * Math.atan(dimension / (2 * focal)));
+};
+
+const guessFocalLengthFromFov = (angleDegrees, sensorDimension) => {
+  const angle = clamp(toNumber(angleDegrees) || 0, 0.1, 178.9);
+  const dimension = toNumber(sensorDimension);
+  if (!(dimension > 0)) return NaN;
+  return dimension / (2 * Math.tan(degreesToRadians(angle) / 2));
+};
+
+const calculateFullFrameCoverage = (imageCircleDiameter) => {
+  const diameter = toNumber(imageCircleDiameter);
+  const fullFrameWidth = FULL_FRAME_SENSOR.width;
+  const fullFrameHeight = FULL_FRAME_SENSOR.height;
+  const fullFrameDiagonal = FULL_FRAME_SENSOR.diagonal;
+  const coverageTolerance = 0.1;
+  const coversFullFrame = diameter + coverageTolerance >= fullFrameDiagonal;
+  const coversWidth = diameter + coverageTolerance >= fullFrameWidth;
+  const coversHeight = diameter + coverageTolerance >= fullFrameHeight;
+  let status = "Does not cover full frame";
+  let statusClass = "coverage-bad";
+
+  if (coversFullFrame) {
+    status = "Covers full frame";
+    statusClass = "coverage-good";
+  } else if (coversWidth || coversHeight) {
+    status = "Covers width/height but corners may vignette";
+    statusClass = "coverage-warning";
+  }
+
+  return {
+    coversFullFrame,
+    coversWidth,
+    coversHeight,
+    diagonalCoveragePercent: Number.isFinite(diameter) ? diameter / fullFrameDiagonal * 100 : NaN,
+    cropFactorEstimate: diameter > 0 ? fullFrameDiagonal / diameter : NaN,
+    status,
+    statusClass
+  };
+};
+
+const imageCircleSensorDimension = (angleType) => {
+  if (angleType === "horizontal") return FULL_FRAME_SENSOR.width;
+  if (angleType === "vertical") return FULL_FRAME_SENSOR.height;
+  return FULL_FRAME_SENSOR.diagonal;
+};
+
+const calculateImageCircleTool = (toolState = state) => {
+  const focalLength = Math.max(0.1, toNumber(toolState.imageCircleFocalLength) || 50);
+  const angleDegrees = clamp(toNumber(toolState.imageCircleAngleDegrees) || 46.8, 0.1, 178.9);
+  const angleType = ["diagonal", "horizontal", "vertical"].includes(toolState.imageCircleAngleType)
+    ? toolState.imageCircleAngleType
+    : "diagonal";
+  const selectedSensorDimension = imageCircleSensorDimension(angleType);
+  const imageCircleDiameter = calculateImageCircleFromFov(focalLength, angleDegrees);
+
+  return {
+    focalLength,
+    angleDegrees,
+    angleType,
+    selectedSensorDimension,
+    imageCircleDiameter,
+    fullFrameHorizontalFov: calculateFovFromFocalLength(focalLength, FULL_FRAME_SENSOR.width),
+    fullFrameVerticalFov: calculateFovFromFocalLength(focalLength, FULL_FRAME_SENSOR.height),
+    fullFrameDiagonalFov: calculateFovFromFocalLength(focalLength, FULL_FRAME_SENSOR.diagonal),
+    guessedFocalLength: guessFocalLengthFromFov(angleDegrees, selectedSensorDimension),
+    coverage: calculateFullFrameCoverage(imageCircleDiameter)
+  };
+};
+
+const renderImageCirclePreview = (result) => {
+  const width = 360;
+  const height = 250;
+  const centerX = width / 2;
+  const centerY = height / 2;
+  const imageCircleDiameter = Number.isFinite(result.imageCircleDiameter) ? result.imageCircleDiameter : 0;
+  const mmRange = Math.max(FULL_FRAME_SENSOR.diagonal, imageCircleDiameter, 10) * 1.18;
+  const scale = Math.min((width - 46) / mmRange, (height - 44) / mmRange);
+  const sensorWidth = FULL_FRAME_SENSOR.width * scale;
+  const sensorHeight = FULL_FRAME_SENSOR.height * scale;
+  const circleRadius = imageCircleDiameter * scale / 2;
+
+  return `
+    <svg class="image-circle-preview" viewBox="0 0 ${width} ${height}" role="img" aria-label="Image circle over full-frame sensor preview">
+      <rect class="preview-bg" x="0" y="0" width="${width}" height="${height}" />
+      <circle
+        class="image-circle-shape ${result.coverage.statusClass}"
+        cx="${centerX}"
+        cy="${centerY}"
+        r="${Math.max(0, circleRadius)}"
+      />
+      <rect
+        class="sensor-rect"
+        x="${centerX - sensorWidth / 2}"
+        y="${centerY - sensorHeight / 2}"
+        width="${sensorWidth}"
+        height="${sensorHeight}"
+      />
+      <line
+        class="sensor-diagonal-guide"
+        x1="${centerX - sensorWidth / 2}"
+        y1="${centerY - sensorHeight / 2}"
+        x2="${centerX + sensorWidth / 2}"
+        y2="${centerY + sensorHeight / 2}"
+      />
+      <text class="preview-label" x="${centerX}" y="${centerY + sensorHeight / 2 + 20}" text-anchor="middle">36 x 24mm full frame</text>
+      <text class="preview-label" x="${centerX}" y="24" text-anchor="middle">Image circle: ${formatNumber(result.imageCircleDiameter, 2)}mm</text>
+      <text class="preview-small" x="${centerX}" y="${height - 14}" text-anchor="middle">Required diagonal: ${formatNumber(FULL_FRAME_SENSOR.diagonal, 1)}mm</text>
+    </svg>
+  `;
+};
+
+const renderImageCirclePanel = (result) => `
+  <section class="image-circle-panel">
+    <div class="panel-heading">
+      <h3>Image Circle / Full-frame Coverage</h3>
+      <span class="badge">${result.angleType}</span>
+    </div>
+    <div class="image-circle-layout">
+      <div class="image-circle-controls">
+        ${panelSteppableInput({ field: "imageCircleFocalLength", label: "Focal length", action: "update-image-circle", unit: "mm" })}
+        ${panelSteppableInput({ field: "imageCircleAngleDegrees", label: "Angle of view", action: "update-image-circle", unit: "degrees" })}
+        <label>
+          Angle type
+          <select data-action="update-image-circle-type" aria-label="Angle type">
+            <option value="diagonal" ${result.angleType === "diagonal" ? "selected" : ""}>Diagonal</option>
+            <option value="horizontal" ${result.angleType === "horizontal" ? "selected" : ""}>Horizontal</option>
+            <option value="vertical" ${result.angleType === "vertical" ? "selected" : ""}>Vertical</option>
+          </select>
+        </label>
+      </div>
+      ${renderImageCirclePreview(result)}
+    </div>
+    <div class="image-circle-results">
+      ${metric("Estimated image circle", formatNumber(result.imageCircleDiameter, 2), "mm")}
+      ${metric("Full-frame diagonal required", formatNumber(FULL_FRAME_SENSOR.diagonal, 1), "mm")}
+      ${metric("Coverage", formatNumber(result.coverage.diagonalCoveragePercent, 1), "% of diagonal")}
+      ${metric("Crop factor estimate", formatNumber(result.coverage.cropFactorEstimate, 2), "x")}
+      ${metric("Horizontal FOV", formatNumber(result.fullFrameHorizontalFov, 2), "degrees")}
+      ${metric("Vertical FOV", formatNumber(result.fullFrameVerticalFov, 2), "degrees")}
+      ${metric("Diagonal FOV", formatNumber(result.fullFrameDiagonalFov, 2), "degrees")}
+      ${metric("Guessed focal length", formatNumber(result.guessedFocalLength, 2), "mm from selected angle")}
+    </div>
+    <p class="coverage-status ${result.coverage.statusClass}">${result.coverage.status}</p>
+    <p class="diagram-note">Formula-based only. Estimated from rectilinear geometry. Real image circle depends on lens design, aperture stop, vignetting, mechanical housing, and illumination falloff.</p>
+  </section>
+`;
+
+const renderVignettingChart = (result) => {
+  const width = 620;
+  const height = 260;
+  const margin = { left: 46, right: 18, top: 22, bottom: 42 };
+  const plotWidth = width - margin.left - margin.right;
+  const plotHeight = height - margin.top - margin.bottom;
+  const maxAngle = Math.max(1, result.maxFieldAngleDegrees);
+  const x = (angle) => margin.left + clamp(angle / maxAngle, 0, 1) * plotWidth;
+  const y = (throughput) => margin.top + (1 - clamp(throughput, 0, 1)) * plotHeight;
+  const points = result.samples.map((sample) => `${x(sample.fieldAngleDegrees)},${y(sample.throughput)}`).join(" ");
+  const cornerX = Number.isFinite(result.fullFrameCornerFieldDegrees) ? x(result.fullFrameCornerFieldDegrees) : NaN;
+
+  return `
+    <svg class="vignetting-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Ray-traced vignetting throughput chart">
+      <rect class="preview-bg" x="0" y="0" width="${width}" height="${height}" />
+      <line class="mtf-axis" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}" />
+      <line class="mtf-axis" x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" />
+      ${[0.5, 0.9].map((threshold) => `
+        <line class="vignetting-threshold" x1="${margin.left}" y1="${y(threshold)}" x2="${width - margin.right}" y2="${y(threshold)}" />
+        <text class="mtf-tick" x="${margin.left - 8}" y="${y(threshold) + 4}" text-anchor="end">${Math.round(threshold * 100)}%</text>
+      `).join("")}
+      ${[0, 0.25, 0.75, 1].map((tick) => `
+        <line class="mtf-grid" x1="${margin.left}" y1="${y(tick)}" x2="${width - margin.right}" y2="${y(tick)}" />
+      `).join("")}
+      ${[0, 0.25, 0.5, 0.75, 1].map((fraction) => {
+        const angle = maxAngle * fraction;
+        return `
+          <line class="mtf-grid" x1="${x(angle)}" y1="${margin.top}" x2="${x(angle)}" y2="${height - margin.bottom}" />
+          <text class="mtf-tick" x="${x(angle)}" y="${height - 18}" text-anchor="middle">${formatNumber(angle, 1)}</text>
+        `;
+      }).join("")}
+      ${Number.isFinite(cornerX) && result.fullFrameCornerFieldDegrees <= maxAngle
+        ? `<line class="full-frame-corner-line" x1="${cornerX}" y1="${margin.top}" x2="${cornerX}" y2="${height - margin.bottom}" />
+           <text class="mtf-tick" x="${cornerX + 5}" y="${margin.top + 13}" text-anchor="start">FF corner</text>`
+        : ""
+      }
+      ${points ? `<polyline class="vignetting-curve" points="${points}" />` : `<text class="mtf-empty" x="${width / 2}" y="${height / 2}" text-anchor="middle">No field samples</text>`}
+      <text class="mtf-label" x="${width / 2}" y="${height - 4}" text-anchor="middle">Field angle (degrees)</text>
+      <text class="mtf-label" x="14" y="${margin.top + 8}" text-anchor="start">Throughput</text>
+    </svg>
+  `;
+};
+
+const renderRayTracedSensorPreview = (result) => {
+  const width = 360;
+  const height = 270;
+  const centerX = width / 2;
+  const centerY = height / 2;
+  const primaryCircle = Number.isFinite(result.circle90) ? result.circle90 : result.circle50;
+  const maxDiameter = Math.max(FULL_FRAME_SENSOR.diagonal, 28.2, 21.6, primaryCircle || 0, result.circle50 || 0) * 1.22;
+  const scale = Math.min((width - 42) / maxDiameter, (height - 42) / maxDiameter);
+  const circle = (diameter, className, dash = false) => Number.isFinite(diameter)
+    ? `<circle class="${className}" cx="${centerX}" cy="${centerY}" r="${diameter * scale / 2}" ${dash ? `stroke-dasharray="7 6"` : ""} />`
+    : "";
+  const rect = (format) => {
+    const w = format.width * scale;
+    const h = format.height * scale;
+    return `
+      <rect class="sensor-format-rect ${format.statusClass}" x="${centerX - w / 2}" y="${centerY - h / 2}" width="${w}" height="${h}" />
+      <text class="preview-small" x="${centerX + w / 2 + 5}" y="${centerY - h / 2 + 10}" text-anchor="start">${format.name}</text>
+    `;
+  };
+
+  return `
+    <svg class="ray-circle-preview" viewBox="0 0 ${width} ${height}" role="img" aria-label="Ray-traced image circle sensor coverage preview">
+      <rect class="preview-bg" x="0" y="0" width="${width}" height="${height}" />
+      ${circle(result.circle50, "ray-circle-50", true)}
+      ${circle(result.circle90, "ray-circle-90")}
+      ${result.coverageFormats.map((format) => rect(format)).join("")}
+      <text class="preview-label" x="${centerX}" y="24" text-anchor="middle">90% circle: ${formatNumber(result.circle90, 2)}mm</text>
+      <text class="preview-small" x="${centerX}" y="${height - 14}" text-anchor="middle">50% circle: ${formatNumber(result.circle50, 2)}mm</text>
+    </svg>
+  `;
+};
+
+const renderRayTracedImageCirclePanel = (result) => `
+    <section class="ray-image-circle-panel">
+      <div class="panel-heading">
+        <h3>Ray-traced Image Circle / Vignetting</h3>
+        <span class="badge">${result.wavelengthMode === "rgbWorst" ? "RGB worst case" : "d-line"}</span>
+      </div>
+      ${menuIntro("imageCircle")}
+      <div class="ray-circle-controls">
+      ${panelSteppableInput({ field: "rayCircleMaxFieldAngleDegrees", label: "Max field angle", action: "update-ray-circle", unit: "degrees" })}
+      ${panelSteppableInput({ field: "rayCircleFieldStepDegrees", label: "Field step", action: "update-ray-circle", unit: "degrees" })}
+      <label>
+        Coverage wavelength
+        <select data-action="update-ray-circle-mode" aria-label="Coverage wavelength">
+          <option value="d" ${result.wavelengthMode === "d" ? "selected" : ""}>d-line only</option>
+          <option value="rgbWorst" ${result.wavelengthMode === "rgbWorst" ? "selected" : ""}>RGB worst case</option>
+        </select>
+      </label>
+    </div>
+    <div class="ray-circle-layout">
+      ${renderVignettingChart(result)}
+      ${renderRayTracedSensorPreview(result)}
+    </div>
+    <div class="ray-circle-results">
+      ${metric("90% coverage circle", formatNumber(result.circle90, 2), "mm")}
+      ${metric("50% coverage circle", formatNumber(result.circle50, 2), "mm")}
+      ${metric("Full-frame diagonal", formatNumber(FULL_FRAME_SENSOR.diagonal, 1), "mm required")}
+      ${metric("Full theoretical circle", formatNumber(result.fullTheoreticalImageCircle, 2), "mm at max field")}
+      ${metric("Last 90% field", formatNumber(result.sample90?.fieldAngleDegrees, 2), "degrees")}
+      ${metric("Last 50% field", formatNumber(result.sample50?.fieldAngleDegrees, 2), "degrees")}
+      ${metric("Rays per field", result.rayCountPerField, "rays")}
+      ${metric("Field samples", result.samples.length, "angles")}
+    </div>
+    <div class="format-coverage-grid">
+      ${result.coverageFormats.map((format) => `
+        <span class="format-coverage ${format.statusClass}">
+          ${format.name}: ${format.status}
+        </span>
+      `).join("")}
+    </div>
+    ${result.warnings.map((warning) => `<p class="warning ray-warning">${escapeHtml(warning)}</p>`).join("")}
+    <p class="diagram-note">Ray-traced approximate coverage, not professional illumination analysis. It estimates relative throughput from valid meridional rays and does not model full 3D pupil shape, diffraction, coating losses, sensor stack, mechanical shading, or falloff calibration.</p>
+  </section>
+`;
+
+const curveClassForLine = (lineKey) => {
+  const line = SPECTRAL_LINES[lineKey];
+  return line?.color ? `curve-${line.color}` : "curve-green";
+};
+
+const renderAberrationChart = ({ ariaLabel, xLabel, yLabel, series, xMin, xMax, yMin, yMax }) => {
+  const validSeries = series
+    .map((item) => ({
+      ...item,
+      points: (item.points || []).filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y))
+    }))
+    .filter((item) => item.points.length);
+  const width = 520;
+  const height = 210;
+  const margin = { left: 50, right: 18, top: 34, bottom: 38 };
+  const allPoints = validSeries.flatMap((item) => item.points);
+  let minX = Number.isFinite(xMin) ? xMin : Math.min(...allPoints.map((point) => point.x));
+  let maxX = Number.isFinite(xMax) ? xMax : Math.max(...allPoints.map((point) => point.x));
+  let minY = Number.isFinite(yMin) ? yMin : Math.min(...allPoints.map((point) => point.y));
+  let maxY = Number.isFinite(yMax) ? yMax : Math.max(...allPoints.map((point) => point.y));
+  if (!allPoints.length) {
+    minX = Number.isFinite(xMin) ? xMin : 0;
+    maxX = Number.isFinite(xMax) ? xMax : 1;
+    minY = -1;
+    maxY = 1;
+  }
+  if (Math.abs(maxX - minX) < 0.000001) {
+    minX -= 1;
+    maxX += 1;
+  }
+  if (Math.abs(maxY - minY) < 0.000001) {
+    minY -= 1;
+    maxY += 1;
+  }
+  const paddingY = (maxY - minY) * 0.12;
+  minY -= paddingY;
+  maxY += paddingY;
+  const plotWidth = width - margin.left - margin.right;
+  const plotHeight = height - margin.top - margin.bottom;
+  const x = (value) => margin.left + ((value - minX) / (maxX - minX)) * plotWidth;
+  const y = (value) => margin.top + (1 - ((value - minY) / (maxY - minY))) * plotHeight;
+  const zeroY = minY <= 0 && maxY >= 0 ? y(0) : null;
+
+  return `
+    <svg class="aberration-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${ariaLabel}">
+      <rect class="preview-bg" x="0" y="0" width="${width}" height="${height}" />
+      <line class="mtf-axis" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}" />
+      <line class="mtf-axis" x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" />
+      ${zeroY === null ? "" : `<line class="aberration-zero-line" x1="${margin.left}" y1="${zeroY}" x2="${width - margin.right}" y2="${zeroY}" />`}
+      ${[0, 0.25, 0.5, 0.75, 1].map((fraction) => {
+        const xValue = minX + (maxX - minX) * fraction;
+        return `
+          <line class="mtf-grid" x1="${x(xValue)}" y1="${margin.top}" x2="${x(xValue)}" y2="${height - margin.bottom}" />
+          <text class="mtf-tick" x="${x(xValue)}" y="${height - 18}" text-anchor="middle">${formatNumber(xValue, 2)}</text>
+        `;
+      }).join("")}
+      ${[0, 0.5, 1].map((fraction) => {
+        const yValue = minY + (maxY - minY) * fraction;
+        return `
+          <line class="mtf-grid" x1="${margin.left}" y1="${y(yValue)}" x2="${width - margin.right}" y2="${y(yValue)}" />
+          <text class="mtf-tick" x="${margin.left - 8}" y="${y(yValue) + 4}" text-anchor="end">${formatNumber(yValue, 3)}</text>
+        `;
+      }).join("")}
+      ${validSeries.map((item) => `
+        <polyline class="aberration-curve ${item.className || ""}" points="${item.points.map((point) => `${x(point.x)},${y(point.y)}`).join(" ")}" />
+      `).join("")}
+      ${validSeries.length ? "" : `<text class="mtf-empty" x="${width / 2}" y="${height / 2}" text-anchor="middle">No valid ray data</text>`}
+      <text class="mtf-label" x="${width / 2}" y="${height - 4}" text-anchor="middle">${xLabel}</text>
+      <text class="mtf-label" x="${margin.left + 4}" y="18" text-anchor="start">${yLabel}</text>
+    </svg>
+  `;
+};
+
+const renderGraphToggle = (field, label) => `
+  <label class="check-control">
+    <input type="checkbox" data-action="toggle-ray-fan-graph" data-field="${field}" ${state[field] ? "checked" : ""}>
+    ${label}
+  </label>
+`;
+
+const renderRayFanAberrationPanel = (result) => {
+  const transverseSeries = result.transverseFans.map((fan) => ({
+    name: fan.spectralLineKey,
+    className: curveClassForLine(fan.spectralLineKey),
+    points: fan.samples.map((sample) => ({ x: sample.pupil, y: sample.transverseError }))
+  }));
+  const longitudinalSeries = result.longitudinalFans.map((fan) => ({
+    name: fan.spectralLineKey,
+    className: curveClassForLine(fan.spectralLineKey),
+    points: fan.samples.map((sample) => ({ x: sample.pupil, y: sample.focusShift }))
+  }));
+  const distortionSeries = result.distortion ? [{
+    name: "d",
+    className: "curve-green",
+    points: result.distortion.samples.map((sample) => ({ x: sample.fieldAngleDegrees, y: sample.distortionPercent }))
+  }] : [];
+  const curvatureSeries = result.fieldCurvature ? [{
+    name: "d",
+    className: "curve-green",
+    points: result.fieldCurvature.samples.map((sample) => ({ x: sample.fieldAngleDegrees, y: sample.bestFocusX }))
+  }] : [];
+
+  return `
+    <section class="ray-fan-panel">
+      <div class="panel-heading">
+        <h3>Ray Fan / Aberration Graphs</h3>
+        <span class="badge">Meridional approximate</span>
+      </div>
+      ${menuIntro("rayFan")}
+      <div class="ray-fan-controls">
+        <label>
+          Field angle
+          <select data-action="update-ray-fan-field" aria-label="Ray fan field angle">
+            <option value="center" ${state.rayFanFieldPreset === "center" ? "selected" : ""}>Centre 0°</option>
+            <option value="mid" ${state.rayFanFieldPreset === "mid" ? "selected" : ""}>Mid 10°</option>
+            <option value="corner" ${state.rayFanFieldPreset === "corner" ? "selected" : ""}>Corner 20°</option>
+            <option value="custom" ${state.rayFanFieldPreset === "custom" ? "selected" : ""}>Custom field angle</option>
+          </select>
+        </label>
+        ${panelSteppableInput({ field: "rayFanCustomFieldAngleDegrees", label: "Custom field angle", action: "update-ray-fan", unit: "degrees" })}
+        <label>
+          Wavelength mode
+          <select data-action="update-ray-fan-wavelength" aria-label="Ray fan wavelength mode">
+            <option value="d" ${state.rayFanWavelengthMode === "d" ? "selected" : ""}>d-line only</option>
+            <option value="rgb" ${state.rayFanWavelengthMode === "rgb" ? "selected" : ""}>RGB C/d/F overlay</option>
+          </select>
+        </label>
+        ${metric("Ray count", result.rayCount, "uses Ray Trace setting")}
+      </div>
+      <div class="ray-fan-toggles">
+        ${renderGraphToggle("showTransverseRayFan", "Transverse Ray Fan")}
+        ${renderGraphToggle("showLongitudinalAberration", "Longitudinal Spherical Aberration")}
+        ${renderGraphToggle("showDistortionCurve", "Distortion")}
+        ${renderGraphToggle("showFieldCurvature", "Field Curvature")}
+      </div>
+      <div class="ray-fan-grid">
+        ${state.showTransverseRayFan ? `
+          <article class="aberration-card">
+            <h4>Transverse Ray Fan</h4>
+            ${renderAberrationChart({
+              ariaLabel: "Transverse ray fan chart",
+              xLabel: "Normalized pupil coordinate",
+              yLabel: "Transverse error (mm)",
+              series: transverseSeries,
+              xMin: -1,
+              xMax: 1
+            })}
+          </article>
+        ` : ""}
+        ${state.showLongitudinalAberration ? `
+          <article class="aberration-card">
+            <h4>Longitudinal Spherical Aberration</h4>
+            ${renderAberrationChart({
+              ariaLabel: "Longitudinal spherical aberration chart",
+              xLabel: "Normalized pupil coordinate",
+              yLabel: "Focus shift (mm)",
+              series: longitudinalSeries,
+              xMin: -1,
+              xMax: 1
+            })}
+          </article>
+        ` : ""}
+        ${state.showDistortionCurve ? `
+          <article class="aberration-card">
+            <h4>Distortion vs Field Angle</h4>
+            ${renderAberrationChart({
+              ariaLabel: "Distortion versus field angle chart",
+              xLabel: "Field angle (degrees)",
+              yLabel: "Distortion (%)",
+              series: distortionSeries,
+              xMin: 0,
+              xMax: Math.max(1, state.rayCircleMaxFieldAngleDegrees)
+            })}
+          </article>
+        ` : ""}
+        ${state.showFieldCurvature ? `
+          <article class="aberration-card">
+            <h4>Approximate Field Curvature</h4>
+            ${renderAberrationChart({
+              ariaLabel: "Approximate field curvature chart",
+              xLabel: "Field angle (degrees)",
+              yLabel: "Best focus shift (mm)",
+              series: curvatureSeries,
+              xMin: 0,
+              xMax: Math.max(1, Math.min(state.rayCircleMaxFieldAngleDegrees, 30))
+            })}
+          </article>
+        ` : ""}
+      </div>
+      <div class="rgb-overlay-legend">
+        ${rayFanSpectralLines(state.rayFanWavelengthMode).map(([lineKey, line]) => `<span class="rgb-legend-${line.color}">${lineKey} ${line.wavelengthNm} nm</span>`).join("")}
+        <span>Field: ${formatNumber(result.fieldAngleDegrees, 2)}°</span>
+      </div>
+      ${result.warnings.map((warning) => `<p class="warning ray-warning">${escapeHtml(warning)}</p>`).join("")}
+      <p class="diagram-note">These graphs are based on 2D meridional ray tracing. They do not include full sagittal/tangential 3D ray fans, skew rays, diffraction, wavefront phase, coating effects, sensor sampling, or manufacturing tolerances.</p>
+    </section>
+  `;
+};
+
+const renderRayFanDiagnosticsTable = (result) => {
+  const comparison = result.centerComparison;
+  const comparisonClass = comparison.status === "Pass" ? "coverage-good" : comparison.status === "Warning" ? "coverage-warning" : "coverage-bad";
+
+  return `
+    <div class="st-ray-fan-diagnostics" role="table" aria-label="Sagittal tangential ray fan diagnostics">
+      <span role="columnheader">Diagnostic</span>
+      <span role="columnheader">Value</span>
+      <span role="columnheader">Diagnostic</span>
+      <span role="columnheader">Value</span>
+      <span role="rowheader">Tangential valid rays</span>
+      <span>${result.tangentialDiagnostics.validCount}/${result.tangentialDiagnostics.totalRayCount}</span>
+      <span role="rowheader">Sagittal valid rays</span>
+      <span>${result.sagittalDiagnostics.validCount}/${result.sagittalDiagnostics.totalRayCount}</span>
+      <span role="rowheader">Tangential clipped rays</span>
+      <span>${result.tangentialDiagnostics.clippedCount}</span>
+      <span role="rowheader">Sagittal clipped rays</span>
+      <span>${result.sagittalDiagnostics.clippedCount}</span>
+      <span role="rowheader">Tangential RMS error</span>
+      <span>${formatNumber(result.tangentialDiagnostics.rmsError, 5)} mm</span>
+      <span role="rowheader">Sagittal RMS error</span>
+      <span>${formatNumber(result.sagittalDiagnostics.rmsError, 5)} mm</span>
+      <span role="rowheader">Tangential peak error</span>
+      <span>${formatNumber(result.tangentialDiagnostics.peakError, 5)} mm</span>
+      <span role="rowheader">Sagittal peak error</span>
+      <span>${formatNumber(result.sagittalDiagnostics.peakError, 5)} mm</span>
+      <span role="rowheader">Image plane X</span>
+      <span>${formatNumber(result.imagePlaneX, 4)} mm</span>
+      <span role="rowheader">Field angle</span>
+      <span>${formatNumber(result.fieldAngleDegrees, 2)}°</span>
+      <span role="rowheader">Wavelength mode</span>
+      <span>${result.wavelengthMode === "rgb" ? "RGB C/d/F overlay" : "d-line only"}</span>
+      <span role="rowheader">2D vs 3D centre-field</span>
+      <span class="${comparisonClass}">${comparison.status}: ${formatNumber(comparison.maxDifference, 6)} mm max diff</span>
+    </div>
+  `;
+};
+
+const renderSagittalTangentialRayFan3DPanel = (result) => {
+  const tangentialSeries = result.tangentialFans.map((fan) => ({
+    name: fan.spectralLineKey,
+    className: curveClassForLine(fan.spectralLineKey),
+    points: fan.samples.map((sample) => ({ x: sample.normalizedPupilCoordinate, y: sample.tangentialError }))
+  }));
+  const sagittalSeries = result.sagittalFans.map((fan) => ({
+    name: fan.spectralLineKey,
+    className: curveClassForLine(fan.spectralLineKey),
+    points: fan.samples.map((sample) => ({ x: sample.normalizedPupilCoordinate, y: sample.sagittalError }))
+  }));
+  const sharedRange = symmetricChartRange([...tangentialSeries, ...sagittalSeries]);
+  const tangentialRange = state.stRayFanSharedScaleY
+    ? sharedRange
+    : (state.stRayFanAutoScaleY ? {} : symmetricChartRange(tangentialSeries));
+  const sagittalRange = state.stRayFanSharedScaleY
+    ? sharedRange
+    : (state.stRayFanAutoScaleY ? {} : symmetricChartRange(sagittalSeries));
+
+  return `
+    <section class="st-ray-fan-panel">
+      <div class="panel-heading">
+        <h3>Sagittal / Tangential Ray Fan</h3>
+        <span class="badge">3D geometric</span>
+      </div>
+      ${menuIntro("stFan")}
+      <div class="st-ray-fan-controls">
+        <label>
+          Field angle
+          <select data-action="update-st-ray-fan-field" aria-label="3D sagittal tangential ray fan field angle">
+            <option value="center" ${state.stRayFanFieldPreset === "center" ? "selected" : ""}>Centre 0°</option>
+            <option value="mid" ${state.stRayFanFieldPreset === "mid" ? "selected" : ""}>Mid 10°</option>
+            <option value="corner" ${state.stRayFanFieldPreset === "corner" ? "selected" : ""}>Corner 20°</option>
+            <option value="custom" ${state.stRayFanFieldPreset === "custom" ? "selected" : ""}>Custom</option>
+          </select>
+        </label>
+        ${panelSteppableInput({ field: "stRayFanCustomFieldAngleDegrees", label: "Custom field angle", action: "update-st-ray-fan", unit: "degrees" })}
+        <label>
+          Wavelength
+          <select data-action="update-st-ray-fan-wavelength" aria-label="3D sagittal tangential ray fan wavelength">
+            <option value="d" ${state.stRayFanWavelengthMode === "d" ? "selected" : ""}>d-line only</option>
+            <option value="rgb" ${state.stRayFanWavelengthMode === "rgb" ? "selected" : ""}>RGB C/d/F overlay</option>
+          </select>
+        </label>
+        ${panelSteppableInput({ field: "stRayFanRayCount", label: "Ray count", action: "update-st-ray-fan", inputmode: "numeric", unit: "3-31, odd preferred" })}
+        <label>
+          Image plane
+          <select data-action="update-st-ray-fan-image-plane" aria-label="3D ray fan image plane">
+            <option value="current" ${state.stRayFanImagePlaneMode === "current" ? "selected" : ""}>Current sensor plane</option>
+            <option value="best" ${state.stRayFanImagePlaneMode === "best" ? "selected" : ""}>Best focus plane</option>
+          </select>
+        </label>
+      </div>
+      <div class="st-ray-fan-tools">
+        <label class="check-control">
+          <input type="checkbox" data-action="toggle-st-ray-fan-scale" data-field="stRayFanAutoScaleY" ${state.stRayFanAutoScaleY ? "checked" : ""}>
+          Auto scale Y-axis
+        </label>
+        <label class="check-control">
+          <input type="checkbox" data-action="toggle-st-ray-fan-scale" data-field="stRayFanSharedScaleY" ${state.stRayFanSharedScaleY ? "checked" : ""}>
+          Shared Tangential/Sagittal Y-scale
+        </label>
+        <button class="action-button st-copy-button" type="button" data-action="copy-st-ray-fan-csv">Copy ray fan CSV</button>
+        ${state.stRayFanCopyStatus ? `<span class="copy-status">${escapeHtml(state.stRayFanCopyStatus)}</span>` : ""}
+      </div>
+      ${state.stRayFanExportText ? `
+        <textarea class="csv-export-box" readonly aria-label="Ray fan CSV export">${escapeHtml(state.stRayFanExportText)}</textarea>
+      ` : ""}
+      <div class="st-ray-fan-grid">
+        <article class="aberration-card">
+          <h4>Tangential Ray Fan</h4>
+          ${renderAberrationChart({
+            ariaLabel: "3D tangential ray fan chart",
+            xLabel: "Normalized pupil coordinate",
+            yLabel: "Tangential error (mm)",
+            series: tangentialSeries,
+            xMin: -1,
+            xMax: 1,
+            ...tangentialRange
+          })}
+        </article>
+        <article class="aberration-card">
+          <h4>Sagittal Ray Fan</h4>
+          ${renderAberrationChart({
+            ariaLabel: "3D sagittal ray fan chart",
+            xLabel: "Normalized pupil coordinate",
+            yLabel: "Sagittal error (mm)",
+            series: sagittalSeries,
+            xMin: -1,
+            xMax: 1,
+            ...sagittalRange
+          })}
+        </article>
+      </div>
+      ${renderRayFanDiagnosticsTable(result)}
+      <div class="st-ray-fan-results">
+        ${metric("Tangential RMS fan error", formatNumber(result.tangentialStats.rmsError, 5), "mm")}
+        ${metric("Sagittal RMS fan error", formatNumber(result.sagittalStats.rmsError, 5), "mm")}
+        ${metric("Peak tangential error", formatNumber(result.tangentialStats.peakError, 5), "mm")}
+        ${metric("Peak sagittal error", formatNumber(result.sagittalStats.peakError, 5), "mm")}
+        ${metric("Valid rays", `${result.validRayCount}/${result.totalRayCount}`, "fan samples")}
+        ${metric("Clipped / failed rays", `${result.clippedCount}/${result.failedCount}`, "clipped / failed")}
+        ${metric("Field angle", formatNumber(result.fieldAngleDegrees, 2), "degrees")}
+        ${metric("Image plane", formatNumber(result.imagePlaneX, 3), state.stRayFanImagePlaneMode === "best" ? "best focus mm" : "sensor mm")}
+      </div>
+      <div class="rgb-overlay-legend">
+        ${rayFanSpectralLines(state.stRayFanWavelengthMode).map(([lineKey, line]) => `<span class="rgb-legend-${line.color}">${lineKey} ${line.wavelengthNm} nm</span>`).join("")}
+        <span>${state.stRayFanWavelengthMode === "rgb" ? "RGB overlay" : "d-line only"}</span>
+      </div>
+      ${result.warnings.map((warning) => `<p class="warning ray-warning">${escapeHtml(warning)}</p>`).join("")}
+    </section>
+  `;
+};
+
+const renderSagittaCalculator = () => {
+  const result = calculateSagitta();
+
+  return `
+    <section class="sagitta-panel">
+      <div class="panel-heading">
+        <h3>Sagitta / Radius Calculator</h3>
+      </div>
+      ${menuIntro("sagitta")}
+      <div class="sagitta-inputs">
+        ${panelSteppableInput({ field: "sagDiameter", label: "Lens diameter", action: "update-sagitta", unit: "mm" })}
+        ${panelSteppableInput({ field: "sagHeight", label: "Lens height / sag", action: "update-sagitta", unit: "mm" })}
+      </div>
+      <div class="sagitta-results">
+        ${metric("Curvature radius", formatNumber(result.radius), "mm")}
+        ${metric("Arc angle", formatNumber(result.angleDegrees), "degrees")}
+      </div>
+      <p class="diagram-note">Formula: a = diameter / 2, R = (a^2 + sag^2) / (2sag). Use this radius as a starting value for R1 or R2.</p>
+    </section>
+  `;
+};
+
+const renderParaxialSpectralReadout = (system, spectralSystems) => Object.entries(spectralSystems).map(([lineKey, lineSystem]) => {
+  const line = SPECTRAL_LINES[lineKey] || lineSystem.line || SPECTRAL_LINES.d;
+  const focusOffset = Number.isFinite(system.backFocalLength) && Number.isFinite(lineSystem.backFocalLength)
+    ? system.backFocalLength - lineSystem.backFocalLength
+    : NaN;
+
+  return `<span class="rgb-chip rgb-${line.color}">${lineKey} focus ${formatNumber(focusOffset, 3)} mm</span>`;
+}).join("");
+
+const renderApertureStopPanel = (system, surfaces = []) => {
+  const stopSurface = surfaces.find((surface) => surface.isStop);
+  const mode = state.apertureStopMode || "auto";
+  const needsSurfaceNumber = mode === "surfaceNumber";
+  const needsSensorDistance = mode === "distanceFromSensor";
+  const needsFrontDistance = mode === "distanceFromFront";
+  const stopSummary = stopSurface
+    ? `${formatNumber(stopSurface.x)} mm from sensor · ${formatNumber((stopSurface.stopSemiDiameter || stopSurface.semiDiameter) * 2)} mm diameter`
+    : "Auto fallback";
+  const entrancePupil = state.entrancePupilResult || calculateEntrancePupil(state.lenses, system, {
+    ...rayTraceApertureOptions(state),
+    prescription: state.prescription
+  });
+  const workingFNumber = calculateFNumber(system);
+
+  return `
+    <section class="aperture-stop-panel">
+      <div class="panel-heading">
+        <h3>Aperture Stop</h3>
+        <span class="badge">Independent</span>
+      </div>
+      ${menuIntro("apertureStop")}
+      <div class="aperture-stop-controls">
+        ${panelSteppableInput({ field: "apertureDiameter", label: "Aperture diameter", action: "update-aperture-diameter", unit: "mm" })}
+        <label>
+          Stop position mode
+          <select data-action="update-aperture-stop-mode" aria-label="Aperture stop position mode">
+            <option value="auto" ${mode === "auto" ? "selected" : ""}>Auto / preset default</option>
+            <option value="patentStop" ${mode === "patentStop" ? "selected" : ""}>Patent STOP surface if available</option>
+            <option value="surfaceNumber" ${mode === "surfaceNumber" ? "selected" : ""}>Surface number</option>
+            <option value="distanceFromSensor" ${mode === "distanceFromSensor" ? "selected" : ""}>Distance from sensor plane</option>
+            <option value="distanceFromFront" ${mode === "distanceFromFront" ? "selected" : ""}>Distance from first/front surface</option>
+          </select>
+        </label>
+        ${needsSurfaceNumber ? panelSteppableInput({ field: "apertureStopSurfaceNumber", label: "Stop surface number", action: "update-aperture-stop-setting", inputmode: "numeric" }) : ""}
+        ${needsSurfaceNumber ? panelSteppableInput({ field: "apertureStopSurfaceOffsetMm", label: "Distance from surface toward sensor", action: "update-aperture-stop-setting", unit: "mm" }) : ""}
+        ${needsSensorDistance ? panelSteppableInput({ field: "apertureStopDistanceFromSensorMm", label: "Stop distance from sensor", action: "update-aperture-stop-setting", unit: "mm" }) : ""}
+        ${needsFrontDistance ? panelSteppableInput({ field: "apertureStopDistanceFromFrontMm", label: "Stop distance from front", action: "update-aperture-stop-setting", unit: "mm" }) : ""}
+        <label class="check-control">
+          <input type="checkbox" data-action="toggle-match-patent-f-number" ${state.matchPatentFNumber ? "checked" : ""}>
+          Match patent f-number automatically
+        </label>
+      </div>
+      <div class="aperture-stop-readout">
+        ${metric("Resolved stop", escapeHtml(stopSurface?.stopLabel || stopSurface?.label || "Auto / preset default"), stopSummary)}
+        ${metric("Physical stop diameter", formatNumber(state.apertureDiameter, 3), "mm")}
+        ${metric("Entrance pupil diameter", formatNumber(entrancePupil.entrancePupilDiameter, 3), "mm apparent from object space")}
+        ${metric("Working f-number", `f/${formatNumber(workingFNumber, 3)}`, "EFL / entrance pupil")}
+      </div>
+      ${stopSurface?.stopWarning ? `<p class="warning ray-warning">${escapeHtml(stopSurface.stopWarning)}</p>` : ""}
+      ${entrancePupil.warning ? `<p class="warning ray-warning">${escapeHtml(entrancePupil.warning)}</p>` : ""}
+    </section>
+  `;
+};
+
+const renderRayTracePanel = (rayTraceResults, spectralSystems, system) => {
+  const aggregate = aggregateRayTraceResults(rayTraceResults);
+  const warning = aggregate.warning ? `<p class="warning ray-warning">${escapeHtml(aggregate.warning)}</p>` : "";
+  const failedSurface = aggregate.firstFailedSurface;
+  const failedSurfaceText = failedSurface
+    ? `${aggregate.firstFailedStatus || "failed"} at ${failedSurface.label || `surface ${failedSurface.surfaceNumber || "--"}`}`
+    : "No failed surface";
+
+  return `
+    <section class="ray-trace-panel">
+      <div class="panel-heading">
+        <h3>Ray Trace</h3>
+      </div>
+      ${menuIntro("rayTrace")}
+      <label class="check-control">
+        <input
+          type="checkbox"
+          data-action="toggle-real-rays"
+          ${state.showRealRays ? "checked" : ""}
+        >
+        Show real traced rays
+      </label>
+      <div class="ray-trace-inputs">
+        ${panelSteppableInput({ field: "rayTraceRayCount", label: "Ray count", action: "update-ray-trace", inputmode: "numeric", unit: "3-31" })}
+        <label>
+          Spot display
+          <select data-action="update-spot-mode" aria-label="Spot diagram display mode">
+            <option value="d" ${state.spotDisplayMode === "d" ? "selected" : ""}>d-line only</option>
+            <option value="rgb" ${state.spotDisplayMode === "rgb" ? "selected" : ""}>RGB spectral overlay</option>
+          </select>
+        </label>
+      </div>
+      <div class="field-chip-row">
+        ${RAY_TRACE_FIELDS.map((field) => `<span class="field-chip">${field.name}: ${field.angle}°</span>`).join("")}
+      </div>
+      <div class="ray-trace-results">
+        ${metric("Real ray trace", `${aggregate.validRayCount}/${aggregate.totalRayCount}`, "valid rays")}
+        ${metric("Worst RMS spot radius", formatNumber(aggregate.rmsSpotRadius, 4), "mm at sensor")}
+        ${metric("Missed aperture", aggregate.missedRayCount, "rays")}
+        ${metric("First failed surface", escapeHtml(failedSurfaceText), failedSurface?.patentSurfaceNumber ? `patent S${failedSurface.patentSurfaceNumber}` : "trace diagnostic")}
+      </div>
+      ${warning}
+      <div class="rgb-readout compact-rgb-readout">
+        ${renderParaxialSpectralReadout(system, spectralSystems)}
+      </div>
+      <p class="catalog-note">Starter approximate glass catalogue: educational values only, not official manufacturer data.</p>
+    </section>
+  `;
+};
+
+const renderSingleSpotDiagram = (rayTraceResult) => {
+  const groupedResults = Array.isArray(rayTraceResult) ? rayTraceResult.filter(Boolean) : [rayTraceResult].filter(Boolean);
+  const primaryResult = groupedResults[0] || {};
+  const validRays = groupedResults.flatMap((result) => (result.rays || [])
+    .filter((ray) => ray.status === "valid" && ray.sensorPoint)
+    .map((ray) => ({ ray, result })));
+  const width = 260;
+  const height = 170;
+  const centerX = width / 2;
+  const centerY = height / 2;
+  const meanSensorY = validRays.length
+    ? validRays.reduce((sum, item) => sum + item.ray.sensorPoint.y, 0) / validRays.length
+    : NaN;
+  const deviations = validRays.map((item) => item.ray.sensorPoint.y - meanSensorY);
+  const rmsSpotRadius = deviations.length
+    ? Math.sqrt(deviations.reduce((sum, value) => sum + value ** 2, 0) / deviations.length)
+    : NaN;
+  const maxSpotRadius = deviations.length ? Math.max(...deviations.map(Math.abs)) : NaN;
+  const maxRadius = Number.isFinite(maxSpotRadius) ? Math.max(maxSpotRadius, 0.001) : 1;
+  const scale = 62 / maxRadius;
+  const points = validRays.map(({ ray, result }) => {
+    const deviationY = Number.isFinite(meanSensorY)
+      ? ray.sensorPoint.y - meanSensorY
+      : ray.sensorPoint.y;
+    const spectralLine = SPECTRAL_LINES[result.spectralLineKey] || result.spectralLine || SPECTRAL_LINES.d;
+    return {
+      x: centerX,
+      y: centerY - deviationY * scale,
+      role: ray.role || "",
+      color: spectralLine.color || "green"
+    };
+  });
+  const rmsRadius = Number.isFinite(rmsSpotRadius)
+    ? Math.max(2, rmsSpotRadius * scale)
+    : 0;
+  const maxCircleRadius = Number.isFinite(maxSpotRadius)
+    ? Math.max(3, maxSpotRadius * scale)
+    : 0;
+  const totalRayCount = groupedResults.reduce((sum, result) => sum + (result.totalRayCount || 0), 0);
+
+  return `
+    <article class="spot-field-card">
+      <div class="spot-field-heading">
+        <strong>${escapeHtml(primaryResult.fieldName || "Field")}</strong>
+        <span>${formatNumber(primaryResult.fieldAngleDegrees, 2)}°</span>
+      </div>
+      <svg class="spot-diagram" viewBox="0 0 ${width} ${height}" role="img" aria-label="Spot diagram at the sensor plane">
+        <rect class="spot-bg" x="0" y="0" width="${width}" height="${height}" />
+        <line class="spot-axis" x1="18" y1="${centerY}" x2="${width - 18}" y2="${centerY}" />
+        <line class="spot-axis" x1="${centerX}" y1="18" x2="${centerX}" y2="${height - 18}" />
+        ${rmsRadius ? `<circle class="spot-rms-ring" cx="${centerX}" cy="${centerY}" r="${rmsRadius}" />` : ""}
+        ${maxCircleRadius ? `<circle class="spot-max-ring" cx="${centerX}" cy="${centerY}" r="${maxCircleRadius}" />` : ""}
+        ${points.length
+          ? points.map((point) => `<circle class="spot-point spot-${point.color} ${point.role.includes("chief") ? "spot-chief" : ""} ${point.role.includes("marginal") ? "spot-marginal" : ""}" cx="${point.x}" cy="${point.y}" r="3.4" />`).join("")
+          : `<text class="spot-empty" x="${centerX}" y="${centerY}" text-anchor="middle">No valid rays</text>`
+        }
+      </svg>
+      <div class="spot-results">
+        ${metric("RMS spot radius", formatNumber(rmsSpotRadius, 4), "mm")}
+        ${metric("Maximum spot radius", formatNumber(maxSpotRadius, 4), "mm")}
+        ${metric("Valid rays", `${validRays.length}/${totalRayCount}`, "rays")}
+      </div>
+    </article>
+  `;
+};
+
+const renderSpotDiagramPanel = (dLineResults, spectralResults) => {
+  const sourceResults = state.spotDisplayMode === "rgb" ? spectralResults : dLineResults;
+  const results = RAY_TRACE_FIELDS.map((field) => {
+    const fieldResults = sourceResults.filter((result) => result.fieldKey === field.key);
+    return state.spotDisplayMode === "rgb" ? fieldResults : fieldResults[0];
+  }).filter(Boolean);
+
+  return `
+    <section class="spot-panel">
+      <div class="panel-heading">
+        <h3>Spot Diagrams</h3>
+        <span class="badge">Sensor plane x = 0</span>
+      </div>
+      ${menuIntro("spot")}
+      <div class="rgb-overlay-legend">
+        ${state.spotDisplayMode === "rgb"
+          ? Object.entries(SPECTRAL_LINES).map(([lineKey, line]) => `<span class="rgb-legend-${line.color}">${lineKey} ${line.wavelengthNm} nm</span>`).join("")
+          : `<span>d ${SPECTRAL_LINES.d.wavelengthNm} nm only</span>`
+        }
+      </div>
+      <div class="spot-field-grid">
+        ${results.map((result) => renderSingleSpotDiagram(result)).join("")}
+      </div>
+    </section>
+  `;
+};
+
+const spotSamplesAtImagePlane = (rayTraceResult, imagePlaneX = 0) => {
+  const validRays = (rayTraceResult?.rays || []).filter((ray) => ray.status === "valid" && ray.finalRay);
+  return validRays
+    .map((ray) => imagePlaneIntersection(ray.finalRay, imagePlaneX))
+    .filter((point) => point && Number.isFinite(point.y))
+    .map((point) => point.y);
+};
+
+const spotStatsFromSamples = (samples) => {
+  if (!samples.length) {
+    return { meanY: NaN, rmsSpotRadius: NaN, maxSpotRadius: NaN };
+  }
+  const meanY = samples.reduce((sum, value) => sum + value, 0) / samples.length;
+  const deviations = samples.map((value) => value - meanY);
+  const rmsSpotRadius = Math.sqrt(deviations.reduce((sum, value) => sum + value ** 2, 0) / deviations.length);
+  const maxSpotRadius = Math.max(...deviations.map(Math.abs));
+  return { meanY, rmsSpotRadius, maxSpotRadius };
+};
+
+const mtfValueAtFrequency = (mtfResult, frequency) => {
+  if (!mtfResult?.frequencies?.length || !mtfResult?.values?.length) return NaN;
+  const exactIndex = mtfResult.frequencies.findIndex((item) => Math.abs(item - frequency) < 0.000001);
+  if (exactIndex >= 0) return mtfResult.values[exactIndex];
+
+  for (let index = 1; index < mtfResult.frequencies.length; index += 1) {
+    const lowFrequency = mtfResult.frequencies[index - 1];
+    const highFrequency = mtfResult.frequencies[index];
+    if (frequency >= lowFrequency && frequency <= highFrequency) {
+      const fraction = (frequency - lowFrequency) / (highFrequency - lowFrequency);
+      return mtfResult.values[index - 1] + (mtfResult.values[index] - mtfResult.values[index - 1]) * fraction;
+    }
+  }
+
+  return NaN;
+};
+
+const calculateApproximateMTF = (rayTraceResult, options = {}) => {
+  if (!rayTraceResult) {
+    return {
+      fieldName: "Field",
+      fieldAngleDegrees: NaN,
+      imagePlaneX: options.imagePlaneX ?? 0,
+      planeLabel: options.planeLabel || "Current sensor plane",
+      status: "no-result",
+      warning: "Run real ray tracing first.",
+      frequencies: [],
+      values: [],
+      readouts: {}
+    };
+  }
+
+  const imagePlaneX = Number.isFinite(toNumber(options.imagePlaneX)) ? toNumber(options.imagePlaneX) : 0;
+  const samples = Number.isFinite(toNumber(options.imagePlaneX))
+    ? spotSamplesAtImagePlane(rayTraceResult, imagePlaneX)
+    : (rayTraceResult.rays || [])
+      .filter((ray) => ray.status === "valid" && ray.sensorPoint)
+      .map((ray) => ray.sensorPoint.y);
+  const minRayCount = options.minRayCount || 5;
+
+  if (samples.length < minRayCount) {
+    return {
+      fieldName: rayTraceResult.fieldName || "Field",
+      fieldAngleDegrees: rayTraceResult.fieldAngleDegrees,
+      fieldKey: rayTraceResult.fieldKey,
+      imagePlaneX,
+      planeLabel: options.planeLabel || "Current sensor plane",
+      status: "too-few-rays",
+      warning: `Too few valid rays for a useful MTF estimate (${samples.length}/${minRayCount}).`,
+      validRayCount: samples.length,
+      frequencies: [],
+      values: [],
+      readouts: {}
+    };
+  }
+
+  const maxFrequency = options.maxFrequency || 100;
+  const frequencyStep = options.frequencyStep || 5;
+  const stats = spotStatsFromSamples(samples);
+  const centeredSamples = samples.map((sample) => sample - stats.meanY);
+  const frequencies = [];
+  const values = [];
+
+  for (let frequency = 0; frequency <= maxFrequency; frequency += frequencyStep) {
+    const phaseScale = 2 * Math.PI * frequency;
+    const real = centeredSamples.reduce((sum, y) => sum + Math.cos(phaseScale * y), 0) / centeredSamples.length;
+    const imaginary = centeredSamples.reduce((sum, y) => sum + Math.sin(phaseScale * y), 0) / centeredSamples.length;
+    frequencies.push(frequency);
+    values.push(clamp(Math.hypot(real, imaginary), 0, 1));
+  }
+
+  const result = {
+    fieldKey: rayTraceResult.fieldKey,
+    fieldName: rayTraceResult.fieldName || "Field",
+    fieldAngleDegrees: rayTraceResult.fieldAngleDegrees,
+    status: "valid",
+    validRayCount: samples.length,
+    imagePlaneX,
+    planeLabel: options.planeLabel || "Current sensor plane",
+    bestFocusStable: options.bestFocusStable,
+    rmsSpotRadius: stats.rmsSpotRadius,
+    maxSpotRadius: stats.maxSpotRadius,
+    frequencies,
+    values
+  };
+
+  return {
+    ...result,
+    readouts: Object.fromEntries(MTF_READOUT_FREQUENCIES.map((frequency) => [
+      frequency,
+      mtfValueAtFrequency(result, frequency)
+    ]))
+  };
+};
+
+const findBestFocusMTF = (rayTraceResult, options = {}) => {
+  const rangeMm = Math.max(0.5, toNumber(options.rangeMm) || 5);
+  const sampleCount = Math.max(5, Math.min(31, Math.round(toNumber(options.sampleCount) || 21)));
+  const startX = -rangeMm;
+  const step = (rangeMm * 2) / (sampleCount - 1);
+  const planes = Array.from({ length: sampleCount }, (_, index) => Number((startX + index * step).toFixed(4)));
+  const minRayCount = options.minRayCount || 5;
+  const candidates = planes.map((imagePlaneX) => {
+    const samples = spotSamplesAtImagePlane(rayTraceResult, imagePlaneX);
+    const stats = spotStatsFromSamples(samples);
+    return {
+      imagePlaneX,
+      validRayCount: samples.length,
+      rmsSpotRadius: samples.length >= minRayCount ? stats.rmsSpotRadius : NaN
+    };
+  }).filter((candidate) => Number.isFinite(candidate.rmsSpotRadius));
+
+  const best = candidates.reduce((selected, candidate) => (
+    !selected || candidate.rmsSpotRadius < selected.rmsSpotRadius ? candidate : selected
+  ), null);
+  const bestIndex = best ? planes.findIndex((plane) => Math.abs(plane - best.imagePlaneX) < 0.000001) : -1;
+  const isEdgeMinimum = bestIndex <= 0 || bestIndex >= planes.length - 1;
+
+  if (!best) {
+    return {
+      fieldKey: rayTraceResult?.fieldKey,
+      fieldName: rayTraceResult?.fieldName || "Field",
+      fieldAngleDegrees: rayTraceResult?.fieldAngleDegrees,
+      status: "too-few-rays",
+      warning: "Best focus search cannot find a stable minimum because too few valid rays reached the sampled image planes.",
+      imagePlaneX: NaN,
+      planeLabel: "Best focus plane",
+      frequencies: [],
+      values: [],
+      readouts: {}
+    };
+  }
+
+  return calculateApproximateMTF(rayTraceResult, {
+    ...options,
+    imagePlaneX: best.imagePlaneX,
+    planeLabel: "Best focus plane",
+    bestFocusStable: !isEdgeMinimum
+  });
+};
+
+const calculateMTFComparison = (rayTraceResult) => {
+  const current = calculateApproximateMTF(rayTraceResult, {
+    imagePlaneX: 0,
+    planeLabel: "Current sensor plane"
+  });
+  const best = findBestFocusMTF(rayTraceResult, {
+    rangeMm: 5,
+    sampleCount: 21
+  });
+
+  return {
+    fieldKey: rayTraceResult?.fieldKey,
+    fieldName: rayTraceResult?.fieldName || "Field",
+    fieldAngleDegrees: rayTraceResult?.fieldAngleDegrees,
+    current,
+    best
+  };
+};
+
+const geometricMtfValueFromSigma = (sigma, frequency) => {
+  if (!Number.isFinite(sigma) || sigma < 0 || !Number.isFinite(frequency)) return NaN;
+  return clamp(Math.exp(-2 * Math.PI ** 2 * sigma ** 2 * frequency ** 2), 0, 1);
+};
+
+const mtfCurveFromSigma = (sigma, maxFrequencyLpMm = 100, frequencyStepLpMm = 5) => {
+  const maxFrequency = Math.max(10, toNumber(maxFrequencyLpMm) || 100);
+  const frequencyStep = Math.max(1, toNumber(frequencyStepLpMm) || 5);
+  const frequencies = [];
+  const values = [];
+
+  for (let frequency = 0; frequency <= maxFrequency + 0.000001; frequency += frequencyStep) {
+    const roundedFrequency = Number(frequency.toFixed(4));
+    frequencies.push(roundedFrequency);
+    values.push(geometricMtfValueFromSigma(sigma, roundedFrequency));
+  }
+
+  return { frequencies, values };
+};
+
+const axisMtfResultFromSigma = (axis, sigma, options = {}) => {
+  // Approximate geometric MTF from RMS ray spread. This is not diffraction or wavefront MTF.
+  const curve = mtfCurveFromSigma(sigma, options.maxFrequencyLpMm, options.frequencyStepLpMm);
+  const result = {
+    axis,
+    sigma,
+    frequencies: curve.frequencies,
+    values: curve.values
+  };
+
+  return {
+    ...result,
+    readouts: Object.fromEntries(MTF_READOUT_FREQUENCIES.map((frequency) => [
+      frequency,
+      mtfValueAtFrequency(result, frequency)
+    ]))
+  };
+};
+
+const calculateSagittalTangentialGeometricMTF = (lenses, system, options = {}) => {
+  try {
+    const spectralLineKey = options.spectralLineKey || "d";
+    const wavelengthNm = toNumber(options.wavelengthNm)
+      || SPECTRAL_LINES[spectralLineKey]?.wavelengthNm
+      || SPECTRAL_LINES.d.wavelengthNm;
+    const fieldAngleDegrees = toNumber(options.fieldAngleDegrees) || 0;
+    const imagePlaneX = Number.isFinite(toNumber(options.imagePlaneX)) ? toNumber(options.imagePlaneX) : 0;
+    const rayCount = Math.round(clamp(toNumber(options.rayCount) || state.rayTrace3DSampleCount || 7, 3, 15));
+    const trace = traceSystem3D(lenses, system, {
+      fieldAngleDegrees,
+      fieldOrientation: "tangential",
+      sampleCount: rayCount,
+      sampling: "grid",
+      apertureStopIndex: options.apertureStopIndex,
+      apertureDiameter: options.apertureDiameter,
+      wavelengthNm,
+      spectralLineKey,
+      imagePlaneX
+    });
+    const validRays = (trace.rays || []).filter((ray) => ray.status === "valid" && ray.imagePoint);
+    const totalRayCount = trace.totalRayCount || 0;
+    const clippedRayCount = trace.clippedRayCount || 0;
+    const warnings = [];
+
+    if (validRays.length < 5) {
+      warnings.push(`Fewer than 5 valid 3D rays for ${fieldAngleDegrees}° ${spectralLineKey}-line MTF.`);
+    }
+    if (totalRayCount && clippedRayCount / totalRayCount > 0.5) {
+      warnings.push(`More than 50% of 3D MTF rays are clipped at ${fieldAngleDegrees}° ${spectralLineKey}-line.`);
+    }
+    if (validRays.length < 2) {
+      return {
+        fieldKey: options.fieldKey,
+        fieldName: options.fieldName || "Field",
+        fieldAngleDegrees,
+        spectralLineKey,
+        wavelengthNm,
+        imagePlaneX,
+        status: "too-few-rays",
+        validRayCount: validRays.length,
+        totalRayCount,
+        clippedRayCount,
+        tangential: axisMtfResultFromSigma("tangential", NaN, options),
+        sagittal: axisMtfResultFromSigma("sagittal", NaN, options),
+        combinedRms: NaN,
+        warnings
+      };
+    }
+
+    const chiefRay = validRays.reduce((closest, ray) => {
+      const pupilDistance = Math.hypot(ray.inputRay?.pupilU || 0, ray.inputRay?.pupilV || 0);
+      const closestDistance = closest ? Math.hypot(closest.inputRay?.pupilU || 0, closest.inputRay?.pupilV || 0) : Infinity;
+      return pupilDistance < closestDistance ? ray : closest;
+    }, null);
+    const chiefY = chiefRay?.imagePoint?.y ?? NaN;
+    const chiefZ = chiefRay?.imagePoint?.z ?? NaN;
+    const tangentialSamples = validRays
+      .map((ray) => ray.imagePoint.y - chiefY)
+      .filter(Number.isFinite);
+    const sagittalSamples = validRays
+      .map((ray) => ray.imagePoint.z - chiefZ)
+      .filter(Number.isFinite);
+    const rms = (samples) => samples.length
+      ? Math.sqrt(samples.reduce((sum, value) => sum + value ** 2, 0) / samples.length)
+      : NaN;
+    const tangentialSigma = rms(tangentialSamples);
+    const sagittalSigma = rms(sagittalSamples);
+    const combinedRms = Number.isFinite(tangentialSigma) && Number.isFinite(sagittalSigma)
+      ? Math.sqrt((tangentialSigma ** 2 + sagittalSigma ** 2) / 2)
+      : NaN;
+
+    if (!Number.isFinite(tangentialSigma) || !Number.isFinite(sagittalSigma)) {
+      warnings.push("Sagittal or tangential MTF ray fan is unstable for this field.");
+    }
+
+    return {
+      fieldKey: options.fieldKey,
+      fieldName: options.fieldName || "Field",
+      fieldAngleDegrees,
+      spectralLineKey,
+      wavelengthNm,
+      imagePlaneX,
+      planeLabel: options.planeLabel || "Current sensor plane",
+      status: validRays.length >= 5 ? "valid" : "too-few-rays",
+      validRayCount: validRays.length,
+      totalRayCount,
+      clippedRayCount,
+      chiefY,
+      chiefZ,
+      tangential: axisMtfResultFromSigma("tangential", tangentialSigma, options),
+      sagittal: axisMtfResultFromSigma("sagittal", sagittalSigma, options),
+      combinedRms,
+      bestFocusStable: options.bestFocusStable,
+      warnings
+    };
+  } catch {
+    return {
+      fieldKey: options.fieldKey,
+      fieldName: options.fieldName || "Field",
+      fieldAngleDegrees: toNumber(options.fieldAngleDegrees) || 0,
+      spectralLineKey: options.spectralLineKey || "d",
+      wavelengthNm: toNumber(options.wavelengthNm) || SPECTRAL_LINES.d.wavelengthNm,
+      imagePlaneX: Number.isFinite(toNumber(options.imagePlaneX)) ? toNumber(options.imagePlaneX) : 0,
+      status: "invalid",
+      validRayCount: 0,
+      totalRayCount: 0,
+      clippedRayCount: 0,
+      tangential: axisMtfResultFromSigma("tangential", NaN, options),
+      sagittal: axisMtfResultFromSigma("sagittal", NaN, options),
+      combinedRms: NaN,
+      warnings: ["Sagittal/tangential geometric MTF failed for the current lens values."]
+    };
+  }
+};
+
+const findBestFocusSagittalTangentialMTF = (lenses, system, options = {}) => {
+  const rangeMm = Math.max(0.5, toNumber(options.rangeMm) || 5);
+  const sampleCount = Math.max(5, Math.min(31, Math.round(toNumber(options.sampleCount) || 21)));
+  const step = (rangeMm * 2) / (sampleCount - 1);
+  const planes = Array.from({ length: sampleCount }, (_, index) => Number((-rangeMm + index * step).toFixed(4)));
+  const candidates = planes.map((imagePlaneX) => calculateSagittalTangentialGeometricMTF(lenses, system, {
+    ...options,
+    imagePlaneX,
+    planeLabel: "Best focus plane"
+  })).filter((candidate) => Number.isFinite(candidate.combinedRms));
+  const best = candidates.reduce((selected, candidate) => (
+    !selected || candidate.combinedRms < selected.combinedRms ? candidate : selected
+  ), null);
+
+  if (!best) {
+    return {
+      ...calculateSagittalTangentialGeometricMTF(lenses, system, {
+        ...options,
+        imagePlaneX: 0,
+        planeLabel: "Best focus plane"
+      }),
+      status: "too-few-rays",
+      warnings: ["Best focus search cannot find a stable sagittal/tangential MTF minimum."]
+    };
+  }
+
+  const bestIndex = planes.findIndex((plane) => Math.abs(plane - best.imagePlaneX) < 0.000001);
+  return {
+    ...best,
+    bestFocusStable: bestIndex > 0 && bestIndex < planes.length - 1
+  };
+};
+
+const calculateSagittalTangentialMTFComparisons = (lenses, system, options = {}) => {
+  const current = calculateSagittalTangentialGeometricMTF(lenses, system, {
+    ...options,
+    imagePlaneX: 0,
+    planeLabel: "Current sensor plane"
+  });
+  const best = findBestFocusSagittalTangentialMTF(lenses, system, {
+    ...options,
+    rangeMm: 5,
+    sampleCount: 21
+  });
+
+  return {
+    fieldKey: options.fieldKey,
+    fieldName: options.fieldName || "Field",
+    fieldAngleDegrees: options.fieldAngleDegrees,
+    spectralLineKey: options.spectralLineKey || "d",
+    current,
+    best
+  };
+};
+
+const curvesAreNearlyIdentical = (first, second, tolerance = 0.000001) => {
+  if (!first?.values?.length || !second?.values?.length || first.values.length !== second.values.length) return false;
+  return first.values.every((value, index) => Math.abs(value - second.values[index]) <= tolerance);
+};
+
+const calculateSagittalTangentialGeometricMTFPanelData = (lenses, system) => {
+  const wavelengthMode = state.stMtfWavelengthMode === "rgb" ? "rgb" : "d";
+  const lines = rayFanSpectralLines(wavelengthMode);
+  const rayCount = Math.round(clamp(toNumber(state.rayTrace3DSampleCount) || 7, 3, 15));
+  const comparisons = RAY_TRACE_FIELDS.flatMap((field) => lines.map(([lineKey, line]) => (
+    calculateSagittalTangentialMTFComparisons(lenses, system, {
+      fieldKey: field.key,
+      fieldName: field.name,
+      fieldAngleDegrees: field.angle,
+      spectralLineKey: lineKey,
+      wavelengthNm: line.wavelengthNm,
+      rayCount,
+      apertureStopIndex: state.apertureStopIndex,
+      apertureDiameter: state.apertureDiameter,
+      maxFrequencyLpMm: 100,
+      frequencyStepLpMm: 5
+    })
+  )));
+  const activeResults = comparisons.map((comparison) => state.mtfPlaneMode === "best" ? comparison.best : comparison.current);
+  const warnings = new Set();
+
+  activeResults.forEach((result) => {
+    (result.warnings || []).forEach((warning) => warnings.add(warning));
+    if (result.status !== "valid") warnings.add(`Sagittal/tangential MTF is unstable for ${result.fieldName} ${result.spectralLineKey}-line.`);
+    if (result.totalRayCount && result.clippedRayCount / result.totalRayCount > 0.5) warnings.add("Too many 3D MTF rays are clipped by the aperture or clear diameter.");
+    if (Math.abs(result.fieldAngleDegrees) > 0.000001 && curvesAreNearlyIdentical(result.tangential, result.sagittal)) {
+      warnings.add(`Sagittal and tangential curves are nearly identical at ${result.fieldName}; check whether field geometry is too symmetric or under-sampled.`);
+    }
+    if (state.mtfPlaneMode === "best" && result.bestFocusStable === false) {
+      warnings.add("Best focus search cannot find a stable sagittal/tangential MTF minimum within +/-5 mm.");
+    }
+  });
+
+  if (wavelengthMode === "rgb" && hasHighDispersionGlass(lenses)) {
+    RAY_TRACE_FIELDS.forEach((field) => {
+      const fieldResults = activeResults.filter((result) => result.fieldKey === field.key);
+      const red = fieldResults.find((result) => result.spectralLineKey === "C");
+      const blue = fieldResults.find((result) => result.spectralLineKey === "F");
+      if (red && blue
+        && curvesAreNearlyIdentical(red.tangential, blue.tangential, 0.000001)
+        && curvesAreNearlyIdentical(red.sagittal, blue.sagittal, 0.000001)) {
+        warnings.add(`RGB sagittal/tangential MTF curves are nearly identical for ${field.name} despite high-dispersion glass.`);
+      }
+    });
+  }
+
+  warnings.add("This is a geometric sagittal/tangential MTF estimate based on 3D ray intercept spread.");
+
+  return {
+    wavelengthMode,
+    rayCount,
+    comparisons,
+    activeResults,
+    warnings: [...warnings]
+  };
+};
+
+const calculateDiffractionLimitedMTF = (options = {}) => {
+  const fNumber = toNumber(options.fNumber);
+  const wavelengthNm = toNumber(options.wavelengthNm);
+  const maxFrequency = Math.max(10, toNumber(options.maxFrequencyLpMm) || 100);
+  const frequencyStep = Math.max(1, toNumber(options.frequencyStepLpMm) || 5);
+  const wavelengthMm = wavelengthNm / 1000000;
+  const cutoffFrequency = Number.isFinite(wavelengthMm) && wavelengthMm > 0 && Number.isFinite(fNumber) && fNumber > 0
+    ? 1 / (wavelengthMm * fNumber)
+    : NaN;
+  const frequencies = [];
+  const values = [];
+
+  for (let frequency = 0; frequency <= maxFrequency + 0.000001; frequency += frequencyStep) {
+    const roundedFrequency = Number(frequency.toFixed(4));
+    frequencies.push(roundedFrequency);
+    if (!Number.isFinite(cutoffFrequency) || cutoffFrequency <= 0) {
+      values.push(NaN);
+      continue;
+    }
+    const normalizedFrequency = roundedFrequency / cutoffFrequency;
+    if (normalizedFrequency >= 1) {
+      values.push(0);
+      continue;
+    }
+    values.push(clamp((2 / Math.PI) * (
+      Math.acos(normalizedFrequency)
+      - normalizedFrequency * Math.sqrt(1 - normalizedFrequency ** 2)
+    ), 0, 1));
+  }
+
+  const result = {
+    frequencies,
+    values,
+    cutoffFrequency,
+    fNumber,
+    wavelengthNm,
+    status: Number.isFinite(cutoffFrequency) ? "valid" : "invalid"
+  };
+
+  return {
+    ...result,
+    readouts: Object.fromEntries(MTF_READOUT_FREQUENCIES.map((frequency) => [
+      frequency,
+      mtfValueAtFrequency(result, frequency)
+    ]))
+  };
+};
+
+const calculateHybridMTF = (geometricMtf, diffractionMtf) => {
+  const frequencies = geometricMtf?.frequencies?.length ? geometricMtf.frequencies : diffractionMtf?.frequencies || [];
+  const values = frequencies.map((frequency, index) => {
+    const geometricValue = geometricMtf?.frequencies?.length
+      ? (geometricMtf.values[index] ?? mtfValueAtFrequency(geometricMtf, frequency))
+      : NaN;
+    const diffractionValue = mtfValueAtFrequency(diffractionMtf, frequency);
+    return Number.isFinite(geometricValue) && Number.isFinite(diffractionValue)
+      ? clamp(geometricValue * diffractionValue, 0, 1)
+      : NaN;
+  });
+  const result = { frequencies, values };
+
+  return {
+    ...result,
+    readouts: Object.fromEntries(MTF_READOUT_FREQUENCIES.map((frequency) => [
+      frequency,
+      mtfValueAtFrequency(result, frequency)
+    ]))
+  };
+};
+
+const diffractionHybridLinesForMode = (mode) => {
+  if (mode === "rgb") return Object.entries(SPECTRAL_LINES);
+  return [[SPECTRAL_LINES[mode] ? mode : "d", SPECTRAL_LINES[SPECTRAL_LINES[mode] ? mode : "d"]]];
+};
+
+const calculateDiffractionHybridMTFPanelData = (lenses, system) => {
+  const field = RAY_TRACE_FIELDS.find((item) => item.key === state.diffractionMtfFieldKey) || RAY_TRACE_FIELDS[0];
+  const wavelengthMode = ["C", "d", "F", "rgb"].includes(state.diffractionMtfWavelengthMode)
+    ? state.diffractionMtfWavelengthMode
+    : "d";
+  const lines = diffractionHybridLinesForMode(wavelengthMode);
+  const fNumber = calculateFNumber(system, state.apertureDiameter);
+  const rayCount = Math.round(clamp(toNumber(state.rayTrace3DSampleCount) || 7, 3, 15));
+  const results = lines.map(([lineKey, line]) => {
+    const geometric = calculateSagittalTangentialGeometricMTF(lenses, system, {
+      fieldKey: field.key,
+      fieldName: field.name,
+      fieldAngleDegrees: field.angle,
+      spectralLineKey: lineKey,
+      wavelengthNm: line.wavelengthNm,
+      rayCount,
+      apertureStopIndex: state.apertureStopIndex,
+      apertureDiameter: state.apertureDiameter,
+      imagePlaneX: 0,
+      maxFrequencyLpMm: 100,
+      frequencyStepLpMm: 5
+    });
+    const diffraction = calculateDiffractionLimitedMTF({
+      fNumber,
+      wavelengthNm: line.wavelengthNm,
+      maxFrequencyLpMm: 100,
+      frequencyStepLpMm: 5
+    });
+
+    return {
+      lineKey,
+      line,
+      field,
+      geometric,
+      diffraction,
+      hybridTangential: calculateHybridMTF(geometric.tangential, diffraction),
+      hybridSagittal: calculateHybridMTF(geometric.sagittal, diffraction)
+    };
+  });
+  const warnings = new Set();
+
+  if (!Number.isFinite(fNumber)) warnings.add("f-number is invalid; diffraction cutoff cannot be estimated.");
+  if (!(toNumber(state.apertureDiameter) > 0)) warnings.add("Aperture diameter is missing or invalid.");
+  results.forEach((result) => {
+    if (!Number.isFinite(result.line.wavelengthNm) || result.line.wavelengthNm <= 0) warnings.add("Wavelength is invalid.");
+    if (Number.isFinite(result.diffraction.cutoffFrequency) && result.diffraction.cutoffFrequency < 100) {
+      warnings.add(`${result.lineKey}-line diffraction cutoff is below the 100 lp/mm chart maximum.`);
+    }
+    (result.geometric.warnings || []).forEach((warning) => warnings.add(warning));
+  });
+  warnings.add("Hybrid estimate = geometric ray-spread MTF x diffraction-limited MTF.");
+  warnings.add("This is not a full wavefront MTF calculation; do not interpret it as OPD / PSF / OTF analysis.");
+
+  return {
+    field,
+    wavelengthMode,
+    fNumber,
+    rayCount,
+    results,
+    warnings: [...warnings]
+  };
+};
+
+const renderMTFChart = (mtfResult) => {
+  const results = (Array.isArray(mtfResult) ? mtfResult : [mtfResult]).filter(Boolean);
+  const validResults = results.filter((result) => result.status === "valid" && result.frequencies.length && result.values.length);
+  const width = 560;
+  const height = 260;
+  const margin = { left: 48, right: 18, top: 20, bottom: 42 };
+  const plotWidth = width - margin.left - margin.right;
+  const plotHeight = height - margin.top - margin.bottom;
+  const x = (frequency) => margin.left + (frequency / 100) * plotWidth;
+  const y = (value) => margin.top + (1 - clamp(value, 0, 1)) * plotHeight;
+
+  if (!validResults.length) {
+    const warning = results.find((result) => result.warning)?.warning || "Run real ray tracing first.";
+    return `
+      <svg class="mtf-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Approximate geometric MTF chart">
+        <rect class="mtf-bg" x="0" y="0" width="${width}" height="${height}" />
+        <text class="mtf-empty" x="${width / 2}" y="${height / 2}" text-anchor="middle">${escapeHtml(warning)}</text>
+      </svg>
+    `;
+  }
+
+  const curvePaths = validResults.map((result) => {
+    const points = result.frequencies.map((frequency, index) => `${x(frequency)},${y(result.values[index])}`);
+    return `<polyline class="mtf-curve mtf-${result.fieldKey || "field"}" points="${points.join(" ")}" />`;
+  }).join("");
+
+  return `
+    <svg class="mtf-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Approximate geometric MTF chart">
+      <rect class="mtf-bg" x="0" y="0" width="${width}" height="${height}" />
+      <line class="mtf-axis" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}" />
+      <line class="mtf-axis" x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" />
+      ${[0.25, 0.5, 0.75, 1].map((tick) => `
+        <line class="mtf-grid" x1="${margin.left}" y1="${y(tick)}" x2="${width - margin.right}" y2="${y(tick)}" />
+        <text class="mtf-tick" x="${margin.left - 8}" y="${y(tick) + 4}" text-anchor="end">${tick}</text>
+      `).join("")}
+      ${[0, 20, 40, 60, 80, 100].map((tick) => `
+        <line class="mtf-grid" x1="${x(tick)}" y1="${margin.top}" x2="${x(tick)}" y2="${height - margin.bottom}" />
+        <text class="mtf-tick" x="${x(tick)}" y="${height - 18}" text-anchor="middle">${tick}</text>
+      `).join("")}
+      ${curvePaths}
+      <text class="mtf-label" x="${width / 2}" y="${height - 4}" text-anchor="middle">Spatial frequency (lp/mm)</text>
+      <text class="mtf-label" x="15" y="${margin.top + 8}" text-anchor="start">MTF</text>
+    </svg>
+  `;
+};
+
+const renderMTFValue = (value) => Number.isFinite(value) ? formatNumber(value, 3) : "--";
+
+const renderMTFReadoutTable = (mtfResults) => (
+  `
+    <div class="mtf-readout-table mtf-readout-table-compact" role="table" aria-label="Approximate geometric MTF value readouts">
+      <div class="mtf-readout-row mtf-readout-head" role="row">
+        <span role="columnheader">Field</span>
+        ${MTF_READOUT_FREQUENCIES.map((frequency) => `<span role="columnheader">${frequency} lp/mm</span>`).join("")}
+      </div>
+      ${mtfResults.map((result) => `
+        <div class="mtf-readout-row" role="row">
+          <span role="cell">${escapeHtml(result.fieldName || "Field")}</span>
+          ${MTF_READOUT_FREQUENCIES.map((frequency) => `<span role="cell">${renderMTFValue(result.readouts?.[frequency])}</span>`).join("")}
+        </div>
+      `).join("")}
+    </div>
+  `
+);
+
+const renderMTFComparisonReadout = (comparisons) => {
+  if (state.mtfPlaneMode !== "best") return "";
+  const rows = comparisons.flatMap((comparison) => [
+    { result: comparison.current, mode: "Current", shift: 0 },
+    {
+      result: comparison.best,
+      mode: "Best",
+      shift: Number.isFinite(comparison.best.imagePlaneX) ? comparison.best.imagePlaneX : NaN
+    }
+  ]);
+
+  return `
+    <div class="mtf-readout-table mtf-comparison-table" role="table" aria-label="Current plane versus best focus MTF comparison">
+      <div class="mtf-readout-row mtf-readout-head" role="row">
+        <span role="columnheader">Field</span>
+        <span role="columnheader">Plane</span>
+        ${MTF_READOUT_FREQUENCIES.map((frequency) => `<span role="columnheader">${frequency} lp/mm</span>`).join("")}
+        <span role="columnheader">Shift</span>
+        <span role="columnheader">RMS</span>
+      </div>
+      ${rows.map(({ result, mode, shift }) => `
+        <div class="mtf-readout-row" role="row">
+          <span role="cell">${escapeHtml(result.fieldName || "Field")}</span>
+          <span role="cell">${mode}</span>
+          ${MTF_READOUT_FREQUENCIES.map((frequency) => `<span role="cell">${renderMTFValue(result.readouts?.[frequency])}</span>`).join("")}
+          <span role="cell">${Number.isFinite(shift) ? `${formatNumber(shift, 2)} mm` : "--"}</span>
+          <span role="cell">${renderMTFValue(result.rmsSpotRadius)} mm</span>
+        </div>
+      `).join("")}
+    </div>
+  `;
+};
+
+const renderMTFBestFocusSummary = (comparisons) => {
+  if (state.mtfPlaneMode !== "best") return "";
+
+  return `
+    <div class="mtf-focus-grid">
+      ${comparisons.map((comparison) => `
+        <div class="mtf-focus-card">
+          <strong>${escapeHtml(comparison.fieldName || "Field")}</strong>
+          <span>Best focus shift ${Number.isFinite(comparison.best.imagePlaneX) ? `${formatNumber(comparison.best.imagePlaneX, 2)} mm` : "--"}</span>
+          <span>Current RMS ${renderMTFValue(comparison.current.rmsSpotRadius)} mm</span>
+          <span>Best RMS ${renderMTFValue(comparison.best.rmsSpotRadius)} mm</span>
+        </div>
+      `).join("")}
+    </div>
+  `;
+};
+
+const mtfPanelWarnings = (comparisons, activeResults, rayTraceResults) => {
+  const warnings = new Set();
+  activeResults
+    .filter((result) => result.status !== "valid" && result.warning)
+    .forEach((result) => warnings.add(result.warning));
+
+  rayTraceResults.forEach((result) => {
+    if (!result?.totalRayCount) return;
+    const validRatio = result.validRayCount / result.totalRayCount;
+    const clippedRatio = result.missedRayCount / result.totalRayCount;
+    if (validRatio < 0.5 || clippedRatio > 0.5) warnings.add("Most rays are clipped before reaching the image plane; MTF readouts may be unstable.");
+  });
+
+  if (state.apertureDiameter < 2) warnings.add("Aperture diameter is very small; too few rays may represent the pupil for stable MTF estimates.");
+  if (state.mtfPlaneMode === "best") {
+    comparisons
+      .filter((comparison) => comparison.best.status !== "valid" || comparison.best.bestFocusStable === false)
+      .forEach(() => warnings.add("Best focus search cannot find a stable minimum within the sampled +/-5 mm range."));
+  }
+  warnings.add("MTF result is based on geometric blur only; diffraction MTF is not included.");
+
+  return [...warnings];
+};
+
+const renderMTFPanel = (rayTraceResults) => {
+  const results = (Array.isArray(rayTraceResults) ? rayTraceResults : [rayTraceResults]).filter(Boolean);
+  const comparisons = results.map((result) => calculateMTFComparison(result));
+  const mtfResults = comparisons.map((comparison) => state.mtfPlaneMode === "best" ? comparison.best : comparison.current);
+  const warnings = mtfPanelWarnings(comparisons, mtfResults, results);
+
+  return `
+    <section class="mtf-panel">
+      <div class="panel-heading">
+        <h3>Approximate Geometric MTF</h3>
+        <span class="badge">Experimental</span>
+      </div>
+      ${menuIntro("mtf")}
+      <label class="mtf-mode-control">
+        MTF plane mode
+        <select data-action="update-mtf-plane-mode" aria-label="MTF plane mode">
+          <option value="current" ${state.mtfPlaneMode === "current" ? "selected" : ""}>Current sensor plane</option>
+          <option value="best" ${state.mtfPlaneMode === "best" ? "selected" : ""}>Best focus plane</option>
+        </select>
+      </label>
+      ${renderMTFChart(mtfResults)}
+      <div class="mtf-legend">
+        ${mtfResults.map((result) => `
+          <span class="mtf-legend-item mtf-legend-${result.fieldKey || "field"}">
+            ${escapeHtml(result.fieldName || "Field")} ${Number.isFinite(result.fieldAngleDegrees) ? `${formatNumber(result.fieldAngleDegrees, 2)}°` : ""}
+          </span>
+        `).join("")}
+      </div>
+      ${renderMTFReadoutTable(mtfResults)}
+      ${renderMTFBestFocusSummary(comparisons)}
+      ${renderMTFComparisonReadout(comparisons)}
+      ${warnings.map((warning) => `<p class="warning ray-warning">${escapeHtml(warning)}</p>`).join("")}
+      <p class="diagram-note">MTF shown from d-line geometric ray trace unless RGB overlay is selected.</p>
+      <p class="diagram-note">This is an approximate geometric MTF based on ray spot spread. It does not include diffraction, wavefront phase, coating effects, sensor sampling, or manufacturing tolerances.</p>
+      <p class="diagram-note">Sagittal and tangential MTF require 3D ray tracing with sagittal, tangential, and skew rays. This current chart is based on 2D meridional geometric ray tracing.</p>
+      <p class="diagram-note">Coating transmission affects brightness and contrast, but this model does not yet feed flare or scattering into MTF.</p>
+    </section>
+  `;
+};
+
+const stMtfCurveClass = (result, axis) => {
+  const lineClass = curveClassForLine(result.spectralLineKey);
+  return `st-mtf-${axis} ${lineClass}`;
+};
+
+const renderSagittalTangentialMTFChart = (field, results) => {
+  const width = 420;
+  const height = 210;
+  const margin = { left: 44, right: 16, top: 20, bottom: 38 };
+  const plotWidth = width - margin.left - margin.right;
+  const plotHeight = height - margin.top - margin.bottom;
+  const validResults = results.filter((result) => result.status === "valid");
+  const x = (frequency) => margin.left + (frequency / 100) * plotWidth;
+  const y = (value) => margin.top + (1 - clamp(value, 0, 1)) * plotHeight;
+  const curves = validResults.flatMap((result) => [
+    { axis: "tangential", data: result.tangential, result },
+    { axis: "sagittal", data: result.sagittal, result }
+  ]).filter((curve) => curve.data?.frequencies?.length);
+
+  return `
+    <article class="st-mtf-card">
+      <div class="spot-field-heading">
+        <strong>${escapeHtml(field.name)}</strong>
+        <span>${formatNumber(field.angle, 1)}°</span>
+      </div>
+      <svg class="mtf-chart st-mtf-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="${field.name} sagittal tangential geometric MTF chart">
+        <rect class="mtf-bg" x="0" y="0" width="${width}" height="${height}" />
+        <line class="mtf-axis" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}" />
+        <line class="mtf-axis" x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" />
+        ${[0.25, 0.5, 0.75, 1].map((tick) => `
+          <line class="mtf-grid" x1="${margin.left}" y1="${y(tick)}" x2="${width - margin.right}" y2="${y(tick)}" />
+          <text class="mtf-tick" x="${margin.left - 7}" y="${y(tick) + 4}" text-anchor="end">${tick}</text>
+        `).join("")}
+        ${[0, 20, 40, 60, 80, 100].map((tick) => `
+          <line class="mtf-grid" x1="${x(tick)}" y1="${margin.top}" x2="${x(tick)}" y2="${height - margin.bottom}" />
+          <text class="mtf-tick" x="${x(tick)}" y="${height - 16}" text-anchor="middle">${tick}</text>
+        `).join("")}
+        ${curves.map((curve) => `
+          <polyline class="mtf-curve ${stMtfCurveClass(curve.result, curve.axis)}" points="${curve.data.frequencies.map((frequency, index) => `${x(frequency)},${y(curve.data.values[index])}`).join(" ")}" />
+        `).join("")}
+        ${curves.length ? "" : `<text class="mtf-empty" x="${width / 2}" y="${height / 2}" text-anchor="middle">No valid 3D MTF rays</text>`}
+        <text class="mtf-label" x="${width / 2}" y="${height - 3}" text-anchor="middle">Spatial frequency (lp/mm)</text>
+        <text class="mtf-label" x="12" y="${margin.top + 8}" text-anchor="start">MTF</text>
+      </svg>
+    </article>
+  `;
+};
+
+const renderSagittalTangentialMTFReadoutTable = (results) => {
+  const rows = results.flatMap((result) => [
+    { label: `${result.fieldName} ${result.spectralLineKey} Tangential`, axis: result.tangential },
+    { label: `${result.fieldName} ${result.spectralLineKey} Sagittal`, axis: result.sagittal }
+  ]);
+
+  return `
+    <div class="mtf-readout-table st-mtf-readout-table" role="table" aria-label="Sagittal tangential geometric MTF readouts">
+      <div class="mtf-readout-row mtf-readout-head" role="row">
+        <span role="columnheader">Curve</span>
+        ${MTF_READOUT_FREQUENCIES.map((frequency) => `<span role="columnheader">${frequency} lp/mm</span>`).join("")}
+      </div>
+      ${rows.map((row) => `
+        <div class="mtf-readout-row" role="row">
+          <span role="cell">${escapeHtml(row.label)}</span>
+          ${MTF_READOUT_FREQUENCIES.map((frequency) => `<span role="cell">${renderMTFValue(row.axis.readouts?.[frequency])}</span>`).join("")}
+        </div>
+      `).join("")}
+    </div>
+  `;
+};
+
+const renderSagittalTangentialMTFBestFocusSummary = (comparisons) => {
+  if (state.mtfPlaneMode !== "best") return "";
+
+  return `
+    <div class="st-mtf-focus-grid">
+      ${comparisons.map((comparison) => `
+        <div class="mtf-focus-card">
+          <strong>${escapeHtml(comparison.fieldName)} ${comparison.spectralLineKey}</strong>
+          <span>Best focus shift ${Number.isFinite(comparison.best.imagePlaneX) ? `${formatNumber(comparison.best.imagePlaneX, 2)} mm` : "--"}</span>
+          <span>Current T RMS ${renderMTFValue(comparison.current.tangential.sigma)} mm</span>
+          <span>Current S RMS ${renderMTFValue(comparison.current.sagittal.sigma)} mm</span>
+          <span>Best T RMS ${renderMTFValue(comparison.best.tangential.sigma)} mm</span>
+          <span>Best S RMS ${renderMTFValue(comparison.best.sagittal.sigma)} mm</span>
+        </div>
+      `).join("")}
+    </div>
+  `;
+};
+
+const renderSagittalTangentialGeometricMTFPanel = (result) => (
+  `
+    <section class="st-mtf-panel">
+      <div class="panel-heading">
+        <h3>Sagittal / Tangential Geometric MTF</h3>
+        <span class="badge">3D geometric</span>
+      </div>
+      ${menuIntro("stMtf")}
+      <div class="st-mtf-controls">
+        <label>
+          MTF plane mode
+          <select data-action="update-mtf-plane-mode" aria-label="Sagittal tangential MTF plane mode">
+            <option value="current" ${state.mtfPlaneMode === "current" ? "selected" : ""}>Current sensor plane</option>
+            <option value="best" ${state.mtfPlaneMode === "best" ? "selected" : ""}>Best focus plane</option>
+          </select>
+        </label>
+        <label>
+          Wavelength mode
+          <select data-action="update-st-mtf-wavelength" aria-label="Sagittal tangential MTF wavelength mode">
+            <option value="d" ${state.stMtfWavelengthMode === "d" ? "selected" : ""}>d-line only</option>
+            <option value="rgb" ${state.stMtfWavelengthMode === "rgb" ? "selected" : ""}>RGB C/d/F overlay</option>
+          </select>
+        </label>
+        ${metric("3D pupil sample", result.rayCount, "grid width")}
+      </div>
+      <div class="st-mtf-chart-grid">
+        ${RAY_TRACE_FIELDS.map((field) => renderSagittalTangentialMTFChart(
+          field,
+          result.activeResults.filter((item) => item.fieldKey === field.key)
+        )).join("")}
+      </div>
+      <div class="rgb-overlay-legend">
+        ${rayFanSpectralLines(result.wavelengthMode).map(([lineKey, line]) => `<span class="rgb-legend-${line.color}">${lineKey} ${line.wavelengthNm} nm</span>`).join("")}
+        <span>Solid: sagittal</span>
+        <span>Dashed: tangential</span>
+      </div>
+      ${renderSagittalTangentialMTFReadoutTable(result.activeResults)}
+      ${renderSagittalTangentialMTFBestFocusSummary(result.comparisons)}
+      ${result.warnings.map((warning) => `<p class="warning ray-warning">${escapeHtml(warning)}</p>`).join("")}
+      <p class="diagram-note">This is a geometric sagittal/tangential MTF estimate based on 3D ray intercept spread. It does not include diffraction, wavefront phase, coating effects, sensor sampling, or manufacturing tolerances.</p>
+      <p class="diagram-note">Coating transmission affects brightness and contrast, but this model does not yet feed flare or scattering into MTF.</p>
+    </section>
+  `
+);
+
+const diffractionHybridCurveClass = (lineKey, curveType) => `${curveClassForLine(lineKey)} diffraction-hybrid-${curveType}`;
+
+const renderDiffractionHybridMTFChart = (result) => {
+  const width = 560;
+  const height = 270;
+  const margin = { left: 48, right: 18, top: 20, bottom: 42 };
+  const plotWidth = width - margin.left - margin.right;
+  const plotHeight = height - margin.top - margin.bottom;
+  const x = (frequency) => margin.left + (frequency / 100) * plotWidth;
+  const y = (value) => margin.top + (1 - clamp(value, 0, 1)) * plotHeight;
+  const curves = result.results.flatMap((item) => [
+    { lineKey: item.lineKey, type: "diffraction", data: item.diffraction },
+    { lineKey: item.lineKey, type: "geometric-tangential", data: item.geometric.tangential },
+    { lineKey: item.lineKey, type: "geometric-sagittal", data: item.geometric.sagittal },
+    { lineKey: item.lineKey, type: "hybrid-tangential", data: item.hybridTangential },
+    { lineKey: item.lineKey, type: "hybrid-sagittal", data: item.hybridSagittal }
+  ]).filter((curve) => curve.data?.frequencies?.length);
+
+  return `
+    <svg class="mtf-chart diffraction-hybrid-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Diffraction and hybrid MTF chart">
+      <rect class="mtf-bg" x="0" y="0" width="${width}" height="${height}" />
+      <line class="mtf-axis" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}" />
+      <line class="mtf-axis" x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" />
+      ${[0.25, 0.5, 0.75, 1].map((tick) => `
+        <line class="mtf-grid" x1="${margin.left}" y1="${y(tick)}" x2="${width - margin.right}" y2="${y(tick)}" />
+        <text class="mtf-tick" x="${margin.left - 8}" y="${y(tick) + 4}" text-anchor="end">${tick}</text>
+      `).join("")}
+      ${[0, 20, 40, 60, 80, 100].map((tick) => `
+        <line class="mtf-grid" x1="${x(tick)}" y1="${margin.top}" x2="${x(tick)}" y2="${height - margin.bottom}" />
+        <text class="mtf-tick" x="${x(tick)}" y="${height - 18}" text-anchor="middle">${tick}</text>
+      `).join("")}
+      ${curves.map((curve) => `
+        <polyline class="mtf-curve ${diffractionHybridCurveClass(curve.lineKey, curve.type)}" points="${curve.data.frequencies.map((frequency, index) => `${x(frequency)},${y(curve.data.values[index])}`).join(" ")}" />
+      `).join("")}
+      ${curves.length ? "" : `<text class="mtf-empty" x="${width / 2}" y="${height / 2}" text-anchor="middle">No valid diffraction / hybrid MTF data</text>`}
+      <text class="mtf-label" x="${width / 2}" y="${height - 4}" text-anchor="middle">Spatial frequency (lp/mm)</text>
+      <text class="mtf-label" x="15" y="${margin.top + 8}" text-anchor="start">MTF</text>
+    </svg>
+  `;
+};
+
+const renderDiffractionHybridReadoutTable = (result) => {
+  const rows = result.results.flatMap((item) => [
+    { label: `${item.lineKey} Diffraction-limited`, data: item.diffraction },
+    { label: `${item.lineKey} Geometric sagittal`, data: item.geometric.sagittal },
+    { label: `${item.lineKey} Geometric tangential`, data: item.geometric.tangential },
+    { label: `${item.lineKey} Hybrid sagittal`, data: item.hybridSagittal },
+    { label: `${item.lineKey} Hybrid tangential`, data: item.hybridTangential }
+  ]);
+
+  return `
+    <div class="mtf-readout-table diffraction-hybrid-readout" role="table" aria-label="Diffraction and hybrid MTF readouts">
+      <div class="mtf-readout-row mtf-readout-head" role="row">
+        <span role="columnheader">Curve</span>
+        ${MTF_READOUT_FREQUENCIES.map((frequency) => `<span role="columnheader">${frequency} lp/mm</span>`).join("")}
+      </div>
+      ${rows.map((row) => `
+        <div class="mtf-readout-row" role="row">
+          <span role="cell">${escapeHtml(row.label)}</span>
+          ${MTF_READOUT_FREQUENCIES.map((frequency) => `<span role="cell">${renderMTFValue(row.data.readouts?.[frequency])}</span>`).join("")}
+        </div>
+      `).join("")}
+    </div>
+  `;
+};
+
+const renderDiffractionHybridMTFPanel = (result) => (
+  `
+    <section class="diffraction-hybrid-panel">
+      <div class="panel-heading">
+        <h3>Diffraction / Hybrid MTF</h3>
+        <span class="badge">Ideal x geometric</span>
+      </div>
+      ${menuIntro("diffractionMtf")}
+      <div class="st-mtf-controls">
+        <label>
+          Field
+          <select data-action="update-diffraction-mtf-field" aria-label="Diffraction hybrid MTF field">
+            ${RAY_TRACE_FIELDS.map((field) => `
+              <option value="${field.key}" ${state.diffractionMtfFieldKey === field.key ? "selected" : ""}>${field.name}</option>
+            `).join("")}
+          </select>
+        </label>
+        <label>
+          Wavelength
+          <select data-action="update-diffraction-mtf-wavelength" aria-label="Diffraction hybrid MTF wavelength">
+            <option value="d" ${state.diffractionMtfWavelengthMode === "d" ? "selected" : ""}>d-line 587.6 nm</option>
+            <option value="C" ${state.diffractionMtfWavelengthMode === "C" ? "selected" : ""}>C red 656.3 nm</option>
+            <option value="F" ${state.diffractionMtfWavelengthMode === "F" ? "selected" : ""}>F blue 486.1 nm</option>
+            <option value="rgb" ${state.diffractionMtfWavelengthMode === "rgb" ? "selected" : ""}>RGB overlay</option>
+          </select>
+        </label>
+        ${metric("Field angle", formatNumber(result.field.angle, 2), "degrees")}
+      </div>
+      ${renderDiffractionHybridMTFChart(result)}
+      <div class="rgb-overlay-legend">
+        ${diffractionHybridLinesForMode(result.wavelengthMode).map(([lineKey, line]) => `<span class="rgb-legend-${line.color}">${lineKey} ${line.wavelengthNm} nm</span>`).join("")}
+        <span>Diffraction: dotted</span>
+        <span>Geometric: solid/dashed</span>
+        <span>Hybrid: bold dashed</span>
+      </div>
+      <div class="diffraction-cutoff-grid">
+        ${metric("f-number", Number.isFinite(result.fNumber) ? `f/${formatNumber(result.fNumber, 3)}` : "--", "Feff / aperture")}
+        ${result.results.map((item) => metric(`${item.lineKey} wavelength`, formatNumber(item.line.wavelengthNm, 1), "nm")).join("")}
+        ${result.results.map((item) => metric(`${item.lineKey} cutoff`, formatNumber(item.diffraction.cutoffFrequency, 1), "lp/mm")).join("")}
+      </div>
+      ${renderDiffractionHybridReadoutTable(result)}
+      ${result.warnings.map((warning) => `<p class="warning ray-warning">${escapeHtml(warning)}</p>`).join("")}
+      <p class="diagram-note">This panel combines ideal diffraction-limited MTF with geometric ray-spread MTF. It is not a full wavefront OPD / PSF / OTF calculation.</p>
+      <p class="diagram-note">Coating transmission affects brightness and contrast, but this model does not yet feed flare or scattering into MTF.</p>
+    </section>
+  `
+);
+
+const opdColor = (value, limit) => {
+  if (!Number.isFinite(value) || !(limit > 0)) return "#9aa9ae";
+  const normalized = clamp(value / limit, -1, 1);
+  if (normalized >= 0) {
+    const intensity = Math.round(80 + normalized * 115);
+    return `rgb(${intensity}, 62, 76)`;
+  }
+  const intensity = Math.round(82 + Math.abs(normalized) * 110);
+  return `rgb(45, ${Math.round(86 + Math.abs(normalized) * 60)}, ${intensity})`;
+};
+
+const renderWavefrontOPDMap = (result) => {
+  const width = 240;
+  const height = 220;
+  const centerX = width / 2;
+  const centerY = height / 2;
+  const radius = 76;
+  const samples = (result.samples || [])
+    .filter((sample) => Number.isFinite(sample.pupilU) && Number.isFinite(sample.pupilV) && Number.isFinite(sample.residualOpdMm));
+  const wavelengthMm = result.wavelengthNm / 1000000;
+  const waveSamples = samples.map((sample) => ({
+    ...sample,
+    residualWaves: wavelengthMm > 0 ? sample.residualOpdMm / wavelengthMm : NaN
+  }));
+  const maxAbsWaves = Math.max(0.05, ...waveSamples.map((sample) => Math.abs(sample.residualWaves)).filter(Number.isFinite));
+
+  return `
+    <article class="wavefront-card">
+      <div class="spot-field-heading">
+        <strong>${escapeHtml(result.spectralLineKey)} ${escapeHtml(result.fieldName || "Field")}</strong>
+        <span>${formatNumber(result.wavelengthNm, 1)} nm</span>
+      </div>
+      <svg class="wavefront-map" viewBox="0 0 ${width} ${height}" role="img" aria-label="Wavefront OPD pupil map">
+        <rect class="mtf-bg" x="0" y="0" width="${width}" height="${height}" />
+        <circle class="wavefront-pupil" cx="${centerX}" cy="${centerY}" r="${radius}" />
+        <line class="spot-axis" x1="${centerX - radius}" y1="${centerY}" x2="${centerX + radius}" y2="${centerY}" />
+        <line class="spot-axis" x1="${centerX}" y1="${centerY - radius}" x2="${centerX}" y2="${centerY + radius}" />
+        ${waveSamples.length ? waveSamples.map((sample) => `
+          <circle
+            class="wavefront-sample"
+            cx="${centerX + sample.pupilU * radius}"
+            cy="${centerY - sample.pupilV * radius}"
+            r="5"
+            fill="${opdColor(sample.residualWaves, maxAbsWaves)}"
+          />
+        `).join("") : `<text class="mtf-empty" x="${centerX}" y="${centerY}" text-anchor="middle">No valid OPD samples</text>`}
+        <text class="mtf-label" x="${centerX}" y="${height - 10}" text-anchor="middle">Residual OPD after piston / tilt</text>
+      </svg>
+      <div class="wavefront-card-metrics">
+        ${metric("RMS OPD", formatNumber(result.rmsOpdWaves, 4), "waves")}
+        ${metric("P-V OPD", formatNumber(result.peakToValleyOpdWaves, 4), "waves")}
+        ${metric("Strehl estimate", renderMTFValue(result.strehlEstimate), "Maréchal")}
+      </div>
+    </article>
+  `;
+};
+
+const renderWavefrontReadoutTable = (result) => `
+  <div class="mtf-readout-table wavefront-readout" role="table" aria-label="Wavefront OPD and Strehl readouts">
+    <div class="mtf-readout-row mtf-readout-head" role="row">
+      <span role="columnheader">Line</span>
+      <span role="columnheader">RMS OPD</span>
+      <span role="columnheader">RMS waves</span>
+      <span role="columnheader">P-V OPD</span>
+      <span role="columnheader">P-V waves</span>
+      <span role="columnheader">Strehl estimate</span>
+      <span role="columnheader">Rays</span>
+    </div>
+    ${result.results.map((item) => `
+      <div class="mtf-readout-row" role="row">
+        <span role="cell">${escapeHtml(item.spectralLineKey)} ${formatNumber(item.wavelengthNm, 1)} nm</span>
+        <span role="cell">${formatNumber(item.rmsOpdMm, 7)} mm</span>
+        <span role="cell">${formatNumber(item.rmsOpdWaves, 4)}</span>
+        <span role="cell">${formatNumber(item.peakToValleyOpdMm, 7)} mm</span>
+        <span role="cell">${formatNumber(item.peakToValleyOpdWaves, 4)}</span>
+        <span role="cell">${renderMTFValue(item.strehlEstimate)}</span>
+        <span role="cell">${item.validRayCount}/${item.totalRayCount}</span>
+      </div>
+    `).join("")}
+  </div>
+`;
+
+const renderWavefrontOPDPanel = (result) => `
+  <section class="wavefront-panel">
+    <div class="panel-heading">
+      <h3>Wavefront OPD / Strehl Estimate</h3>
+      <span class="badge">3D OPL estimate</span>
+    </div>
+    ${menuIntro("wavefront")}
+    <div class="st-mtf-controls">
+      <label>
+        Field
+        <select data-action="update-wavefront-field" aria-label="Wavefront OPD field">
+          ${RAY_TRACE_FIELDS.map((field) => `
+            <option value="${field.key}" ${state.wavefrontFieldKey === field.key ? "selected" : ""}>${field.name}</option>
+          `).join("")}
+        </select>
+      </label>
+      <label>
+        Wavelength
+        <select data-action="update-wavefront-wavelength" aria-label="Wavefront OPD wavelength">
+          <option value="d" ${state.wavefrontWavelengthMode === "d" ? "selected" : ""}>d-line 587.6 nm</option>
+          <option value="C" ${state.wavefrontWavelengthMode === "C" ? "selected" : ""}>C red 656.3 nm</option>
+          <option value="F" ${state.wavefrontWavelengthMode === "F" ? "selected" : ""}>F blue 486.1 nm</option>
+          <option value="rgb" ${state.wavefrontWavelengthMode === "rgb" ? "selected" : ""}>RGB overlay</option>
+        </select>
+      </label>
+      ${metric("Pupil samples", result.sampleCount, "grid width")}
+    </div>
+    <div class="wavefront-grid">
+      ${result.results.map((item) => renderWavefrontOPDMap(item)).join("")}
+    </div>
+    ${renderWavefrontReadoutTable(result)}
+    ${result.warnings.map((warning) => `<p class="warning ray-warning">${escapeHtml(warning)}</p>`).join("")}
+    <p class="diagram-note">OPD is estimated from 3D optical path length and then piston/tilt are removed over the sampled pupil. Strehl uses the Maréchal approximation. This does not render a full wavefront PSF / OTF / MTF.</p>
+  </section>
+`;
+
+const heatColor = (value, maxValue, mode = "linear") => {
+  if (!Number.isFinite(value) || !(maxValue > 0)) return "#edf3f3";
+  const scaled = mode === "log"
+    ? Math.log10(1 + 1200 * value / maxValue) / Math.log10(1201)
+    : value / maxValue;
+  const t = clamp(scaled, 0, 1);
+  const r = Math.round(20 + t * 220);
+  const g = Math.round(48 + Math.sin(t * Math.PI) * 95);
+  const b = Math.round(92 + (1 - t) * 130);
+  return `rgb(${r}, ${g}, ${b})`;
+};
+
+const renderWaveOpticsHeatmap = ({ title, values, className, mode = "linear" }) => {
+  const size = values?.length || 0;
+  const width = 260;
+  const height = 238;
+  const plotSize = 196;
+  const left = 32;
+  const top = 18;
+  const maxValue = Math.max(0, ...(values || []).flat().filter(Number.isFinite));
+  const cellSize = size ? plotSize / size : plotSize;
+
+  return `
+    <article class="wave-optics-card">
+      <div class="spot-field-heading">
+        <strong>${escapeHtml(title)}</strong>
+        <span>${size} x ${size}</span>
+      </div>
+      <svg class="wave-optics-map ${className || ""}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(title)} heatmap">
+        <rect class="mtf-bg" x="0" y="0" width="${width}" height="${height}" />
+        ${size ? values.map((row, rowIndex) => row.map((value, columnIndex) => `
+          <rect
+            x="${left + columnIndex * cellSize}"
+            y="${top + rowIndex * cellSize}"
+            width="${cellSize + 0.2}"
+            height="${cellSize + 0.2}"
+            fill="${heatColor(value, maxValue, mode)}"
+          />
+        `).join("")).join("") : `<text class="mtf-empty" x="${width / 2}" y="${height / 2}" text-anchor="middle">No data</text>`}
+        <rect class="wave-optics-frame" x="${left}" y="${top}" width="${plotSize}" height="${plotSize}" />
+        <text class="mtf-label" x="${width / 2}" y="${height - 10}" text-anchor="middle">${mode === "log" ? "log intensity" : "normalized magnitude"}</text>
+      </svg>
+    </article>
+  `;
+};
+
+const renderWaveOpticsCutChart = (result) => {
+  const width = 520;
+  const height = 230;
+  const margin = { left: 48, right: 18, top: 20, bottom: 42 };
+  const plotWidth = width - margin.left - margin.right;
+  const plotHeight = height - margin.top - margin.bottom;
+  const x = (value) => margin.left + clamp(value, 0, 1) * plotWidth;
+  const y = (value) => margin.top + (1 - clamp(value, 0, 1)) * plotHeight;
+  const curves = [
+    { label: "Tangential", className: "wave-optics-tangential", points: result.cuts.tangential },
+    { label: "Sagittal", className: "wave-optics-sagittal", points: result.cuts.sagittal }
+  ];
+
+  return `
+    <svg class="mtf-chart wave-optics-cut-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Wavefront prototype sagittal and tangential MTF cuts">
+      <rect class="mtf-bg" x="0" y="0" width="${width}" height="${height}" />
+      <line class="mtf-axis" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}" />
+      <line class="mtf-axis" x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" />
+      ${[0.25, 0.5, 0.75, 1].map((tick) => `
+        <line class="mtf-grid" x1="${margin.left}" y1="${y(tick)}" x2="${width - margin.right}" y2="${y(tick)}" />
+        <text class="mtf-tick" x="${margin.left - 8}" y="${y(tick) + 4}" text-anchor="end">${tick}</text>
+      `).join("")}
+      ${[0, 0.25, 0.5, 0.75, 1].map((tick) => `
+        <line class="mtf-grid" x1="${x(tick)}" y1="${margin.top}" x2="${x(tick)}" y2="${height - margin.bottom}" />
+        <text class="mtf-tick" x="${x(tick)}" y="${height - 18}" text-anchor="middle">${formatNumber(tick, 2)}</text>
+      `).join("")}
+      ${curves.map((curve) => `
+        <polyline class="mtf-curve ${curve.className}" points="${curve.points.map((point) => `${x(point.normalizedFrequency)},${y(point.value)}`).join(" ")}" />
+      `).join("")}
+      ${curves.some((curve) => curve.points.length) ? "" : `<text class="mtf-empty" x="${width / 2}" y="${height / 2}" text-anchor="middle">No valid OTF cuts</text>`}
+      <text class="mtf-label" x="${width / 2}" y="${height - 4}" text-anchor="middle">Approx. normalized spatial frequency</text>
+      <text class="mtf-label" x="15" y="${margin.top + 8}" text-anchor="start">MTF</text>
+    </svg>
+  `;
+};
+
+const renderWaveOpticsReadoutTable = (result) => {
+  const hasLpMm = Number.isFinite(result.diffractionCutoffFrequency);
+  const normalizedReadouts = [0, 0.25, 0.5, 0.75];
+  const rows = [
+    { label: "Tangential", cut: result.cuts.tangential },
+    { label: "Sagittal", cut: result.cuts.sagittal }
+  ];
+
+  return `
+    <div class="mtf-readout-table wave-optics-readout" role="table" aria-label="Wavefront PSF OTF MTF prototype readouts">
+      <div class="mtf-readout-row mtf-readout-head" role="row">
+        <span role="columnheader">Cut</span>
+        ${hasLpMm
+          ? MTF_READOUT_FREQUENCIES.map((frequency) => `<span role="columnheader">${frequency} lp/mm</span>`).join("")
+          : normalizedReadouts.map((frequency) => `<span role="columnheader">${formatNumber(frequency, 2)} norm.</span>`).join("")
+        }
+      </div>
+      ${rows.map((row) => `
+        <div class="mtf-readout-row" role="row">
+          <span role="cell">${row.label}</span>
+          ${hasLpMm
+            ? MTF_READOUT_FREQUENCIES.map((frequency) => `<span role="cell">${renderMTFValue(mtfCutValueAtLpMm(row.cut, frequency))}</span>`).join("")
+            : normalizedReadouts.map((frequency) => `<span role="cell">${renderMTFValue(mtfCutValueAtNormalized(row.cut, frequency))}</span>`).join("")
+          }
+        </div>
+      `).join("")}
+    </div>
+  `;
+};
+
+const renderWavefrontPSFOTFMTFPanel = (result) => `
+  <section class="wave-optics-panel">
+    <div class="panel-heading">
+      <h3>Wavefront PSF / OTF / MTF Prototype</h3>
+      <span class="badge">Low-resolution</span>
+    </div>
+    ${menuIntro("waveOptics")}
+    <div class="wave-optics-controls">
+      <label>
+        Field
+        <select data-action="update-wave-optics-field" aria-label="Wavefront PSF OTF MTF field">
+          ${RAY_TRACE_FIELDS.map((field) => `
+            <option value="${field.key}" ${state.waveOpticsFieldKey === field.key ? "selected" : ""}>${field.name}</option>
+          `).join("")}
+        </select>
+      </label>
+      <label>
+        Wavelength
+        <select data-action="update-wave-optics-wavelength" aria-label="Wavefront PSF OTF MTF wavelength">
+          <option value="d" ${state.waveOpticsWavelengthKey === "d" ? "selected" : ""}>d-line 587.6 nm</option>
+          <option value="C" ${state.waveOpticsWavelengthKey === "C" ? "selected" : ""}>C red 656.3 nm</option>
+          <option value="F" ${state.waveOpticsWavelengthKey === "F" ? "selected" : ""}>F blue 486.1 nm</option>
+        </select>
+      </label>
+      <label>
+        Grid size
+        <select data-action="update-wave-optics-grid" aria-label="Wavefront PSF OTF MTF grid size">
+          ${[16, 32, 48].map((size) => `<option value="${size}" ${result.gridSize === size ? "selected" : ""}>${size} x ${size}</option>`).join("")}
+        </select>
+      </label>
+    </div>
+    <div class="wave-optics-layout">
+      ${renderWaveOpticsHeatmap({ title: "PSF heatmap", values: result.psf.values, className: "psf-map", mode: "log" })}
+      ${renderWaveOpticsHeatmap({ title: "2D MTF map", values: result.otf.mtfValues, className: "mtf-map", mode: "linear" })}
+      <article class="wave-optics-card">
+        <div class="spot-field-heading">
+          <strong>Sagittal / Tangential MTF cuts</strong>
+          <span>approx.</span>
+        </div>
+        ${renderWaveOpticsCutChart(result)}
+      </article>
+    </div>
+    <div class="diffraction-cutoff-grid">
+      ${metric("RMS OPD", formatNumber(result.opd.rmsOpdWaves, 4), "waves")}
+      ${metric("P-V OPD", formatNumber(result.opd.peakToValleyOpdWaves, 4), "waves")}
+      ${metric("Strehl estimate", renderMTFValue(result.opd.strehlEstimate), "Maréchal")}
+      ${metric("PSF peak", formatNumber(result.psf.peakIntensity, 6), "normalized")}
+      ${metric("Cutoff scale", formatNumber(result.diffractionCutoffFrequency, 1), "lp/mm approx.")}
+      ${metric("OPD samples", `${result.opd.validRayCount}/${result.opd.totalRayCount}`, "valid rays")}
+    </div>
+    ${renderWaveOpticsReadoutTable(result)}
+    ${result.warnings.map((warning) => `<p class="warning ray-warning">${escapeHtml(warning)}</p>`).join("")}
+    <p class="diagram-note">This is a low-resolution wavefront-based PSF / OTF / MTF prototype from sampled OPD. It is useful for qualitative comparison, not final optical certification.</p>
+    <p class="diagram-note">Coating transmission affects brightness and contrast, but this model does not yet feed flare or scattering into MTF.</p>
+  </section>
+`;
+
+const renderPolychromaticWavefrontMTFChart = (result) => {
+  const width = 560;
+  const height = 240;
+  const margin = { left: 48, right: 18, top: 20, bottom: 42 };
+  const plotWidth = width - margin.left - margin.right;
+  const plotHeight = height - margin.top - margin.bottom;
+  const x = (value) => margin.left + clamp(value, 0, 1) * plotWidth;
+  const y = (value) => margin.top + (1 - clamp(value, 0, 1)) * plotHeight;
+  const curves = [
+    { label: "Poly tangential", className: "poly-mtf-tangential", points: result.combinedCuts.tangential },
+    { label: "Poly sagittal", className: "poly-mtf-sagittal", points: result.combinedCuts.sagittal }
+  ];
+
+  if (state.polyMtfShowIndividualCurves) {
+    result.monoResults.forEach((mono) => {
+      curves.push(
+        { label: `${mono.lineKey} tangential`, className: `poly-mtf-line poly-mtf-${mono.line.color}`, points: mono.cuts.tangential },
+        { label: `${mono.lineKey} sagittal`, className: `poly-mtf-line poly-mtf-${mono.line.color} poly-mtf-dashed`, points: mono.cuts.sagittal }
+      );
+    });
+  }
+
+  return `
+    <svg class="mtf-chart poly-mtf-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Polychromatic wavefront sagittal and tangential MTF chart">
+      <rect class="mtf-bg" x="0" y="0" width="${width}" height="${height}" />
+      <line class="mtf-axis" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}" />
+      <line class="mtf-axis" x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" />
+      ${[0.25, 0.5, 0.75, 1].map((tick) => `
+        <line class="mtf-grid" x1="${margin.left}" y1="${y(tick)}" x2="${width - margin.right}" y2="${y(tick)}" />
+        <text class="mtf-tick" x="${margin.left - 8}" y="${y(tick) + 4}" text-anchor="end">${tick}</text>
+      `).join("")}
+      ${[0, 0.25, 0.5, 0.75, 1].map((tick) => `
+        <line class="mtf-grid" x1="${x(tick)}" y1="${margin.top}" x2="${x(tick)}" y2="${height - margin.bottom}" />
+        <text class="mtf-tick" x="${x(tick)}" y="${height - 18}" text-anchor="middle">${formatNumber(tick, 2)}</text>
+      `).join("")}
+      ${curves.map((curve) => `
+        <polyline class="mtf-curve ${curve.className}" points="${curve.points.map((point) => `${x(point.normalizedFrequency)},${y(point.value)}`).join(" ")}" />
+      `).join("")}
+      ${curves.some((curve) => curve.points.length) ? "" : `<text class="mtf-empty" x="${width / 2}" y="${height / 2}" text-anchor="middle">No valid polychromatic MTF</text>`}
+      <text class="mtf-label" x="${width / 2}" y="${height - 4}" text-anchor="middle">Approx. normalized spatial frequency</text>
+      <text class="mtf-label" x="15" y="${margin.top + 8}" text-anchor="start">MTF</text>
+    </svg>
+  `;
+};
+
+const renderPolychromaticWavefrontMTFReadoutTable = (result) => {
+  const monoByLine = Object.fromEntries(result.monoResults.map((mono) => [mono.lineKey, mono]));
+  const rows = [
+    {
+      label: "Poly Sagittal",
+      values: MTF_READOUT_FREQUENCIES.map((frequency) => polychromaticCutValueAtLpMm(result.monoResults, "sagittal", result.weights, frequency))
+    },
+    {
+      label: "Poly Tangential",
+      values: MTF_READOUT_FREQUENCIES.map((frequency) => polychromaticCutValueAtLpMm(result.monoResults, "tangential", result.weights, frequency))
+    },
+    ...Object.keys(SPECTRAL_LINES).flatMap((lineKey) => [
+      {
+        label: `${lineKey} Sagittal`,
+        values: MTF_READOUT_FREQUENCIES.map((frequency) => mtfCutValueAtLpMm(monoByLine[lineKey]?.cuts?.sagittal || [], frequency))
+      },
+      {
+        label: `${lineKey} Tangential`,
+        values: MTF_READOUT_FREQUENCIES.map((frequency) => mtfCutValueAtLpMm(monoByLine[lineKey]?.cuts?.tangential || [], frequency))
+      }
+    ])
+  ];
+
+  return `
+    <div class="mtf-readout-table poly-mtf-readout" role="table" aria-label="Polychromatic wavefront MTF readouts">
+      <div class="mtf-readout-row mtf-readout-head" role="row">
+        <span role="columnheader">Curve</span>
+        ${MTF_READOUT_FREQUENCIES.map((frequency) => `<span role="columnheader">${frequency} lp/mm</span>`).join("")}
+      </div>
+      ${rows.map((row) => `
+        <div class="mtf-readout-row" role="row">
+          <span role="cell">${row.label}</span>
+          ${row.values.map((value) => `<span role="cell">${renderMTFValue(value)}</span>`).join("")}
+        </div>
+      `).join("")}
+    </div>
+  `;
+};
+
+const renderPolychromaticFocusReadout = (result) => `
+  <div class="poly-focus-grid">
+    ${result.focusResults.map((item) => metric(`${item.lineKey}-line focus`, formatNumber(item.imagePlaneX, 3), "mm shift")).join("")}
+    ${metric("Chromatic spread", formatNumber(result.chromaticSpreadMm, 3), "mm")}
+  </div>
+`;
+
+const renderPolychromaticWeightInputs = (weights) => `
+  <div class="poly-weight-controls">
+    ${Object.entries(SPECTRAL_LINES).map(([lineKey, line]) => `
+      <label>
+        ${lineKey} weight
+        <input
+          type="number"
+          min="0"
+          step="0.05"
+          value="${formatNumber(weights[lineKey], 3)}"
+          data-action="update-poly-mtf-weight"
+          data-line="${lineKey}"
+          aria-label="${line.name} polychromatic weight"
+        />
+      </label>
+    `).join("")}
+  </div>
+`;
+
+const renderPolychromaticWavefrontMTFPanel = (result) => `
+  <section class="wave-optics-panel poly-mtf-panel">
+    <div class="panel-heading">
+      <h3>Polychromatic Wavefront MTF</h3>
+      <span class="badge">Educational</span>
+    </div>
+    ${menuIntro("polyMtf")}
+    <div class="wave-optics-controls poly-mtf-controls">
+      <label>
+        Field
+        <select data-action="update-poly-mtf-field" aria-label="Polychromatic wavefront MTF field">
+          ${RAY_TRACE_FIELDS.map((field) => `
+            <option value="${field.key}" ${state.polyMtfFieldKey === field.key ? "selected" : ""}>${field.name}</option>
+          `).join("")}
+        </select>
+      </label>
+      <label>
+        Weight preset
+        <select data-action="update-poly-mtf-preset" aria-label="Polychromatic wavefront MTF weight preset">
+          ${Object.entries(POLYCHROMATIC_WEIGHT_PRESETS).map(([key, preset]) => `
+            <option value="${key}" ${state.polyMtfWeightPreset === key ? "selected" : ""}>${preset.name}</option>
+          `).join("")}
+        </select>
+      </label>
+      <label>
+        Grid size
+        <select data-action="update-poly-mtf-grid" aria-label="Polychromatic wavefront MTF grid size">
+          ${[16, 32, 48].map((size) => `<option value="${size}" ${result.gridSize === size ? "selected" : ""}>${size} x ${size}</option>`).join("")}
+        </select>
+      </label>
+      <label class="toggle-row">
+        <input type="checkbox" data-action="toggle-poly-mtf-individual" ${state.polyMtfShowIndividualCurves ? "checked" : ""} />
+        Show C / d / F curves
+      </label>
+    </div>
+    ${renderPolychromaticWeightInputs(result.weights)}
+    <div class="poly-mtf-main">
+      <article class="wave-optics-card">
+        <div class="spot-field-heading">
+          <strong>Combined wavefront MTF</strong>
+          <span>C ${formatNumber(result.weights.C, 2)} · d ${formatNumber(result.weights.d, 2)} · F ${formatNumber(result.weights.F, 2)}</span>
+        </div>
+        ${renderPolychromaticWavefrontMTFChart(result)}
+      </article>
+      <article class="wave-optics-card">
+        <div class="spot-field-heading">
+          <strong>Chromatic focus</strong>
+          <span>${escapeHtml(result.field.name)}</span>
+        </div>
+        ${renderPolychromaticFocusReadout(result)}
+      </article>
+    </div>
+    ${renderPolychromaticWavefrontMTFReadoutTable(result)}
+    ${result.warnings.map((warning) => `<p class="warning ray-warning">${escapeHtml(warning)}</p>`).join("")}
+    <p class="diagram-note">Polychromatic Wavefront MTF combines sampled C, d, and F wavelength wavefront MTF curves using simple weights. This is still an educational approximation and not a validated professional spectral MTF solver.</p>
+    <p class="diagram-note">Coating transmission affects brightness and contrast, but this model does not yet feed flare or scattering into MTF.</p>
+  </section>
+`;
+
+const renderSpotDiagram3D = (traceResults) => {
+  const traces = (Array.isArray(traceResults) ? traceResults : [traceResults]).filter(Boolean);
+  const aggregate = aggregateTrace3DResults(traces);
+  const width = 360;
+  const height = 250;
+  const centerX = width / 2;
+  const centerY = height / 2;
+  const maxRadius = Number.isFinite(aggregate.maxSpotRadius) ? Math.max(aggregate.maxSpotRadius, 0.001) : 1;
+  const scale = 88 / maxRadius;
+  const points = traces.flatMap((trace) => (trace.rays || [])
+    .filter((ray) => ray.status === "valid" && ray.imagePoint)
+    .map((ray) => {
+      const spectralLine = SPECTRAL_LINES[trace.spectralLineKey] || SPECTRAL_LINES.d;
+      return {
+        x: centerX + (ray.imagePoint.y - aggregate.meanY) * scale,
+        y: centerY - (ray.imagePoint.z - aggregate.meanZ) * scale,
+        color: spectralLine.color || "green"
+      };
+    }));
+  const rmsRadius = Number.isFinite(aggregate.rmsSpotRadius) ? Math.max(2, aggregate.rmsSpotRadius * scale) : 0;
+
+  return `
+    <svg class="spot-3d-diagram" viewBox="0 0 ${width} ${height}" role="img" aria-label="3D ray trace y versus z spot diagram">
+      <rect class="spot-bg" x="0" y="0" width="${width}" height="${height}" />
+      <line class="spot-axis" x1="22" y1="${centerY}" x2="${width - 22}" y2="${centerY}" />
+      <line class="spot-axis" x1="${centerX}" y1="22" x2="${centerX}" y2="${height - 22}" />
+      ${rmsRadius ? `<circle class="spot-rms-ring" cx="${centerX}" cy="${centerY}" r="${rmsRadius}" />` : ""}
+      ${points.length
+        ? points.map((point) => `<circle class="spot-point spot-${point.color}" cx="${point.x}" cy="${point.y}" r="3.1" />`).join("")
+        : `<text class="spot-empty" x="${centerX}" y="${centerY}" text-anchor="middle">Enable 3D trace for spot</text>`
+      }
+      <text class="mtf-label" x="${width / 2}" y="${height - 7}" text-anchor="middle">Y intercept (mm)</text>
+      <text class="mtf-label" x="14" y="24" text-anchor="start">Z</text>
+    </svg>
+  `;
+};
+
+const renderRayTrace3DPanel = (traceResults) => {
+  const traces = (Array.isArray(traceResults) ? traceResults : [traceResults]).filter(Boolean);
+  const aggregate = aggregateTrace3DResults(traces);
+  const warnings = [
+    "This is an early 3D sequential ray trace prototype. Existing 2D analysis remains the primary display until 3D validation is complete.",
+    aggregate.warning
+  ].filter(Boolean);
+
+  return `
+    <section class="ray-trace-3d-panel">
+      <div class="panel-heading">
+        <h3>3D Ray Trace Prototype</h3>
+        <span class="badge">Sequential 3D</span>
+      </div>
+      ${menuIntro("rayTrace3d")}
+      <div class="ray-3d-controls">
+        <label class="check-control">
+          <input type="checkbox" data-action="toggle-3d-rays" ${state.enable3DRayTrace ? "checked" : ""}>
+          Enable 3D ray tracing
+        </label>
+        ${panelSteppableInput({ field: "rayTrace3DFieldAngleDegrees", label: "Field angle", action: "update-ray-3d", unit: "degrees" })}
+        <label>
+          Field orientation
+          <select data-action="update-ray-3d-orientation" aria-label="3D field orientation">
+            <option value="tangential" ${state.rayTrace3DOrientation === "tangential" ? "selected" : ""}>Tangential plane</option>
+            <option value="sagittal" ${state.rayTrace3DOrientation === "sagittal" ? "selected" : ""}>Sagittal plane</option>
+            <option value="diagonal" ${state.rayTrace3DOrientation === "diagonal" ? "selected" : ""}>Diagonal field</option>
+          </select>
+        </label>
+        ${panelSteppableInput({ field: "rayTrace3DSampleCount", label: "Pupil sample count", action: "update-ray-3d", inputmode: "numeric", unit: "modest samples" })}
+        <label>
+          Pupil sampling
+          <select data-action="update-ray-3d-sampling" aria-label="3D pupil sampling">
+            <option value="line" ${state.rayTrace3DSampling === "line" ? "selected" : ""}>Line sampling</option>
+            <option value="grid" ${state.rayTrace3DSampling === "grid" ? "selected" : ""}>Grid sampling</option>
+            <option value="radial" ${state.rayTrace3DSampling === "radial" ? "selected" : ""}>Radial sampling</option>
+          </select>
+        </label>
+        <label>
+          Wavelength
+          <select data-action="update-ray-3d-wavelength" aria-label="3D ray trace wavelength">
+            <option value="d" ${state.rayTrace3DWavelengthMode === "d" ? "selected" : ""}>d-line</option>
+            <option value="rgb" ${state.rayTrace3DWavelengthMode === "rgb" ? "selected" : ""}>RGB C/d/F</option>
+          </select>
+        </label>
+      </div>
+      <div class="ray-3d-layout">
+        ${renderSpotDiagram3D(traces)}
+        <div class="ray-3d-results">
+          ${metric("3D valid rays", `${aggregate.validRayCount}/${aggregate.totalRayCount}`, "image-plane hits")}
+          ${metric("Clipped rays", aggregate.clippedRayCount, "radial aperture")}
+          ${metric("RMS spot radius", formatNumber(aggregate.rmsSpotRadius, 4), "mm y/z")}
+          ${metric("RMS tangential", formatNumber(aggregate.rmsTangentialWidth, 4), "mm")}
+          ${metric("RMS sagittal", formatNumber(aggregate.rmsSagittalWidth, 4), "mm")}
+          ${metric("Field", `${formatNumber(state.rayTrace3DFieldAngleDegrees, 2)} degrees`, state.rayTrace3DOrientation)}
+        </div>
+      </div>
+      <div class="rgb-overlay-legend">
+        ${state.rayTrace3DWavelengthMode === "rgb"
+          ? Object.entries(SPECTRAL_LINES).map(([lineKey, line]) => `<span class="rgb-legend-${line.color}">${lineKey} ${line.wavelengthNm} nm</span>`).join("")
+          : `<span>d ${SPECTRAL_LINES.d.wavelengthNm} nm only</span>`
+        }
+      </div>
+      ${warnings.map((warning) => `<p class="warning ray-warning">${escapeHtml(warning)}</p>`).join("")}
+    </section>
+  `;
+};
+
+const surfaceIndexLabel = (surface) => {
+  if (surface.surfaceIndex === "stop") return "Stop";
+  return surface.surfaceIndex === 0 ? "Front / R1" : "Rear / R2";
+};
+
+const validatePatentPreset = (preset) => {
+  if (!preset || preset.prescriptionType !== "surface") return [];
+  const warnings = [];
+  if (preset.sourceType !== "patent") warnings.push("Surface prescription is not marked as patent-based.");
+  if (preset.lenses) warnings.push("Patent preset contains element-format lenses; patent presets must use surface data.");
+  if (!Array.isArray(preset.surfaces) || !preset.surfaces.length) {
+    warnings.push("No patent surfaces have been entered.");
+    return warnings;
+  }
+  let missingClearApertureCount = 0;
+  preset.surfaces.forEach((surface, index) => {
+    const label = `Surface ${surface.no || index + 1}`;
+    if (surface.radius === null || surface.radius === undefined) warnings.push(`${label}: radius is missing.`);
+    if ((surface.distanceToNext === null || surface.distanceToNext === undefined) && index < preset.surfaces.length - 1) {
+      warnings.push(`${label}: distance to next surface is missing.`);
+    }
+    if (surface.nAfter !== null && surface.nAfter !== undefined && (surface.vdAfter === null || surface.vdAfter === undefined)) {
+      warnings.push(`${label}: Abbe number after refractive index is missing.`);
+    }
+    if (surface.clearAperture === null || surface.clearAperture === undefined) missingClearApertureCount += 1;
+  });
+  if (missingClearApertureCount) {
+    warnings.push(`${missingClearApertureCount} surfaces do not state clear aperture; drawing apertures are estimated only.`);
+  }
+  if (preset.patentDataStatus === "placeholder" || preset.patentDataStatus === "needsManualVerification") {
+    warnings.push("Numeric patent prescription table needs manual verification. Missing or unclear values are left blank rather than guessed.");
+  }
+  return warnings;
+};
+
+const patentSurfaceApertureDisplay = (surface) => {
+  if (Number.isFinite(toNumber(surface.clearAperture)) && surface.apertureEstimated === false) {
+    return { diameter: surface.clearAperture, source: "Patent value" };
+  }
+  const lens = state.lenses.find((item) => (
+    toNumber(item.patentSurfaceStart) === toNumber(surface.no)
+      || toNumber(item.patentSurfaceEnd) === toNumber(surface.no)
+  ));
+  const source = {
+    patent: "Patent value",
+    rayEnvelope: "Ray-envelope estimate",
+    manual: "Manual value",
+    svgEstimated: "SVG-estimated",
+    estimated: "Fallback estimate"
+  }[lens?.apertureSource] || "Fallback estimate";
+  return {
+    diameter: lens?.clearApertureDiameter ?? surface.clearAperture,
+    source
+  };
+};
+
+const renderPatentSurfaceRows = (patentSurfaces) => patentSurfaces.map((surface) => {
+  const aperture = patentSurfaceApertureDisplay(surface);
+  return `
+  <tr>
+    <td>${surface.no}</td>
+    <td>${surface.radius === Infinity ? "Infinity" : formatNumber(surface.radius)}</td>
+    <td>${formatNumber(surface.distanceToNext)}</td>
+    <td>${surface.nAfter === null || surface.nAfter === undefined ? "Air" : formatNumber(surface.nAfter, 5)}</td>
+    <td>${surface.vdAfter === null || surface.vdAfter === undefined ? "--" : formatNumber(surface.vdAfter, 2)}</td>
+    <td>${surface.asphere?.enabled ? "ASP" : "--"}</td>
+    <td>${formatNumber(surface.asphere?.k, 5)}</td>
+    <td>${formatNumber(surface.asphere?.A4, 8)}</td>
+    <td>${formatNumber(surface.asphere?.A6, 11)}</td>
+    <td>${formatNumber(surface.asphere?.A8, 14)}</td>
+    <td>${formatNumber(surface.asphere?.A10, 17)}</td>
+    <td>${surface.isStop ? "Yes" : "No"}</td>
+    <td>${formatNumber(aperture.diameter)}</td>
+    <td>${aperture.source}</td>
+  </tr>
+`;
+}).join("");
+
+const renderPatentPrescriptionTable = (preset) => {
+  if (!preset || preset.prescriptionType !== "surface") return "";
+  const useCurrentPrescription = preset === PRESETS[state.preset];
+  const patentSurfaces = (
+    useCurrentPrescription ? state.prescription?.surfaces : preset.surfaces
+  || preset.surfaces
+  || []).map(normalizePatentSurface);
+  const warnings = validatePatentPreset({ ...preset, surfaces: patentSurfaces });
+  return `
+    <div class="patent-prescription-block">
+      <div class="patent-prescription-heading">
+        <strong>Patent source prescription</strong>
+        <span>${escapeHtml(preset.sourcePatent || "Unknown source")}${preset.example ? ` · ${escapeHtml(preset.example)}` : ""}</span>
+      </div>
+      ${warnings.length ? `<div class="warning-box">${warnings.map((warning) => `<span>${escapeHtml(warning)}</span>`).join("")}</div>` : ""}
+      <div class="surface-table-wrap">
+        <table class="surface-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Radius</th>
+              <th>Distance</th>
+              <th>n After</th>
+              <th>Vd After</th>
+              <th>ASP</th>
+              <th>K</th>
+              <th>A4</th>
+              <th>A6</th>
+              <th>A8</th>
+              <th>A10</th>
+              <th>Stop</th>
+              <th>Clear aperture</th>
+              <th>Aperture source</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${patentSurfaces.length ? renderPatentSurfaceRows(patentSurfaces) : `<tr><td colspan="14">No patent surfaces entered.</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+};
+
+const renderSurfacePrescriptionPanel = (surfaces = [], preset = null) => `
+  <details class="surface-panel">
+    <summary>Prescription / Surface Data</summary>
+    ${menuIntro("surfaceTable")}
+    ${renderPatentPrescriptionTable(preset)}
+    <div class="surface-table-wrap">
+      <table class="surface-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>x</th>
+            <th>Radius</th>
+            <th>Surface type</th>
+            <th>K</th>
+            <th>A4</th>
+            <th>A6</th>
+            <th>A8</th>
+            <th>A10</th>
+            <th>Semi-D</th>
+            <th>Clear aperture</th>
+            <th>Mechanical diameter</th>
+            <th>Visual diameter</th>
+            <th>Aperture source</th>
+            <th>Diameter source</th>
+            <th>n Before</th>
+            <th>n After</th>
+            <th>Glass</th>
+            <th>nC / nd / nF</th>
+            <th>Coating</th>
+            <th>Reflectance</th>
+            <th>Transmission</th>
+            <th>Line</th>
+            <th>Lens</th>
+            <th>Surface</th>
+            <th>Stop</th>
+            <th>Limit</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${surfaces.length
+            ? surfaces.map((surface) => `
+              <tr class="${surface.isStop ? "surface-row-stop" : ""}">
+                <td>${surface.surfaceNumber}</td>
+                <td>${formatNumber(surface.x)}</td>
+                <td>${Math.abs(surface.radius) < 0.000001 ? "Plano" : formatNumber(surface.radius)}</td>
+                <td>${asphereSurfaceType(surface)}</td>
+                <td>${formatNumber(surface.asphere?.conicK ?? surface.asphere?.k, 5)}</td>
+                <td>${formatNumber(surface.asphere?.A4, 8)}</td>
+                <td>${formatNumber(surface.asphere?.A6, 11)}</td>
+                <td>${formatNumber(surface.asphere?.A8, 14)}</td>
+                <td>${formatNumber(surface.asphere?.A10, 17)}</td>
+                <td>${formatNumber(surface.semiDiameter)}</td>
+                <td>${formatNumber(surface.clearApertureDiameter)}</td>
+                <td>${formatNumber(surface.mechanicalDiameter)}</td>
+                <td>${formatNumber(surface.visualDiameter)}</td>
+                <td>${escapeHtml({
+                  patent: "Patent value",
+                  rayEnvelope: "Ray-envelope estimate",
+                  manual: "Manual value",
+                  svgEstimated: "SVG-estimated",
+                  estimated: "Fallback estimate"
+                }[surface.apertureSource] || "--")}</td>
+                <td>${escapeHtml({
+                  patent: "Patent value",
+                  rayEnvelope: "Ray-envelope estimate",
+                  manual: "Manual value",
+                  svgEstimated: "SVG-estimated",
+                  estimated: "Fallback estimate"
+                }[surface.diameterSource] || "--")}</td>
+                <td>${formatNumber(surface.nBefore, 4)}</td>
+                <td>${formatNumber(surface.nAfter, 4)}</td>
+                <td>${escapeHtml(surface.glassName || "--")}</td>
+                <td>${Number.isFinite(surface.nC) ? `${formatNumber(surface.nC, 4)} / ${formatNumber(surface.nd, 4)} / ${formatNumber(surface.nF, 4)}` : "--"}</td>
+                <td>${escapeHtml(surface.coatingName || "--")}</td>
+                <td>${Number.isFinite(surface.reflectance) ? `${formatNumber(surface.reflectance * 100, 3)}%` : "--"}</td>
+                <td>${Number.isFinite(surface.surfaceTransmission) ? `${formatNumber(surface.surfaceTransmission * 100, 2)}%` : "--"}</td>
+                <td>${escapeHtml(surface.reflectanceSpectralLineKey || surface.spectralLineKey || "--")}</td>
+                <td>${surface.lensIndex === null ? "--" : surface.lensIndex + 1}</td>
+                <td>${surfaceIndexLabel(surface)}</td>
+                <td>${surface.isStop ? "Yes" : "No"}</td>
+                <td>${surface.isApertureLimiting ? "Yes" : "No"}</td>
+              </tr>
+            `).join("")
+            : `<tr><td colspan="25">No valid surfaces.</td></tr>`
+          }
+        </tbody>
+      </table>
+    </div>
+  </details>
+`;
+
+const calculateFNumber = (
+  system,
+  apertureDiameter = state.apertureDiameter,
+  lenses = state.lenses,
+  options = {}
+) => {
+  const focalLength = Math.abs(system.effectiveFocalLength);
+  const diameter = toNumber(apertureDiameter);
+  if (!Number.isFinite(focalLength) || !(diameter > 0)) return NaN;
+  if (lenses !== state.lenses && options.useEntrancePupil !== true) return focalLength / diameter;
+  const cached = lenses === state.lenses
+    && Math.abs(diameter - state.apertureDiameter) < 0.000001
+    ? state.entrancePupilResult
+    : null;
+  const entrancePupil = cached?.entrancePupilDiameter > 0
+    ? cached
+    : calculateEntrancePupil(lenses, system, {
+      ...rayTraceApertureOptions({ ...options, apertureDiameter: diameter }),
+      apertureDiameter: diameter,
+      prescription: options.prescription || (lenses === state.lenses ? state.prescription : null)
+    });
+  const entrancePupilDiameter = entrancePupil?.entrancePupilDiameter;
+  return entrancePupilDiameter > 0 ? focalLength / entrancePupilDiameter : focalLength / diameter;
+};
+
+const formatPercentValue = (value, digits = 1) => Number.isFinite(value) ? `${formatNumber(value * 100, digits)}%` : "--";
+
+const renderTransmissionLineGrid = (result) => `
+  <div class="transmission-line-grid">
+    ${Object.entries(SPECTRAL_LINES).map(([lineKey, line]) => {
+      const lineResult = result.lineResults[lineKey];
+      return `
+        <div class="transmission-line-card">
+          <strong>${lineKey} ${line.wavelengthNm} nm</strong>
+          <span>Total ${formatPercentValue(lineResult?.totalTransmission, 2)}</span>
+          <span>Surface ${formatPercentValue(lineResult?.surfaceTransmission, 2)}</span>
+          <span>Internal ${formatPercentValue(lineResult?.internalTransmission, 2)}</span>
+        </div>
+      `;
+    }).join("")}
+  </div>
+`;
+
+const renderCoatingTransmissionPanel = (result) => `
+  <section class="transmission-panel">
+    <div class="panel-heading">
+      <h3>Coating / Transmission</h3>
+      <span class="badge">Approximate</span>
+    </div>
+    ${menuIntro("coating")}
+    ${renderTransmissionLineGrid(result)}
+    <div class="diffraction-cutoff-grid">
+      ${metric("f-number", formatNumber(result.fNumber, 2), "from EFL / aperture")}
+      ${metric("Estimated T-stop", formatNumber(result.tStop, 2), "d-line")}
+      ${metric("d-line transmission", formatPercentValue(result.dLineTransmission, 2), "total")}
+      ${metric("Surface reflection loss", formatPercentValue(result.surfaceReflectionLossTotal, 2), "d-line total")}
+      ${metric("Internal absorption loss", formatPercentValue(result.internalAbsorptionLossTotal, 2), "d-line total")}
+      ${metric("Tint tendency", escapeHtml(result.tintTendency), `R/G ${formatNumber(result.redBalance, 3)} · B/G ${formatNumber(result.blueBalance, 3)}`)}
+    </div>
+    ${result.warnings.map((warning) => `<p class="warning ray-warning">${escapeHtml(warning)}</p>`).join("")}
+    <p class="diagram-note">Approximate educational coating model. It estimates normal-incidence surface reflection and internal transmission only.</p>
+  </section>
+`;
+
+const toleranceSettingInput = (field, label, unit = "") => `
+  <label>
+    ${label}
+    <input
+      type="text"
+      inputmode="decimal"
+      data-action="update-tolerance-setting"
+      data-field="${field}"
+      value="${escapeHtml(state.toleranceSettings[field])}"
+      aria-label="${label}"
+    />
+    ${unit ? `<span class="control-unit">${unit}</span>` : ""}
+  </label>
+`;
+
+const toleranceCriterionInput = (enabledField, valueField, label, unit = "") => `
+  <label class="criterion-control">
+    <input type="checkbox" data-action="toggle-tolerance-criterion" data-field="${enabledField}" ${state.toleranceSettings[enabledField] ? "checked" : ""}>
+    <span>${label}</span>
+    <input
+      type="text"
+      inputmode="decimal"
+      data-action="update-tolerance-setting"
+      data-field="${valueField}"
+      value="${escapeHtml(state.toleranceSettings[valueField])}"
+      aria-label="${label}"
+    />
+    ${unit ? `<span class="control-unit">${unit}</span>` : ""}
+  </label>
+`;
+
+const toleranceMetricLabel = (metric) => ({
+  rmsSpotRadius: "RMS spot radius",
+  mtf40: "MTF 40 lp/mm",
+  rmsOpdWaves: "RMS OPD waves",
+  strehl: "Strehl estimate"
+})[metric] || "RMS spot radius";
+
+const renderTolerancePreview = (preview) => {
+  if (!preview) return `<p class="diagram-note">Generate one tolerance sample to inspect individual perturbations before running Monte Carlo.</p>`;
+  const rows = preview.changes.slice(0, 16);
+  return `
+    <div class="tolerance-preview">
+      <div class="spot-field-heading">
+        <strong>Sample seed ${preview.seed}</strong>
+        <span>${preview.changes.length} changed values</span>
+      </div>
+      <div class="tolerance-change-list">
+        ${rows.length
+          ? rows.map((change) => `
+            <span>L${change.lensIndex + 1} ${escapeHtml(change.field)}</span>
+            <span>${formatNumber(change.original, 5)}</span>
+            <span>${formatNumber(change.perturbed, 5)}</span>
+            <span>${formatNumber(change.difference, 5)}</span>
+          `).join("")
+          : `<span>No perturbations with current tolerances.</span>`
+        }
+      </div>
+    </div>
+  `;
+};
+
+const renderToleranceHistogram = (result) => {
+  const width = 520;
+  const height = 210;
+  const margin = { left: 42, right: 16, top: 18, bottom: 36 };
+  const values = (result?.runs || []).map((run) => toleranceMetricValue(run, result.selectedMetric)).filter(Number.isFinite);
+  const min = values.length ? Math.min(...values) : 0;
+  const max = values.length ? Math.max(...values) : 1;
+  const binCount = Math.min(12, Math.max(4, Math.ceil(Math.sqrt(values.length || 4))));
+  const bins = Array(binCount).fill(0);
+  values.forEach((value) => {
+    const fraction = max > min ? (value - min) / (max - min) : 0;
+    const index = Math.min(binCount - 1, Math.max(0, Math.floor(fraction * binCount)));
+    bins[index] += 1;
+  });
+  const plotWidth = width - margin.left - margin.right;
+  const plotHeight = height - margin.top - margin.bottom;
+  const yMax = Math.max(1, ...bins);
+  const barWidth = plotWidth / binCount;
+
+  return `
+    <svg class="tolerance-histogram" viewBox="0 0 ${width} ${height}" role="img" aria-label="Tolerance Monte Carlo histogram">
+      <rect class="mtf-bg" x="0" y="0" width="${width}" height="${height}" />
+      <line class="mtf-axis" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}" />
+      <line class="mtf-axis" x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" />
+      ${values.length ? bins.map((count, index) => {
+        const barHeight = (count / yMax) * plotHeight;
+        return `<rect class="tolerance-bar" x="${margin.left + index * barWidth + 2}" y="${height - margin.bottom - barHeight}" width="${Math.max(1, barWidth - 4)}" height="${barHeight}" />`;
+      }).join("") : `<text class="mtf-empty" x="${width / 2}" y="${height / 2}" text-anchor="middle">Run simulation for histogram</text>`}
+      <text class="mtf-label" x="${width / 2}" y="${height - 6}" text-anchor="middle">${escapeHtml(toleranceMetricLabel(result?.selectedMetric))}</text>
+      <text class="mtf-tick" x="${margin.left}" y="${height - 20}" text-anchor="middle">${formatNumber(min, 4)}</text>
+      <text class="mtf-tick" x="${width - margin.right}" y="${height - 20}" text-anchor="end">${formatNumber(max, 4)}</text>
+    </svg>
+  `;
+};
+
+const renderToleranceResultsTable = (result) => {
+  if (!result) return "";
+  const row = (label, stats, worseKey = "max") => `
+    <div class="mtf-readout-row" role="row">
+      <span role="cell">${label}</span>
+      <span role="cell">${formatNumber(stats.mean, 5)}</span>
+      <span role="cell">${formatNumber(stats[worseKey], 5)}</span>
+      <span role="cell">${formatNumber(stats.median, 5)}</span>
+      <span role="cell">${formatNumber(stats.standardDeviation, 5)}</span>
+    </div>
+  `;
+  return `
+    <div class="mtf-readout-table tolerance-readout" role="table" aria-label="Tolerance Monte Carlo results">
+      <div class="mtf-readout-row mtf-readout-head" role="row">
+        <span role="columnheader">Metric</span>
+        <span role="columnheader">Mean</span>
+        <span role="columnheader">Worst</span>
+        <span role="columnheader">Median</span>
+        <span role="columnheader">Std. dev.</span>
+      </div>
+      ${row("RMS spot radius", result.summary.rmsSpotRadius, "max")}
+      ${row("MTF 40 lp/mm", result.summary.mtf40, "min")}
+      ${row("RMS OPD waves", result.summary.rmsOpdWaves, "max")}
+      ${row("Strehl estimate", result.summary.strehl, "min")}
+      ${row("Transmission", result.summary.transmission, "min")}
+      ${row("T-stop", result.summary.tStop, "max")}
+    </div>
+  `;
+};
+
+const renderToleranceWorstRun = (result) => {
+  if (!result?.worstRun) return "";
+  const run = result.worstRun;
+  const metricValue = toleranceMetricValue(run, result.selectedMetric);
+  return `
+    <div class="tolerance-worst-card">
+      <strong>Worst run ${run.runIndex}</strong>
+      <span>Seed ${run.seed}</span>
+      <span>${escapeHtml(toleranceMetricLabel(result.selectedMetric))}: ${formatNumber(metricValue, 5)}</span>
+      <span>${run.sample.changes.slice(0, 6).map((change) => `L${change.lensIndex + 1} ${change.field} ${formatNumber(change.difference, 4)}`).join(" · ") || "No parameter changes"}</span>
+      <button class="action-button" type="button" data-action="load-worst-tolerance-sample">Load worst-case sample</button>
+    </div>
+  `;
+};
+
+const renderToleranceSimulationPanel = () => {
+  const settings = state.toleranceSettings;
+  const result = state.toleranceResult;
+
+  return `
+    <section class="tolerance-panel">
+      <div class="panel-heading">
+        <h3>Tolerance / Manufacturing Error Simulation</h3>
+        <span class="badge">Educational</span>
+      </div>
+      ${menuIntro("tolerance")}
+      <label class="check-control">
+        <input type="checkbox" data-action="toggle-tolerance-enabled" ${settings.enabled ? "checked" : ""}>
+        Enable tolerance simulation
+      </label>
+      <div class="tolerance-controls">
+        <label>
+          Monte Carlo runs
+          <select data-action="update-tolerance-setting" data-field="monteCarloRuns" aria-label="Monte Carlo runs">
+            ${[10, 25, 50, 100].map((value) => `<option value="${value}" ${settings.monteCarloRuns === value ? "selected" : ""}>${value}</option>`).join("")}
+          </select>
+        </label>
+        ${toleranceSettingInput("seed", "Random seed")}
+        ${toleranceSettingInput("radiusToleranceMm", "Radius tol.", "mm")}
+        ${toleranceSettingInput("thicknessToleranceMm", "Thickness tol.", "mm")}
+        ${toleranceSettingInput("airGapToleranceMm", "Air gap tol.", "mm")}
+        ${toleranceSettingInput("diameterToleranceMm", "Diameter tol.", "mm")}
+        ${toleranceSettingInput("refractiveIndexTolerance", "Index tol.")}
+        ${toleranceSettingInput("abbeTolerance", "Abbe tol.")}
+        ${toleranceSettingInput("decenterToleranceMm", "Decenter tol.", "mm")}
+        ${toleranceSettingInput("tiltToleranceDegrees", "Tilt tol.", "degrees")}
+        <label>
+          Histogram metric
+          <select data-action="update-tolerance-setting" data-field="histogramMetric" aria-label="Tolerance histogram metric">
+            <option value="rmsSpotRadius" ${settings.histogramMetric === "rmsSpotRadius" ? "selected" : ""}>RMS spot radius</option>
+            <option value="mtf40" ${settings.histogramMetric === "mtf40" ? "selected" : ""}>MTF 40 lp/mm</option>
+            <option value="rmsOpdWaves" ${settings.histogramMetric === "rmsOpdWaves" ? "selected" : ""}>RMS OPD waves</option>
+            <option value="strehl" ${settings.histogramMetric === "strehl" ? "selected" : ""}>Strehl estimate</option>
+          </select>
+        </label>
+      </div>
+      <div class="tolerance-criteria">
+        ${toleranceCriterionInput("enableRmsCriterion", "maxRmsSpotRadius", "Max RMS spot", "mm")}
+        ${toleranceCriterionInput("enableMtfCriterion", "minMtf40", "Min MTF 40", "")}
+        ${toleranceCriterionInput("enableOpdCriterion", "maxRmsOpdWaves", "Max RMS OPD", "waves")}
+        ${toleranceCriterionInput("enableStrehlCriterion", "minStrehl", "Min Strehl", "")}
+      </div>
+      <div class="tolerance-actions">
+        <button class="action-button" type="button" data-action="generate-tolerance-sample">Generate one tolerance sample</button>
+        <button class="action-button" type="button" data-action="run-tolerance-monte-carlo">Run simulation</button>
+        <button class="action-button" type="button" data-action="copy-tolerance-csv" ${result ? "" : "disabled"}>Copy tolerance CSV</button>
+        ${state.toleranceCopyStatus ? `<span class="copy-status">${escapeHtml(state.toleranceCopyStatus)}</span>` : ""}
+      </div>
+      ${state.toleranceExportText ? `<textarea class="csv-export-box" readonly aria-label="Tolerance CSV export">${escapeHtml(state.toleranceExportText)}</textarea>` : ""}
+      ${state.toleranceGeneratedWarning ? `<p class="warning ray-warning">${escapeHtml(state.toleranceGeneratedWarning)}</p>` : ""}
+      ${renderTolerancePreview(state.tolerancePreview)}
+      <div class="tolerance-result-grid">
+        ${result ? `
+          ${metric("Runs completed", result.runsCompleted, "runs")}
+          ${metric("Pass rate", formatPercentValue(result.passRate, 1), "selected criteria")}
+          ${metric("Worst RMS spot", formatNumber(result.summary.rmsSpotRadius.max, 5), "mm")}
+          ${metric("Worst MTF 40", formatNumber(result.summary.mtf40.min, 5), "lp/mm")}
+          ${metric("Worst RMS OPD", formatNumber(result.summary.rmsOpdWaves.max, 5), "waves")}
+          ${metric("Worst Strehl", formatNumber(result.summary.strehl.min, 5), "estimate")}
+        ` : `<p class="diagram-note">Run the simulation to calculate pass rate, distribution, and worst-case sample.</p>`}
+      </div>
+      ${renderToleranceResultsTable(result)}
+      ${renderToleranceHistogram(result)}
+      ${renderToleranceWorstRun(result)}
+      ${(result?.warnings || [
+        "Tilt/decenter modelling is approximate in this browser version.",
+        "This is an approximate educational tolerance model. It does not replace professional optical tolerancing."
+      ]).map((warning) => `<p class="warning ray-warning">${escapeHtml(warning)}</p>`).join("")}
+      <p class="diagram-note">This is an approximate educational tolerance model. It does not replace professional optical tolerancing.</p>
+    </section>
+  `;
+};
+
+const optimizerInput = (field, label, unit = "") => `
+  <label>
+    ${label}
+    <input
+      type="text"
+      inputmode="decimal"
+      data-action="update-optimizer-setting"
+      data-field="${field}"
+      value="${escapeHtml(state[field])}"
+      aria-label="${label}"
+    />
+    ${unit ? `<span class="control-unit">${unit}</span>` : ""}
+  </label>
+`;
+
+const optimizerGoalToggle = (field, label) => `
+  <label class="check-control">
+    <input type="checkbox" data-action="toggle-optimizer-goal" data-field="${field}" ${state[field] ? "checked" : ""}>
+    ${label}
+  </label>
+`;
+
+const renderOptimizerScoreChart = (result) => {
+  const width = 560;
+  const height = 210;
+  const margin = { left: 48, right: 16, top: 18, bottom: 36 };
+  const progress = result?.progress || [];
+  const scores = progress.map((point) => point.score).filter(Number.isFinite);
+  const minScore = scores.length ? Math.min(...scores) : 0;
+  const maxScore = scores.length ? Math.max(...scores) : 1;
+  const maxIteration = Math.max(1, ...progress.map((point) => point.iteration || 0));
+  const plotWidth = width - margin.left - margin.right;
+  const plotHeight = height - margin.top - margin.bottom;
+  const x = (iteration) => margin.left + (iteration / maxIteration) * plotWidth;
+  const y = (score) => margin.top + (1 - ((score - minScore) / Math.max(0.000001, maxScore - minScore))) * plotHeight;
+  const points = progress.filter((point) => Number.isFinite(point.score)).map((point) => `${x(point.iteration)},${y(point.score)}`).join(" ");
+
+  return `
+    <svg class="optimizer-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Optimizer score versus iteration chart">
+      <rect class="mtf-bg" x="0" y="0" width="${width}" height="${height}" />
+      <line class="mtf-axis" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}" />
+      <line class="mtf-axis" x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" />
+      ${points ? `<polyline class="optimizer-score-line" points="${points}" />` : `<text class="mtf-empty" x="${width / 2}" y="${height / 2}" text-anchor="middle">Run optimizer for score history</text>`}
+      <text class="mtf-label" x="${width / 2}" y="${height - 6}" text-anchor="middle">Iteration</text>
+      <text class="mtf-label" x="14" y="${margin.top + 8}" text-anchor="start">Score</text>
+    </svg>
+  `;
+};
+
+const renderOptimizerComparison = (result) => {
+  if (!result) return "";
+  const original = result.baselineEval?.merit?.metrics || {};
+  const optimized = result.best?.evaluation?.merit?.metrics || {};
+  const rows = [
+    ["EFL", original.effectiveFocalLength, optimized.effectiveFocalLength, "mm"],
+    ["BFD", original.backFocalLength, optimized.backFocalLength, "mm"],
+    ["f-number", original.fNumber, optimized.fNumber, ""],
+    ["RMS spot centre", original.rmsSpotCentre, optimized.rmsSpotCentre, "mm"],
+    ["RMS spot corner", original.rmsSpotCorner, optimized.rmsSpotCorner, "mm"],
+    ["MTF 40 centre", original.mtf40Centre, optimized.mtf40Centre, ""],
+    ["MTF 40 corner", original.mtf40Corner, optimized.mtf40Corner, ""],
+    ["RMS OPD", original.rmsOpdWaves, optimized.rmsOpdWaves, "waves"],
+    ["Strehl", original.strehl, optimized.strehl, ""],
+    ["Distortion", original.maxDistortionPercent, optimized.maxDistortionPercent, "%"],
+    ["Transmission", original.transmission, optimized.transmission, ""],
+    ["T-stop", original.tStop, optimized.tStop, ""]
+  ];
+  return `
+    <div class="mtf-readout-table optimizer-comparison" role="table" aria-label="Original versus optimized comparison">
+      <div class="mtf-readout-row mtf-readout-head" role="row">
+        <span role="columnheader">Metric</span>
+        <span role="columnheader">Original</span>
+        <span role="columnheader">Optimized</span>
+        <span role="columnheader">Unit</span>
+      </div>
+      ${rows.map(([label, before, after, unit]) => `
+        <div class="mtf-readout-row" role="row">
+          <span role="cell">${label}</span>
+          <span role="cell">${formatNumber(before, 5)}</span>
+          <span role="cell">${formatNumber(after, 5)}</span>
+          <span role="cell">${unit}</span>
+        </div>
+      `).join("")}
+    </div>
+  `;
+};
+
+const renderOptimizerPanel = () => {
+  const result = state.optimizerBest;
+  const metrics = result?.best?.evaluation?.merit?.metrics || {};
+  const baselineScore = result?.baselineEval?.score;
+  const bestScore = result?.best?.evaluation?.score;
+  const warnings = new Set(result?.best?.evaluation?.merit?.warnings || []);
+  (state.optimizerWarnings || []).forEach((warning) => warnings.add(warning));
+  if (result && optimizerImprovementPercent(result) <= 0) warnings.add("Optimizer reached the iteration limit without improvement.");
+  if ((result?.rejectedCount || 0) > Math.max(10, (state.optimizerIterations || 1) * 0.4)) warnings.add("Too many invalid candidates were generated.");
+  if (!state.optimizerUseToleranceRobustness) warnings.add("Tolerance robustness is disabled.");
+  if (state.optimizerStatus === "running") warnings.add("Optimizer is running in small browser-safe chunks. Stop cancels the active run.");
+  warnings.add("This optimizer is an experimental merit-function search tool. It helps explore lens parameter changes but does not replace professional optical design optimization.");
+
+  return `
+    <section class="optimizer-panel">
+      <div class="panel-heading">
+        <h3>Experimental Lens Optimizer</h3>
+        <span class="badge">${escapeHtml(state.optimizerStatus)}</span>
+      </div>
+      ${menuIntro("optimizer")}
+      <label class="check-control">
+        <input type="checkbox" data-action="toggle-optimizer-enabled" ${state.optimizerEnabled ? "checked" : ""}>
+        Enable optimizer
+      </label>
+      <div class="optimizer-controls">
+        <label>
+          Algorithm
+          <select data-action="update-optimizer-setting" data-field="optimizerAlgorithm" aria-label="Optimizer algorithm">
+            <option value="random" ${state.optimizerAlgorithm === "random" ? "selected" : ""}>Random search</option>
+            <option value="coordinate" ${state.optimizerAlgorithm === "coordinate" ? "selected" : ""}>Coordinate descent</option>
+            <option value="hybrid" ${state.optimizerAlgorithm === "hybrid" ? "selected" : ""}>Hybrid</option>
+          </select>
+        </label>
+        <label>
+          Iterations
+          <select data-action="update-optimizer-setting" data-field="optimizerIterations" aria-label="Optimizer iterations">
+            ${[25, 50, 100, 250].map((value) => `<option value="${value}" ${state.optimizerIterations === value ? "selected" : ""}>${value}</option>`).join("")}
+          </select>
+        </label>
+        ${optimizerInput("optimizerSeed", "Seed")}
+        ${optimizerInput("optimizerStepScale", "Step scale")}
+        ${optimizerInput("optimizerTargetFocalLength", "Target EFL", "mm")}
+        ${optimizerInput("optimizerTargetBfd", "Target BFD", "mm")}
+        ${optimizerInput("optimizerMaxTrackLength", "Max track", "mm")}
+        ${optimizerInput("optimizerMinBfd", "Min BFD", "mm")}
+        ${optimizerInput("optimizerMaxDiameter", "Max diameter", "mm")}
+      </div>
+      <div class="optimizer-goals">
+        ${optimizerGoalToggle("optimizerUseTargetFocalLength", "Focal length")}
+        ${optimizerGoalToggle("optimizerUseTargetBfd", "Back focal distance")}
+        ${optimizerGoalToggle("optimizerUseSpotSize", "Spot size")}
+        ${optimizerGoalToggle("optimizerUseMtf", "MTF 40 lp/mm")}
+        ${optimizerGoalToggle("optimizerUseStBalance", "Sag/Tan balance")}
+        ${optimizerGoalToggle("optimizerUseWavefront", "Wavefront RMS")}
+        ${optimizerGoalToggle("optimizerUseDistortion", "Distortion")}
+        ${optimizerGoalToggle("optimizerUseTransmission", "Transmission")}
+        ${optimizerGoalToggle("optimizerUseToleranceRobustness", "Tolerance robustness")}
+        ${optimizerGoalToggle("optimizerUseApertureDiameter", "Aperture diameter")}
+      </div>
+      <div class="optimizer-actions">
+        <button class="action-button" type="button" data-action="run-optimizer" ${state.optimizerStatus === "running" ? "disabled" : ""}>Run optimizer</button>
+        <button class="action-button" type="button" data-action="stop-optimizer" ${state.optimizerStatus === "running" ? "" : "disabled"}>Stop optimizer</button>
+        <button class="action-button" type="button" data-action="revert-optimizer" ${state.optimizerBaseline ? "" : "disabled"}>Revert to previous design</button>
+        <button class="action-button" type="button" data-action="accept-optimizer" ${result && state.optimizerStatus !== "running" ? "" : "disabled"}>Accept optimized design</button>
+        <button class="action-button" type="button" data-action="copy-optimizer-csv" ${result ? "" : "disabled"}>Copy optimization report CSV</button>
+        ${state.optimizerCopyStatus ? `<span class="copy-status">${escapeHtml(state.optimizerCopyStatus)}</span>` : ""}
+      </div>
+      ${state.optimizerReportCsv ? `<textarea class="csv-export-box" readonly aria-label="Optimizer CSV report">${escapeHtml(state.optimizerReportCsv)}</textarea>` : ""}
+      <div class="optimizer-progress-grid">
+        ${metric("Current iteration", state.optimizerCurrentIteration, "iterations")}
+        ${metric("Best score", formatNumber(bestScore, 6), "lower is better")}
+        ${metric("Previous score", formatNumber(baselineScore, 6), "baseline")}
+        ${metric("Improvement", formatNumber(optimizerImprovementPercent(result), 2), "%")}
+        ${metric("Best EFL", formatNumber(metrics.effectiveFocalLength, 3), "mm")}
+        ${metric("Best BFD", formatNumber(metrics.backFocalLength, 3), "mm")}
+        ${metric("Best MTF 40", formatNumber(metrics.worstMtf40, 4), "worst field")}
+        ${metric("Best RMS spot", formatNumber(metrics.worstRmsSpotRadius, 5), "mm")}
+        ${metric("Best RMS OPD", formatNumber(metrics.rmsOpdWaves, 5), "waves")}
+        ${metric("Rejected", state.optimizerRejectedCount, "candidates")}
+      </div>
+      ${renderOptimizerScoreChart(result)}
+      ${renderOptimizerComparison(result)}
+      ${[...warnings].map((warning) => `<p class="warning ray-warning">${escapeHtml(warning)}</p>`).join("")}
+      <p class="diagram-note">This optimizer is an experimental merit-function search tool. It helps explore lens parameter changes but does not replace professional optical design optimization.</p>
+    </section>
+  `;
+};
+
+const renderChromaticReadout = (spectralSystems) => {
+  const redBfd = spectralSystems.C?.backFocalLength;
+  const greenBfd = spectralSystems.d?.backFocalLength;
+  const blueBfd = spectralSystems.F?.backFocalLength;
+  const chromaticShift = Number.isFinite(blueBfd) && Number.isFinite(redBfd) ? blueBfd - redBfd : NaN;
+
+  return `
+    <div class="chromatic-readout">
+      <div class="panel-heading">
+        <h3>Chromatic / Dispersion</h3>
+        <span class="badge">C / d / F lines</span>
+      </div>
+      <div class="chromatic-grid">
+        ${metric("Red BFD", formatNumber(redBfd), "mm")}
+        ${metric("Green BFD", formatNumber(greenBfd), "mm")}
+        ${metric("Blue BFD", formatNumber(blueBfd), "mm")}
+        ${metric("Longitudinal shift", formatNumber(chromaticShift, 4), "blue BFD - red BFD")}
+      </div>
+    </div>
+  `;
+};
+
+const renderSystemSummary = (system, spectralSystems) => {
+  const fNumber = calculateFNumber(system);
+  const bfdDelta = system.backFocalLength - SONY_E_FLANGE_DISTANCE;
+  return `
+    <section class="summary-panel system-result-panel">
+      <div class="system-status-row">
+        <span class="badge">${system.validCount}/${state.lenses.length} ${tx("valid")}</span>
+        <span>${state.lenses.length} elements · ${formatNumber(system.totalTrack)} mm track</span>
+      </div>
+      <div class="system-kpi-grid">
+        <div class="system-kpi is-primary">
+          <span class="metric-name">${tx("effectiveFocalLength")}</span>
+          <span class="metric-value">${formatNumber(system.effectiveFocalLength)}</span>
+          <span class="metric-unit">mm</span>
+        </div>
+        <div class="system-kpi">
+          <span class="metric-name">${tx("fNumber")}</span>
+          <span class="metric-value">f/${formatNumber(fNumber, 3)}</span>
+          <span class="metric-unit">EFL / entrance pupil</span>
+        </div>
+        <div class="system-kpi">
+          <span class="metric-name">${tx("backFocalDistance")}</span>
+          <span class="metric-value">${formatNumber(system.backFocalLength)}</span>
+          <span class="metric-unit">mm</span>
+        </div>
+      </div>
+      <div class="system-detail-grid">
+        ${metric(tx("sonyFlange"), SONY_E_FLANGE_DISTANCE, "mm")}
+        ${metric(tx("bfdVsSony"), formatNumber(bfdDelta), "mm")}
+        ${metric(tx("trackLength"), formatNumber(system.totalTrack), "mm")}
+        ${metric(tx("totalPower"), formatNumber(system.totalPower, 6), "1/mm")}
+        ${metric(tx("diopters"), formatNumber(system.diopters, 3), "D")}
+      </div>
+      ${renderChromaticReadout(spectralSystems)}
+    </section>
+  `;
+};
+
+const renderVisualOnlyReferenceApp = () => {
+  const preset = PRESETS[state.preset] ?? PRESETS[DEFAULT_PRESET_KEY];
+  return `
+    <div class="app-layout">
+      <div class="app-main">
+        <header class="tool-header">
+          <div class="header-title-block">
+            <p class="eyebrow">${tx("eyebrow")}</p>
+            <h1>${tx("title")}</h1>
+          </div>
+          <div class="header-control-row">
+            ${renderPresetSelect()}
+            ${renderHeaderSaveControls()}
+          </div>
+        </header>
+
+        <div class="work-layout visual-reference-work-layout">
+          <main class="center-workspace visual-reference-workspace" aria-label="Visual production reference">
+            <section class="top-diagram">
+              ${renderVisualReferenceCutaway(state.visualLayout, preset)}
+            </section>
+          </main>
+          <aside class="analysis-sidebar visual-reference-sidebar" aria-label="Visual reference notes">
+            ${renderStackedPanel("visualReference", "Visual Reference", `
+              <div class="empty-analysis-note visual-reference-note-card">
+                <strong>Visual reference only / no full optical prescription</strong>
+                <span>This preset is a production-style silhouette reference. It does not run ray tracing, BFD, EFL, MTF, flange, sensor, focus, ray fan, wavefront, tolerance or optimizer calculations.</span>
+              </div>
+            `, { defaultCollapsed: false })}
+          </aside>
+        </div>
+      </div>
+    </div>
+  `;
+};
+
+const currentPatentGeometrySignature = () => JSON.stringify({
+  preset: state.preset,
+  prescriptionType: state.prescription?.prescriptionType,
+  patentDiameterSource: state.patentDiameterSource,
+  lenses: state.lenses.map((lens) => [
+    lens.r1,
+    lens.r2,
+    lens.thickness,
+    lens.gapAfter,
+    lens.customNd,
+    lens.customVd,
+    lens.patentFrontClearAperture,
+    lens.patentRearClearAperture,
+    lens.clearApertureDiameter,
+    lens.mechanicalDiameter,
+    lens.chipZoneWidthMm,
+    lens.minimumEdgeThicknessMm,
+    lens.minimumFlatLandMm,
+    lens.frontBevelEnabled,
+    lens.frontBevelFaceWidthMm,
+    lens.frontBevelAngleDeg,
+    lens.rearBevelEnabled,
+    lens.rearBevelFaceWidthMm,
+    lens.rearBevelAngleDeg
+  ])
+});
+
+const syncPatentFNumberApertureDiameter = () => {
+  if (!state.matchPatentFNumber || state.prescription?.prescriptionType !== "surface" || !state.lenses.length) {
+    return;
+  }
+  const system = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
+  const preset = PRESETS[state.preset] || {};
+  const matchedDiameter = matchPatentPhysicalStopDiameter(state.lenses, system, {
+    ...rayTraceApertureOptions(state),
+    prescription: state.prescription,
+    apertureRatio: state.prescription.apertureRatio || preset.apertureRatio
+  });
+  if (Number.isFinite(matchedDiameter) && matchedDiameter > 0) {
+    state.apertureDiameter = Number(matchedDiameter.toFixed(4));
+  }
+};
+
+const syncEntrancePupilResult = () => {
+  const system = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
+  state.entrancePupilResult = calculateEntrancePupil(state.lenses, system, {
+    ...rayTraceApertureOptions(state),
+    prescription: state.prescription
+  });
+};
+
+const ensurePatentOpticalGeometry = () => {
+  if (state.prescription?.prescriptionType !== "surface" || !state.lenses.length) {
+    state.patentApertureWarnings = [];
+    return;
+  }
+  syncPatentFNumberApertureDiameter();
+  const initialSignature = currentPatentGeometrySignature();
+  if (state.patentGeometrySignature === initialSignature) return;
+
+  let system = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
+  const preset = PRESETS[state.preset] || {};
+
+  const apertureEstimate = estimatePatentAperturesTwoPass(state.lenses, system, {
+    ...rayTraceApertureOptions(state),
+    prescription: state.prescription,
+    fieldAngleDeg: state.prescription.fieldAngleDeg || preset.fieldAngleDeg
+  });
+  state.lenses = apertureEstimate.lenses;
+  system = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
+  const positions = lensPositions(system, state.lenses);
+  state.lenses = state.lenses.map((lens, index) => {
+    const result = system.results[index];
+    const position = positions[index];
+    if (!result?.valid || !position) return lens;
+    const frontSurface = prescriptionSurfaceForDrawing(position, result, lens, "front");
+    const rearSurface = prescriptionSurfaceForDrawing(position, result, lens, "rear");
+    const requestedRadius = Math.max(
+      (toNumber(lens.clearApertureDiameter) || lens.diameter) / 2,
+      (toNumber(lens.mechanicalDiameter) || lens.visualDiameter || lens.diameter) / 2
+    );
+    const edgeGeometry = resolveManufacturingEdgeGeometry(frontSurface, rearSurface, lens, requestedRadius);
+    const physicalRadius = edgeGeometry.manufacturable ? edgeGeometry.mechanicalRadius : requestedRadius;
+    const clearRadius = (toNumber(lens.clearApertureDiameter) || lens.diameter) / 2;
+    edgeGeometry.warnings.forEach((warning) => {
+      apertureEstimate.warnings.push(`Lens ${index + 1}: ${warning}`);
+    });
+    return normalizeLens({
+      ...lens,
+      diameter: clearRadius * 2,
+      clearApertureDiameter: clearRadius * 2,
+      mechanicalDiameter: Math.max(clearRadius * 2, physicalRadius * 2),
+      visualDiameter: Math.max(clearRadius * 2, physicalRadius * 2),
+      edgeThickness: edgeGeometry.rawEdgeThickness,
+      remainingFlatLandMm: edgeGeometry.remainingFlatLandMm,
+      manufacturabilityStatus: edgeGeometry.manufacturable ? "Manufacturable estimate" : "Not manufacturable",
+      manufacturingWarning: edgeGeometry.warnings.join(" "),
+      maximumPhysicalDiameter: edgeGeometry.manufacturable ? physicalRadius * 2 : NaN,
+      minimumManufacturingDiameter: edgeGeometry.minimumMechanicalRadius * 2
+    });
+  });
+  buildCementedMechanicalGroups(state.lenses).forEach((group) => {
+    const validMaximumDiameters = group.elements
+      .map((index) => state.lenses[index].maximumPhysicalDiameter)
+      .filter(Number.isFinite);
+    const maximumSharedDiameter = validMaximumDiameters.length
+      ? Math.min(...validMaximumDiameters)
+      : NaN;
+    const minimumSharedDiameter = Math.max(
+      ...group.elements.map((index) => state.lenses[index].minimumManufacturingDiameter || 0)
+    );
+    const requestedMechanicalDiameter = Math.max(
+      ...group.elements.map((index) => state.lenses[index].mechanicalDiameter)
+    );
+    const diameter = Number.isFinite(maximumSharedDiameter) && maximumSharedDiameter >= minimumSharedDiameter
+      ? Math.min(maximumSharedDiameter, requestedMechanicalDiameter)
+      : requestedMechanicalDiameter;
+    group.elements.forEach((index) => {
+      state.lenses[index].mechanicalDiameter = diameter;
+      state.lenses[index].visualDiameter = diameter;
+      if (!(Number.isFinite(maximumSharedDiameter) && maximumSharedDiameter >= minimumSharedDiameter)) {
+        state.lenses[index].manufacturabilityStatus = "Not manufacturable";
+        state.lenses[index].manufacturingWarning = "Cemented group cannot share a manufacturable diameter without violating a clear aperture or bevel requirement.";
+      }
+      delete state.lenses[index].maximumPhysicalDiameter;
+      delete state.lenses[index].minimumManufacturingDiameter;
+    });
+  });
+  state.lenses.forEach((lens) => {
+    delete lens.maximumPhysicalDiameter;
+    delete lens.minimumManufacturingDiameter;
+  });
+  system = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
+  state.entrancePupilResult = calculateEntrancePupil(state.lenses, system, {
+    ...rayTraceApertureOptions(state),
+    prescription: state.prescription
+  });
+  state.patentApertureWarnings = apertureEstimate.warnings;
+  state.patentGeometrySignature = currentPatentGeometrySignature();
+};
+
+const render = () => {
+  if (state.prescription?.prescriptionType === "visualOnly") {
+    state.diagramViewMode = "productionCutaway";
+    return renderVisualOnlyReferenceApp();
+  }
+
+  ensurePatentOpticalGeometry();
+  syncEntrancePupilResult();
+  const system = calculateSystem(state.lenses);
+  const spectralSystems = getSpectralSystems();
+  const dLineRayTraceResults = traceSystemFieldSet(state.lenses, spectralSystems.d || system, {
+    rayCount: state.rayTraceRayCount,
+    apertureStopIndex: state.apertureStopIndex,
+    apertureDiameter: state.apertureDiameter,
+    wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+    spectralLineKey: "d"
+  });
+  const spectralRayTraceResults = traceSpectralFieldSet(state.lenses, spectralSystems.d || system, {
+    rayCount: state.rayTraceRayCount,
+    apertureStopIndex: state.apertureStopIndex,
+    apertureDiameter: state.apertureDiameter
+  });
+  const diagramRayTraceResults = visibleRayTraceResults(dLineRayTraceResults, spectralRayTraceResults);
+  const needsRayTraceSpot = isPanelExpanded("rayTraceSpot");
+  const needsRayFanAberrations = isPanelExpanded("rayFanAberrations");
+  const needsMtfResolution = isPanelExpanded("mtfResolution");
+  const needsCoverageIllumination = isPanelExpanded("coverageIllumination");
+  const needsWavefrontDiagnostics = isPanelExpanded("wavefrontDiagnostics");
+  const needsDebugTools = isPanelExpanded("debugTools");
+  const needsRayTrace3D = (needsRayTraceSpot || needsDebugTools) && state.enable3DRayTrace;
+  const transmissionResult = needsCoverageIllumination
+    ? cachedAnalysis("transmission", {}, () => calculateSystemTransmission(state.lenses, spectralSystems.d || system, {
+      apertureDiameter: state.apertureDiameter
+    }))
+    : null;
+  const rayImageCircleResult = needsCoverageIllumination
+    ? cachedAnalysis("imageCircle", {
+      maxField: state.rayCircleMaxFieldAngleDegrees,
+      step: state.rayCircleFieldStepDegrees,
+      rays: state.rayTraceRayCount,
+      wavelength: state.rayCircleWavelengthMode
+    }, () => sampleImageCircleCoverage(state.lenses, spectralSystems.d || system, {
+      maxFieldAngleDegrees: state.rayCircleMaxFieldAngleDegrees,
+      fieldStepDegrees: state.rayCircleFieldStepDegrees,
+      rayCountPerField: state.rayTraceRayCount,
+      wavelengthMode: state.rayCircleWavelengthMode,
+      apertureStopIndex: state.apertureStopIndex,
+      apertureDiameter: state.apertureDiameter,
+      wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+      spectralLineKey: "d"
+    }))
+    : null;
+  const rayFanAberrationResult = needsRayFanAberrations
+    ? cachedAnalysis("rayFanAberrations", {
+      rays: state.rayTraceRayCount,
+      field: state.rayFanFieldPreset,
+      customField: state.rayFanCustomFieldAngleDegrees,
+      wavelength: state.rayFanWavelengthMode
+    }, () => calculateRayFanAberrationData(state.lenses, spectralSystems.d || system, {
+      rayCount: state.rayTraceRayCount
+    }))
+    : null;
+  const rayTrace3DResults = needsRayTrace3D
+    ? cachedAnalysis("rayTrace3D", {
+      field: state.rayTrace3DFieldAngleDegrees,
+      orientation: state.rayTrace3DOrientation,
+      samples: state.rayTrace3DSampleCount,
+      sampling: state.rayTrace3DSampling,
+      wavelength: state.rayTrace3DWavelengthMode
+    }, () => traceSystem3DSpectral(state.lenses, spectralSystems.d || system, {
+      fieldAngleDegrees: state.rayTrace3DFieldAngleDegrees,
+      fieldOrientation: state.rayTrace3DOrientation,
+      sampleCount: state.rayTrace3DSampleCount,
+      sampling: state.rayTrace3DSampling,
+      wavelengthMode: state.rayTrace3DWavelengthMode,
+      apertureStopIndex: state.apertureStopIndex,
+      apertureDiameter: state.apertureDiameter
+    }))
+    : [];
+  const sagittalTangentialRayFan3DResult = needsRayFanAberrations
+    ? cachedAnalysis("stRayFan", {
+      rays: state.stRayFanRayCount,
+      field: state.stRayFanFieldPreset,
+      customField: state.stRayFanCustomFieldAngleDegrees,
+      wavelength: state.stRayFanWavelengthMode,
+      plane: state.stRayFanImagePlaneMode
+    }, () => calculateSagittalTangentialRayFan3DData(state.lenses, spectralSystems.d || system, {
+      rayCount: state.stRayFanRayCount
+    }))
+    : null;
+  const sagittalTangentialMtfResult = needsMtfResolution
+    ? cachedAnalysis("stMtf", {
+      wavelength: state.stMtfWavelengthMode,
+      plane: state.mtfPlaneMode
+    }, () => calculateSagittalTangentialGeometricMTFPanelData(state.lenses, spectralSystems.d || system))
+    : null;
+  const diffractionHybridMtfResult = needsMtfResolution
+    ? cachedAnalysis("diffractionHybrid", {
+      field: state.diffractionMtfFieldKey,
+      wavelength: state.diffractionMtfWavelengthMode
+    }, () => calculateDiffractionHybridMTFPanelData(state.lenses, spectralSystems.d || system))
+    : null;
+  const wavefrontResult = needsWavefrontDiagnostics
+    ? cachedAnalysis("wavefront", {
+      field: state.wavefrontFieldKey,
+      wavelength: state.wavefrontWavelengthMode
+    }, () => calculateWavefrontPanelData(state.lenses, spectralSystems.d || system))
+    : null;
+  const waveOpticsResult = needsWavefrontDiagnostics
+    ? cachedAnalysis("waveOptics", {
+      field: state.waveOpticsFieldKey,
+      wavelength: state.waveOpticsWavelengthKey,
+      grid: state.waveOpticsGridSize
+    }, () => calculateWavefrontPSFOTFMTFPrototype(state.lenses, spectralSystems.d || system))
+    : null;
+  const polychromaticWavefrontMtfResult = needsWavefrontDiagnostics
+    ? cachedAnalysis("polyMtf", {
+      field: state.polyMtfFieldKey,
+      grid: state.polyMtfGridSize,
+      weights: getCurrentPolychromaticWeights()
+    }, () => calculatePolychromaticWavefrontMTF(state.lenses, spectralSystems.d || system, {
+      fieldKey: state.polyMtfFieldKey,
+      gridSize: state.polyMtfGridSize,
+      weights: getCurrentPolychromaticWeights(),
+      rayCount: state.rayTrace3DSampleCount,
+      apertureStopIndex: state.apertureStopIndex,
+      apertureDiameter: state.apertureDiameter
+    }))
+    : null;
+  const preset = PRESETS[state.preset] ?? PRESETS[DEFAULT_PRESET_KEY];
+  const manufacturingPositions = lensPositions(system, state.lenses);
+  const manufacturingMapper = { x: (value) => value, y: (value) => value };
+  const manufacturingModels = state.lenses.map((lens, index) => (
+    system.results[index]?.valid && manufacturingPositions[index]
+      ? buildPrescriptionLensRenderModel(
+        manufacturingPositions[index],
+        manufacturingMapper,
+        system.results[index],
+        lens,
+        index,
+        diagramRayTraceResults
+      )
+      : null
+  ));
+  const visualLensControls = state.lenses.length
+    ? state.lenses
+      .map((lens, index) => ({ lens, index }))
+      .map(({ lens, index }) => renderLens(lens, index, system.results[index], manufacturingModels[index]))
+      .join("")
+    : `
+      <div class="empty-analysis-note">
+        <strong>Surface prescription preset loaded</strong>
+        <span>This patent entry has no verified glass-bearing surface pairs yet, so no derived elements can be drawn. Verified patent prescriptions are converted into derived elements for the diagram while keeping the source surface table intact.</span>
+      </div>
+    `;
+
+  return `
+    <div class="app-layout">
+      <div class="app-main">
+        <header class="tool-header">
+          <div class="header-title-block">
+            <p class="eyebrow">${tx("eyebrow")}</p>
+            <h1>${tx("title")}</h1>
+          </div>
+          <div class="header-control-row">
+            ${renderPresetSelect()}
+            ${renderHeaderSaveControls()}
+          </div>
+        </header>
+
+        <div class="work-layout">
+          <main class="center-workspace" aria-label="Primary optical workspace">
+            <section class="top-diagram">
+            ${renderOpticalDiagram(system, spectralSystems, diagramRayTraceResults)}
+            </section>
+
+            <div class="center-scroll-stack" aria-label="Lens controls and primary results">
+              <div class="system-bottom">
+                ${renderStackedPanel("system", tx("systemResult"), renderSystemSummary(system, spectralSystems))}
+                ${renderStackedPanel(
+                  "mechanicalDiagnostics",
+                  "Mechanical diagnostics",
+                  isPanelExpanded("mechanicalDiagnostics")
+                    ? renderMechanicalDiagnosticsPanel(system, diagramRayTraceResults)
+                    : "",
+                  { collapsed: !isPanelExpanded("mechanicalDiagnostics") }
+                )}
+              </div>
+            </div>
+          </main>
+
+          <aside class="analysis-sidebar" aria-label="Analysis tools">
+            ${renderWorkflowGroup("Design", `
+              ${renderWorkflowPanel("lensData", isPanelExpanded("lensData") ? `
+                <section class="lens-control-section">
+                  <div class="section-heading lens-control-actions-heading">
+                    <div class="toolbar lens-toolbar" aria-label="Lens actions">
+                      <button class="icon-button" type="button" data-action="undo" title="Undo" aria-label="Undo" ${state.history.length ? "" : "disabled"}>↶</button>
+                      <button class="icon-button" type="button" data-action="redo" title="Redo" aria-label="Redo" ${state.future.length ? "" : "disabled"}>↷</button>
+                      <button class="action-button" type="button" data-action="add-lens" title="Add lens">
+                        <span aria-hidden="true">+</span>
+                        ${tx("addLens")}
+                      </button>
+                      <button class="icon-button" type="button" data-action="reset" title="Reset" aria-label="Reset">↺</button>
+                    </div>
+                  </div>
+                  <div class="input-zone">
+                    ${visualLensControls}
+                  </div>
+                </section>
+              ` : "", { summary: `${state.lenses.length} elements` })}
+              ${renderWorkflowPanel("apertureField", isPanelExpanded("apertureField") ? renderApertureStopPanel(system, dLineRayTraceResults[0]?.surfaces || []) : "", {
+                summary: `f/${formatNumber(calculateFNumber(system), 2)} · ${formatNumber(state.apertureDiameter, 2)} mm stop`
+              })}
+            `)}
+
+            ${renderWorkflowGroup("Analyse", `
+              ${renderWorkflowPanel("rayTraceSpot", isPanelExpanded("rayTraceSpot") ? `
+                ${renderRayTracePanel(diagramRayTraceResults, spectralSystems, system)}
+                ${renderSpotDiagramPanel(dLineRayTraceResults, spectralRayTraceResults)}
+                <details class="sub-analysis-section">
+                  <summary>3D / Experimental</summary>
+                  ${renderRayTrace3DPanel(rayTrace3DResults)}
+                </details>
+              ` : "", { summary: `${dLineRayTraceResults[0]?.validRayCount || 0}/${dLineRayTraceResults[0]?.totalRayCount || 0} centre rays` })}
+              ${renderWorkflowPanel("rayFanAberrations", isPanelExpanded("rayFanAberrations") ? `
+                <div class="segmented-note">Tangential / sagittal / both views are grouped here for fan and aberration work.</div>
+                ${renderRayFanAberrationPanel(rayFanAberrationResult)}
+                ${renderSagittalTangentialRayFan3DPanel(sagittalTangentialRayFan3DResult)}
+              ` : "", { summary: "2D + 3D fan" })}
+              ${renderWorkflowPanel("mtfResolution", isPanelExpanded("mtfResolution") ? `
+                <div class="mtf-status-strip">
+                  <span class="badge">Estimated aperture</span>
+                  <span class="badge">Experimental</span>
+                  <span class="badge">Preview</span>
+                </div>
+                ${renderSagittalTangentialGeometricMTFPanel(sagittalTangentialMtfResult)}
+                <details class="sub-analysis-section">
+                  <summary>Quick preview</summary>
+                  ${renderMTFPanel(dLineRayTraceResults)}
+                </details>
+                <details class="sub-analysis-section">
+                  <summary>Diffraction limit / hybrid estimate</summary>
+                  ${renderDiffractionHybridMTFPanel(diffractionHybridMtfResult)}
+                </details>
+              ` : "", { summary: "Sag/Tan geometric", badge: "Estimated" })}
+              ${renderWorkflowPanel("coverageIllumination", isPanelExpanded("coverageIllumination") ? `
+                ${renderRayTracedImageCirclePanel(rayImageCircleResult)}
+                ${renderCoatingTransmissionPanel(transmissionResult)}
+              ` : "", { summary: "Coverage + T-stop" })}
+            `)}
+
+            ${renderWorkflowGroup("Advanced", `
+              ${renderWorkflowPanel("wavefrontDiagnostics", isPanelExpanded("wavefrontDiagnostics") ? `
+                ${renderWavefrontOPDPanel(wavefrontResult)}
+                <details class="sub-analysis-section">
+                  <summary>Experimental PSF / OTF / MTF</summary>
+                  ${renderWavefrontPSFOTFMTFPanel(waveOpticsResult)}
+                </details>
+                <details class="sub-analysis-section">
+                  <summary>Experimental polychromatic MTF</summary>
+                  ${renderPolychromaticWavefrontMTFPanel(polychromaticWavefrontMtfResult)}
+                </details>
+              ` : "", { summary: "OPD / Strehl" })}
+              ${renderWorkflowPanel("debugTools", isPanelExpanded("debugTools") ? `
+                ${renderRayTrace3DPanel(rayTrace3DResults)}
+                ${renderSurfacePrescriptionPanel(dLineRayTraceResults[0]?.surfaces || [], preset)}
+              ` : "", { summary: "Prescription / Surface Data" })}
+            `)}
+
+            ${renderWorkflowGroup("Build", `
+              ${renderWorkflowPanel("optimizerBuild", isPanelExpanded("optimizerBuild") ? renderOptimizerPanel() : "", { summary: state.optimizerStatus })}
+              ${renderWorkflowPanel("toleranceBuild", isPanelExpanded("toleranceBuild") ? renderToleranceSimulationPanel() : "", {
+                summary: state.toleranceResult ? `${formatNumber(state.toleranceResult.passRate * 100, 1)}% pass` : "Monte Carlo"
+              })}
+            `)}
+
+            ${renderWorkflowGroup("Utility", `
+              ${renderWorkflowPanel("sagittaUtility", isPanelExpanded("sagittaUtility") ? renderSagittaCalculator() : "", { summary: "Sag / radius" })}
+            `)}
+          </aside>
+        </div>
+      </div>
+    </div>
+  `;
+};
+
+const mount = document.querySelector("#app");
+
+const renderDetailKey = (detail, index) => (
+  detail.dataset.detailsKey
+  || `${index}:${detail.querySelector("summary")?.textContent?.trim() || "details"}`
+);
+
+const activeElementDescriptor = () => {
+  const active = document.activeElement;
+  if (!active || !mount.contains(active)) return null;
+  return {
+    tagName: active.tagName,
+    action: active.dataset.action || "",
+    id: active.dataset.id || "",
+    field: active.dataset.field || "",
+    panel: active.dataset.panel || "",
+    value: active.value,
+    selectionStart: Number.isFinite(active.selectionStart) ? active.selectionStart : null,
+    selectionEnd: Number.isFinite(active.selectionEnd) ? active.selectionEnd : null
+  };
+};
+
+const findMatchingActiveElement = (descriptor) => {
+  if (!descriptor) return null;
+  const candidates = [...mount.querySelectorAll(descriptor.tagName.toLowerCase())];
+  return candidates.find((element) => (
+    (element.dataset.action || "") === descriptor.action
+    && (element.dataset.id || "") === descriptor.id
+    && (element.dataset.field || "") === descriptor.field
+    && (element.dataset.panel || "") === descriptor.panel
+    && (!("value" in element) || descriptor.value === undefined || element.value === descriptor.value || descriptor.tagName !== "SELECT")
+  )) || null;
+};
+
+const captureRenderScrollState = () => {
+  const centerStack = mount.querySelector(".center-scroll-stack");
+  const analysisSidebar = mount.querySelector(".analysis-sidebar");
+  const details = [...mount.querySelectorAll("details")].map((detail, index) => ({
+    key: renderDetailKey(detail, index),
+    open: detail.open
+  }));
+  return {
+    centerTop: centerStack?.scrollTop || 0,
+    analysisTop: analysisSidebar?.scrollTop || 0,
+    windowX: window.scrollX || 0,
+    windowY: window.scrollY || 0,
+    active: activeElementDescriptor(),
+    details
+  };
+};
+
+const restoreRenderScrollState = (scrollState) => {
+  const detailState = new Map((scrollState.details || []).map((item) => [item.key, item.open]));
+  [...mount.querySelectorAll("details")].forEach((detail, index) => {
+    const key = renderDetailKey(detail, index);
+    if (detailState.has(key)) detail.open = detailState.get(key);
+  });
+  const centerStack = mount.querySelector(".center-scroll-stack");
+  const analysisSidebar = mount.querySelector(".analysis-sidebar");
+  if (centerStack) centerStack.scrollTop = scrollState.centerTop;
+  if (analysisSidebar) analysisSidebar.scrollTop = scrollState.analysisTop;
+  if (Number.isFinite(scrollState.windowX) && Number.isFinite(scrollState.windowY)) {
+    window.scrollTo(scrollState.windowX, scrollState.windowY);
+  }
+  const active = findMatchingActiveElement(scrollState.active);
+  if (active) {
+    active.focus();
+    if (
+      scrollState.active.selectionStart !== null
+      && typeof active.setSelectionRange === "function"
+    ) {
+      active.setSelectionRange(scrollState.active.selectionStart, scrollState.active.selectionEnd);
+    }
+  }
+};
+
+const update = () => {
+  const scrollState = captureRenderScrollState();
+  syncCustomElementPrescription();
+  mount.innerHTML = render();
+  restoreRenderScrollState(scrollState);
+};
+
+let optimizerRunToken = 0;
+
+const startOptimizerRun = () => {
+  optimizerRunToken += 1;
+  const token = optimizerRunToken;
+  const options = {
+    ...optimizerOptionsFromState(),
+    apertureDiameter: state.apertureDiameter
+  };
+  const iterations = Math.max(0, Math.round(toNumber(options.iterations) || 0));
+  const algorithm = ["random", "coordinate", "hybrid"].includes(options.algorithm) ? options.algorithm : "hybrid";
+  const randomLimit = algorithm === "hybrid" ? Math.floor(iterations * 0.55) : (algorithm === "random" ? iterations : 0);
+  const random = createSeededRandom(options.seed || 1);
+  const baseline = clampOptimizationCandidate({
+    lenses: cloneOptimizerLenses(state.lenses),
+    apertureDiameter: state.apertureDiameter
+  });
+  const variables = collectOptimizationVariables(baseline.lenses, options);
+  const baselineEval = evaluateOptimizerCandidate(baseline, options);
+  let best = { candidate: baseline, evaluation: baselineEval };
+  let rejectedCount = baselineEval.status === "valid" ? 0 : 1;
+  let currentIteration = 0;
+  let coordinateStepScale = 1;
+  const progress = [{ iteration: 0, score: best.evaluation.score }];
+  const warnings = [];
+
+  state.optimizerEnabled = true;
+  state.optimizerStatus = "running";
+  state.optimizerBaseline = {
+    lenses: cloneOptimizerLenses(state.lenses),
+    apertureDiameter: state.apertureDiameter
+  };
+  state.optimizerReportCsv = "";
+  state.optimizerCopyStatus = "";
+
+  const publish = (status) => {
+    const result = {
+      baseline,
+      baselineEval,
+      best,
+      progress: [...progress],
+      rejectedCount,
+      variables,
+      warnings: [...warnings]
+    };
+    state.optimizerBest = result;
+    state.optimizerProgress = result.progress;
+    state.optimizerRejectedCount = rejectedCount;
+    state.optimizerCurrentIteration = currentIteration;
+    state.optimizerWarnings = result.warnings;
+    state.optimizerStatus = status;
+  };
+
+  if (!variables.length) warnings.push("No optimizer variables are enabled.");
+  if (iterations <= 0) warnings.push("Zero iterations requested; design was not changed.");
+
+  if (!variables.length || iterations <= 0) {
+    publish("done");
+    update();
+    return;
+  }
+
+  const runRandomStep = () => {
+    const variable = variables[Math.floor(randomUniform(random) * variables.length)];
+    const candidate = mutateOptimizationCandidate(best.candidate, variable, randomNormal(random) * variable.step);
+    const evaluation = evaluateOptimizerCandidate(candidate, options);
+    if (evaluation.status !== "valid") {
+      rejectedCount += 1;
+    } else if (evaluation.score <= best.evaluation.score) {
+      best = { candidate, evaluation };
+    }
+  };
+
+  const runCoordinateStep = () => {
+    const localIteration = algorithm === "hybrid" ? currentIteration - randomLimit : currentIteration;
+    const variable = variables[Math.max(0, localIteration - 1) % variables.length];
+    let improved = false;
+    [1, -1].forEach((direction) => {
+      const candidate = mutateOptimizationCandidate(best.candidate, variable, direction * variable.step * coordinateStepScale);
+      const evaluation = evaluateOptimizerCandidate(candidate, options);
+      if (evaluation.status !== "valid") {
+        rejectedCount += 1;
+      } else if (evaluation.score < best.evaluation.score) {
+        best = { candidate, evaluation };
+        improved = true;
+      }
+    });
+    if (!improved && localIteration % Math.max(1, variables.length) === 0) coordinateStepScale *= 0.7;
+  };
+
+  const stepChunk = () => {
+    if (token !== optimizerRunToken || state.optimizerStatus !== "running") return;
+    const chunkEnd = Math.min(iterations, currentIteration + 5);
+    while (currentIteration < chunkEnd) {
+      currentIteration += 1;
+      if (algorithm === "coordinate" || (algorithm === "hybrid" && currentIteration > randomLimit)) {
+        runCoordinateStep();
+      } else {
+        runRandomStep();
+      }
+      progress.push({ iteration: currentIteration, score: best.evaluation.score });
+    }
+    publish(currentIteration >= iterations ? "done" : "running");
+    update();
+    if (currentIteration < iterations && token === optimizerRunToken && state.optimizerStatus === "running") {
+      setTimeout(stepChunk, 0);
+    }
+  };
+
+  publish("running");
+  update();
+  setTimeout(stepChunk, 0);
+};
+
+const holdState = {
+  delayTimer: null,
+  repeatTimer: null,
+  suppressClickUntil: 0
+};
+
+const stopHoldAdjust = () => {
+  clearTimeout(holdState.delayTimer);
+  clearInterval(holdState.repeatTimer);
+  holdState.delayTimer = null;
+  holdState.repeatTimer = null;
+};
+
+mount.addEventListener("pointerdown", (event) => {
+  const button = event.target.closest('button[data-action="adjust-field"], button[data-action="adjust-panel-field"]');
+  if (!button || button.disabled) return;
+  if (typeof event.button === "number" && event.button !== 0) return;
+
+  event.preventDefault();
+  stopHoldAdjust();
+
+  const action = button.dataset.action;
+  const field = button.dataset.field;
+  const delta = Number(button.dataset.delta);
+  holdState.suppressClickUntil = Date.now() + 650;
+
+  if (action === "adjust-field") {
+    rememberState();
+    adjustLensField(button.dataset.id, field, delta);
+    resetGeneratedAnalysisState();
+  } else {
+    adjustPanelField(field, delta);
+    if (["apertureDiameter", "apertureStopSurfaceNumber", "apertureStopSurfaceOffsetMm", "apertureStopDistanceFromSensorMm", "apertureStopDistanceFromFrontMm"].includes(field)) resetGeneratedAnalysisState();
+  }
+  update();
+
+  holdState.delayTimer = setTimeout(() => {
+    holdState.repeatTimer = setInterval(() => {
+      if (action === "adjust-field") {
+        adjustLensField(button.dataset.id, field, delta);
+        resetGeneratedAnalysisState();
+      } else {
+        adjustPanelField(field, delta);
+        if (["apertureDiameter", "apertureStopSurfaceNumber", "apertureStopSurfaceOffsetMm", "apertureStopDistanceFromSensorMm", "apertureStopDistanceFromFrontMm"].includes(field)) resetGeneratedAnalysisState();
+      }
+      update();
+    }, 95);
+  }, 360);
+});
+
+document.addEventListener("pointerup", stopHoldAdjust);
+document.addEventListener("pointercancel", stopHoldAdjust);
+document.addEventListener("pointerleave", stopHoldAdjust);
+
+mount.addEventListener("wheel", (event) => {
+  const svg = event.target.closest(".ray-diagram");
+  if (!svg) return;
+
+  event.preventDefault();
+  const rect = svg.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+
+  const currentViewBox = svg.getAttribute("viewBox").split(/\s+/).map(Number);
+  const [viewX, viewY, viewWidth, viewHeight] = currentViewBox.length === 4
+    ? currentViewBox
+    : [0, 0, DIAGRAM_SIZE.width, DIAGRAM_SIZE.height];
+  const pointerX = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+  const pointerY = clamp((event.clientY - rect.top) / rect.height, 0, 1);
+  const svgX = viewX + pointerX * viewWidth;
+  const svgY = viewY + pointerY * viewHeight;
+  const zoomFactor = event.deltaY < 0 ? 1.14 : 1 / 1.14;
+  const nextZoom = clamp(state.diagramZoom * zoomFactor, 1, 6);
+  const nextWidth = DIAGRAM_SIZE.width / nextZoom;
+  const nextHeight = DIAGRAM_SIZE.height / nextZoom;
+
+  state.diagramZoom = nextZoom;
+  state.diagramViewX = clamp(svgX - pointerX * nextWidth, 0, DIAGRAM_SIZE.width - nextWidth);
+  state.diagramViewY = clamp(svgY - pointerY * nextHeight, 0, DIAGRAM_SIZE.height - nextHeight);
+
+  if (nextZoom === 1) {
+    state.diagramViewX = null;
+    state.diagramViewY = null;
+  }
+
+  update();
+}, { passive: false });
+
+mount.addEventListener("input", (event) => {
+  const action = event.target.dataset.action;
+
+  if (action === "update-design-name") {
+    state.designName = event.target.value;
+    return;
+  }
+
+  if (action === "update-tolerance-setting") {
+    const field = event.target.dataset.field;
+    const nextSettings = { ...state.toleranceSettings };
+    if (field === "histogramMetric") {
+      nextSettings.histogramMetric = event.target.value;
+    } else if (field === "monteCarloRuns") {
+      nextSettings.monteCarloRuns = Math.round(clamp(toNumber(event.target.value) || 25, 1, 100));
+    } else if (field === "seed") {
+      nextSettings.seed = Math.trunc(toNumber(event.target.value) || DEFAULT_TOLERANCE_SETTINGS.seed);
+    } else if (field in nextSettings) {
+      nextSettings[field] = toNumber(event.target.value);
+    }
+    state.toleranceSettings = sanitizeToleranceSettings(nextSettings);
+    resetGeneratedAnalysisState();
+    update();
+
+    const sameInput = mount.querySelector(`[data-action="update-tolerance-setting"][data-field="${field}"]`);
+    if (sameInput) sameInput.focus();
+    return;
+  }
+
+  if (action === "update-optimizer-setting") {
+    const field = event.target.dataset.field;
+    const numericFields = new Set([
+      "optimizerIterations",
+      "optimizerSeed",
+      "optimizerStepScale",
+      "optimizerTargetFocalLength",
+      "optimizerTargetBfd",
+      "optimizerMaxTrackLength",
+      "optimizerMinBfd",
+      "optimizerMaxDiameter"
+    ]);
+    if (field === "optimizerAlgorithm") {
+      state.optimizerAlgorithm = ["random", "coordinate", "hybrid"].includes(event.target.value) ? event.target.value : "hybrid";
+    } else if (numericFields.has(field)) {
+      state[field] = field === "optimizerIterations" || field === "optimizerSeed"
+        ? Math.round(toNumber(event.target.value) || 0)
+        : toNumber(event.target.value);
+      if (field === "optimizerIterations") state.optimizerIterations = Math.round(clamp(state.optimizerIterations || 25, 0, 250));
+      if (field === "optimizerStepScale") state.optimizerStepScale = Math.max(0.05, state.optimizerStepScale || 1);
+    }
+    state.optimizerCopyStatus = "";
+    state.optimizerReportCsv = "";
+    update();
+
+    const sameInput = mount.querySelector(`[data-action="update-optimizer-setting"][data-field="${field}"]`);
+    if (sameInput) sameInput.focus();
+    return;
+  }
+
+  if (action === "update-lens-tolerance") {
+    const lens = state.lenses.find((item) => item.id === event.target.dataset.id);
+    const field = event.target.dataset.field;
+    if (!lens) return;
+    rememberState();
+    lens[field] = event.target.value === "" ? null : Math.max(0, toNumber(event.target.value) || 0);
+    state.preset = "custom";
+    resetGeneratedAnalysisState();
+    update();
+
+    const sameInput = mount.querySelector(`[data-action="update-lens-tolerance"][data-id="${lens.id}"][data-field="${field}"]`);
+    if (sameInput) sameInput.focus();
+    return;
+  }
+
+  if (action === "update-sagitta") {
+    state[event.target.dataset.field] = event.target.value;
+    update();
+
+    const sameInput = mount.querySelector(`[data-action="update-sagitta"][data-field="${event.target.dataset.field}"]`);
+    if (sameInput) sameInput.focus();
+    return;
+  }
+
+  if (action === "update-image-circle") {
+    const field = event.target.dataset.field;
+    if (field === "imageCircleFocalLength") {
+      state.imageCircleFocalLength = Math.max(0.1, toNumber(event.target.value) || 0.1);
+    }
+    if (field === "imageCircleAngleDegrees") {
+      state.imageCircleAngleDegrees = clamp(toNumber(event.target.value) || 0.1, 0.1, 178.9);
+    }
+    update();
+
+    const sameInput = mount.querySelector(`[data-action="update-image-circle"][data-field="${field}"]`);
+    if (sameInput) sameInput.focus();
+    return;
+  }
+
+  if (action === "update-ray-circle") {
+    const field = event.target.dataset.field;
+    if (field === "rayCircleMaxFieldAngleDegrees") {
+      state.rayCircleMaxFieldAngleDegrees = clamp(toNumber(event.target.value) || 1, 1, 70);
+    }
+    if (field === "rayCircleFieldStepDegrees") {
+      state.rayCircleFieldStepDegrees = clamp(toNumber(event.target.value) || 1, 0.5, 10);
+    }
+    update();
+
+    const sameInput = mount.querySelector(`[data-action="update-ray-circle"][data-field="${field}"]`);
+    if (sameInput) sameInput.focus();
+    return;
+  }
+
+  if (action === "update-ray-fan") {
+    const field = event.target.dataset.field;
+    if (field === "rayFanCustomFieldAngleDegrees") {
+      state.rayFanCustomFieldAngleDegrees = clamp(toNumber(event.target.value) || 0, 0, 70);
+      state.rayFanFieldPreset = "custom";
+    }
+    update();
+
+    const sameInput = mount.querySelector(`[data-action="update-ray-fan"][data-field="${field}"]`);
+    if (sameInput) sameInput.focus();
+    return;
+  }
+
+  if (action === "update-ray-3d") {
+    const field = event.target.dataset.field;
+    if (field === "rayTrace3DFieldAngleDegrees") {
+      state.rayTrace3DFieldAngleDegrees = clamp(toNumber(event.target.value) || 0, 0, 70);
+    }
+    if (field === "rayTrace3DSampleCount") {
+      state.rayTrace3DSampleCount = Math.round(clamp(toNumber(event.target.value) || 3, 3, 31));
+    }
+    update();
+
+    const sameInput = mount.querySelector(`[data-action="update-ray-3d"][data-field="${field}"]`);
+    if (sameInput) sameInput.focus();
+    return;
+  }
+
+  if (action === "update-st-ray-fan") {
+    const field = event.target.dataset.field;
+    if (field === "stRayFanCustomFieldAngleDegrees") {
+      state.stRayFanCustomFieldAngleDegrees = clamp(toNumber(event.target.value) || 0, 0, 70);
+      state.stRayFanFieldPreset = "custom";
+    }
+    if (field === "stRayFanRayCount") {
+      state.stRayFanRayCount = normalizeFanRayCount(event.target.value);
+    }
+    state.stRayFanCopyStatus = "";
+    state.stRayFanExportText = "";
+    update();
+
+    const sameInput = mount.querySelector(`[data-action="update-st-ray-fan"][data-field="${field}"]`);
+    if (sameInput) sameInput.focus();
+    return;
+  }
+
+  if (action === "toggle-ray-fan-graph") {
+    state[event.target.dataset.field] = event.target.checked;
+    update();
+    return;
+  }
+
+  if (action === "toggle-real-rays") {
+    state.showRealRays = event.target.checked;
+    update();
+    return;
+  }
+
+  if (action === "toggle-3d-rays") {
+    state.enable3DRayTrace = event.target.checked;
+    update();
+    return;
+  }
+
+  if (action === "update-ray-trace") {
+    const field = event.target.dataset.field;
+    state[field] = field === "rayTraceRayCount"
+      ? Math.round(clamp(toNumber(event.target.value) || 3, 3, 31))
+      : event.target.value;
+    update();
+
+    const sameInput = mount.querySelector(`[data-action="update-ray-trace"][data-field="${field}"]`);
+    if (sameInput) sameInput.focus();
+    return;
+  }
+
+  if (action === "update-aperture-diameter") {
+    state.apertureDiameter = Math.max(0.1, toNumber(event.target.value) || 0.1);
+    state.matchPatentFNumber = false;
+    resetGeneratedAnalysisState();
+    update();
+
+    const sameInput = mount.querySelector('[data-action="update-aperture-diameter"][data-field="apertureDiameter"]');
+    if (sameInput) sameInput.focus();
+    return;
+  }
+
+  if (action === "update-aperture-stop-setting") {
+    const field = event.target.dataset.field;
+    if (field === "apertureStopSurfaceNumber") {
+      state.apertureStopSurfaceNumber = Math.max(1, Math.round(toNumber(event.target.value) || 1));
+    }
+    if (field === "apertureStopSurfaceOffsetMm") {
+      state.apertureStopSurfaceOffsetMm = Math.max(0, toNumber(event.target.value) || 0);
+    }
+    if (field === "apertureStopDistanceFromSensorMm") {
+      state.apertureStopDistanceFromSensorMm = Math.max(0, toNumber(event.target.value) || 0);
+    }
+    if (field === "apertureStopDistanceFromFrontMm") {
+      state.apertureStopDistanceFromFrontMm = Math.max(0, toNumber(event.target.value) || 0);
+    }
+    resetGeneratedAnalysisState();
+    update();
+
+    const sameInput = mount.querySelector(`[data-action="update-aperture-stop-setting"][data-field="${field}"]`);
+    if (sameInput) sameInput.focus();
+    return;
+  }
+
+  if (action === "update-cemented-display-number") {
+    const field = event.target.dataset.field;
+    if (field === "cementedInterfaceBevelFaceWidthMm") {
+      state.cementedInterfaceBevelFaceWidthMm = Math.max(0, toNumber(event.target.value) || 0);
+    }
+    if (field === "cementedInterfaceBevelAngleDeg") {
+      state.cementedInterfaceBevelAngleDeg = clamp(toNumber(event.target.value) || DEFAULT_CEMENTED_INTERFACE_BEVEL_ANGLE_DEG, 1, 89);
+    }
+    if (field === "minimumAirGapClearanceMm") {
+      state.minimumAirGapClearanceMm = Math.max(0, toNumber(event.target.value) || 0);
+    }
+    update();
+    const sameInput = mount.querySelector(`[data-action="update-cemented-display-number"][data-field="${field}"]`);
+    if (sameInput) sameInput.focus();
+    return;
+  }
+
+  if (action !== "update-lens") return;
+
+  const lens = state.lenses.find((item) => item.id === event.target.dataset.id);
+  if (!lens) return;
+
+  rememberState();
+  const lensField = event.target.dataset.field;
+  lens[lensField] = event.target.value;
+  if (lensField === "customNd") lens.refractiveIndex = event.target.value;
+  if (lensField === "refractiveIndex") lens.customNd = event.target.value;
+  if (lensField === "internalTransmissionPerMm") {
+    lens.internalTransmissionPerMm = clamp(toNumber(event.target.value) || 0, 0, 1);
+  }
+  if (lensField === "diameter") {
+    applyManualLensDiameter(lens, event.target.value);
+  }
+  if (lensField === "mechanicalDiameter") {
+    lens.mechanicalDiameter = Math.max(
+      toNumber(lens.clearApertureDiameter) || toNumber(lens.diameter) || 0.1,
+      toNumber(event.target.value) || 0.1
+    );
+    lens.visualDiameter = lens.mechanicalDiameter;
+    lens.manufacturingGeometrySource = "manual";
+  }
+  if (["chipZoneWidthMm", "minimumEdgeThicknessMm", "minimumFlatLandMm", "frontBevelFaceWidthMm", "rearBevelFaceWidthMm"].includes(lensField)) {
+    lens[lensField] = Math.max(0, toNumber(event.target.value) || 0);
+    lens.manufacturingGeometrySource = "manual";
+  }
+  if (["frontBevelAngleDeg", "rearBevelAngleDeg"].includes(lensField)) {
+    lens[lensField] = clamp(toNumber(event.target.value) || DEFAULT_BEVEL_ANGLE_DEG, 1, 89);
+    lens.manufacturingGeometrySource = "manual";
+  }
+  state.patentGeometrySignature = "";
+  state.preset = "custom";
+  resetGeneratedAnalysisState();
+  update();
+
+  const sameInput = mount.querySelector(`[data-id="${lens.id}"][data-field="${event.target.dataset.field}"]`);
+  if (sameInput) {
+    sameInput.focus();
+  }
+});
+
+mount.addEventListener("change", (event) => {
+  if (event.target.dataset.action === "update-diagram-view-mode") {
+    state.diagramViewMode = normalizeDiagramViewMode(event.target.value);
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-production-silhouette-source") {
+    state.productionSilhouetteSource = normalizeProductionSilhouetteSource(
+      event.target.value,
+      PRESETS[state.preset]
+    );
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "select-preset") {
+    if (PRESETS[event.target.value]) {
+      rememberState();
+      loadPresetIntoState(event.target.value);
+    }
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "select-saved-design") {
+    state.selectedSavedDesignId = event.target.value;
+    const design = state.savedDesigns.find((item) => item.id === state.selectedSavedDesignId);
+    if (design) {
+      rememberState();
+      loadDesign(design);
+    }
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "toggle-tolerance-enabled") {
+    state.toleranceSettings = {
+      ...state.toleranceSettings,
+      enabled: event.target.checked
+    };
+    resetGeneratedAnalysisState();
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "toggle-tolerance-criterion") {
+    const field = event.target.dataset.field;
+    if (field in state.toleranceSettings) {
+      state.toleranceSettings = {
+        ...state.toleranceSettings,
+        [field]: event.target.checked
+      };
+      resetGeneratedAnalysisState();
+      update();
+    }
+    return;
+  }
+
+  if (event.target.dataset.action === "toggle-lens-tolerance") {
+    const lens = state.lenses.find((item) => item.id === event.target.dataset.id);
+    if (!lens) return;
+    rememberState();
+    lens.toleranceEnabled = event.target.checked;
+    state.preset = "custom";
+    resetGeneratedAnalysisState();
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "toggle-asphere") {
+    const lens = state.lenses.find((item) => item.id === event.target.dataset.id);
+    const field = event.target.dataset.field;
+    if (!lens || !["frontAsphereEnabled", "rearAsphereEnabled"].includes(field)) return;
+    rememberState();
+    lens[field] = event.target.checked;
+    state.preset = "custom";
+    resetGeneratedAnalysisState();
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-cemented-display") {
+    const field = event.target.dataset.field;
+    if (field === "cementedGroupDisplayMode") {
+      state.cementedGroupDisplayMode = event.target.value === "individualManufacturing"
+        ? "individualManufacturing"
+        : "opticalLayout";
+    }
+    if (field === "cementedInterfaceBevelMode") {
+      state.cementedInterfaceBevelMode = ["hidden", "estimated", "manual"].includes(event.target.value)
+        ? event.target.value
+        : "estimated";
+    }
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "toggle-bevel") {
+    const lens = state.lenses.find((item) => item.id === event.target.dataset.id);
+    const side = event.target.dataset.side;
+    if (!lens || !["front", "rear"].includes(side)) return;
+    rememberState();
+    lens[`${side}BevelEnabled`] = event.target.checked;
+    lens[`${side}Bevel`] = {
+      ...normalizeLensBevel(lens, side, toNumber(lens.mechanicalDiameter) || toNumber(lens.diameter) || 40),
+      enabled: event.target.checked,
+      source: "manual"
+    };
+    lens.manufacturingGeometrySource = "manual";
+    state.patentGeometrySignature = "";
+    state.preset = "custom";
+    resetGeneratedAnalysisState();
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "toggle-optimizer-enabled") {
+    state.optimizerEnabled = event.target.checked;
+    state.optimizerStatus = event.target.checked ? state.optimizerStatus : "idle";
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "toggle-optimizer-goal") {
+    const field = event.target.dataset.field;
+    if (field in state) {
+      state[field] = event.target.checked;
+      state.optimizerReportCsv = "";
+      state.optimizerCopyStatus = "";
+      update();
+    }
+    return;
+  }
+
+  if (event.target.dataset.action === "toggle-lens-optimizer-variable") {
+    const lens = state.lenses.find((item) => item.id === event.target.dataset.id);
+    const field = event.target.dataset.field;
+    if (!lens || !(field in DEFAULT_OPTIMIZER_VARIABLES)) return;
+    rememberState();
+    lens.optimizerVariables = {
+      ...DEFAULT_OPTIMIZER_VARIABLES,
+      ...(lens.optimizerVariables || {}),
+      [field]: event.target.checked
+    };
+    state.preset = "custom";
+    state.optimizerBest = null;
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-tolerance-setting") {
+    const field = event.target.dataset.field;
+    const nextSettings = { ...state.toleranceSettings, [field]: event.target.value };
+    state.toleranceSettings = sanitizeToleranceSettings(nextSettings);
+    resetGeneratedAnalysisState();
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-optimizer-setting") {
+    const field = event.target.dataset.field;
+    if (field === "optimizerAlgorithm") {
+      state.optimizerAlgorithm = ["random", "coordinate", "hybrid"].includes(event.target.value) ? event.target.value : "hybrid";
+    } else if (field === "optimizerIterations") {
+      state.optimizerIterations = Math.round(clamp(toNumber(event.target.value) || 25, 0, 250));
+    }
+    state.optimizerReportCsv = "";
+    state.optimizerCopyStatus = "";
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-aperture-stop") {
+    state.apertureStopIndex = event.target.value;
+    state.apertureStopMode = "auto";
+    resetGeneratedAnalysisState();
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-aperture-stop-mode") {
+    const allowedModes = ["auto", "patentStop", "surfaceNumber", "distanceFromSensor", "distanceFromFront"];
+    state.apertureStopMode = allowedModes.includes(event.target.value) ? event.target.value : "auto";
+    resetGeneratedAnalysisState();
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "toggle-match-patent-f-number") {
+    state.matchPatentFNumber = event.target.checked;
+    resetGeneratedAnalysisState();
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-glass") {
+    const lens = state.lenses.find((item) => item.id === event.target.dataset.id);
+    if (!lens) return;
+
+    rememberState();
+    lens.glassKey = event.target.value;
+    if (lens.glassKey === "custom") {
+      lens.customNd = toNumber(lens.customNd) || toNumber(lens.refractiveIndex) || GLASS_CATALOG.bk7.nd;
+      lens.customVd = toNumber(lens.customVd) || defaultVdForIndex(lens.customNd);
+      lens.refractiveIndex = lens.customNd;
+    } else {
+      const catalogGlass = GLASS_CATALOG[lens.glassKey] || GLASS_CATALOG.bk7;
+      lens.refractiveIndex = catalogGlass.nd;
+      if (!Number.isFinite(toNumber(lens.customNd))) lens.customNd = catalogGlass.nd;
+      if (!Number.isFinite(toNumber(lens.customVd))) lens.customVd = catalogGlass.vd;
+    }
+    state.preset = "custom";
+    resetGeneratedAnalysisState();
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-coating") {
+    const lens = state.lenses.find((item) => item.id === event.target.dataset.id);
+    const field = event.target.dataset.field;
+    if (!lens || !["frontCoatingKey", "rearCoatingKey"].includes(field)) return;
+
+    rememberState();
+    lens[field] = COATING_PRESETS[event.target.value] ? event.target.value : "multiCoated";
+    state.preset = "custom";
+    resetGeneratedAnalysisState();
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-type-select") {
+    const lens = state.lenses.find((item) => item.id === event.target.dataset.id);
+    if (!lens) return;
+
+    rememberState();
+    applyLensType(lens, event.target.value);
+    state.preset = "custom";
+    resetGeneratedAnalysisState();
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-spot-mode") {
+    state.spotDisplayMode = event.target.value === "d" ? "d" : "rgb";
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-image-circle-type") {
+    state.imageCircleAngleType = ["diagonal", "horizontal", "vertical"].includes(event.target.value)
+      ? event.target.value
+      : "diagonal";
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-ray-circle-mode") {
+    state.rayCircleWavelengthMode = event.target.value === "rgbWorst" ? "rgbWorst" : "d";
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-ray-fan-field") {
+    state.rayFanFieldPreset = ["center", "mid", "corner", "custom"].includes(event.target.value)
+      ? event.target.value
+      : "center";
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-ray-fan-wavelength") {
+    state.rayFanWavelengthMode = event.target.value === "rgb" ? "rgb" : "d";
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-ray-3d-orientation") {
+    state.rayTrace3DOrientation = ["tangential", "sagittal", "diagonal"].includes(event.target.value)
+      ? event.target.value
+      : "tangential";
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-ray-3d-sampling") {
+    state.rayTrace3DSampling = ["line", "grid", "radial"].includes(event.target.value)
+      ? event.target.value
+      : "grid";
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-ray-3d-wavelength") {
+    state.rayTrace3DWavelengthMode = event.target.value === "rgb" ? "rgb" : "d";
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-st-ray-fan-field") {
+    state.stRayFanFieldPreset = ["center", "mid", "corner", "custom"].includes(event.target.value)
+      ? event.target.value
+      : "center";
+    state.stRayFanCopyStatus = "";
+    state.stRayFanExportText = "";
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-st-ray-fan-wavelength") {
+    state.stRayFanWavelengthMode = event.target.value === "rgb" ? "rgb" : "d";
+    state.stRayFanCopyStatus = "";
+    state.stRayFanExportText = "";
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-st-ray-fan-image-plane") {
+    state.stRayFanImagePlaneMode = event.target.value === "best" ? "best" : "current";
+    state.stRayFanCopyStatus = "";
+    state.stRayFanExportText = "";
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "toggle-st-ray-fan-scale") {
+    const field = event.target.dataset.field;
+    if (field === "stRayFanAutoScaleY" || field === "stRayFanSharedScaleY") {
+      state[field] = event.target.checked;
+      state.stRayFanCopyStatus = "";
+      state.stRayFanExportText = "";
+      update();
+    }
+    return;
+  }
+
+  if (event.target.dataset.action === "update-st-mtf-wavelength") {
+    state.stMtfWavelengthMode = event.target.value === "rgb" ? "rgb" : "d";
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-diffraction-mtf-field") {
+    state.diffractionMtfFieldKey = RAY_TRACE_FIELDS.some((field) => field.key === event.target.value)
+      ? event.target.value
+      : "center";
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-diffraction-mtf-wavelength") {
+    state.diffractionMtfWavelengthMode = ["C", "d", "F", "rgb"].includes(event.target.value)
+      ? event.target.value
+      : "d";
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-wavefront-field") {
+    state.wavefrontFieldKey = RAY_TRACE_FIELDS.some((field) => field.key === event.target.value)
+      ? event.target.value
+      : "center";
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-wavefront-wavelength") {
+    state.wavefrontWavelengthMode = ["C", "d", "F", "rgb"].includes(event.target.value)
+      ? event.target.value
+      : "d";
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-wave-optics-field") {
+    state.waveOpticsFieldKey = RAY_TRACE_FIELDS.some((field) => field.key === event.target.value)
+      ? event.target.value
+      : "center";
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-wave-optics-wavelength") {
+    state.waveOpticsWavelengthKey = SPECTRAL_LINES[event.target.value] ? event.target.value : "d";
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-wave-optics-grid") {
+    state.waveOpticsGridSize = clampWaveOpticsGridSize(event.target.value);
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-poly-mtf-field") {
+    state.polyMtfFieldKey = RAY_TRACE_FIELDS.some((field) => field.key === event.target.value)
+      ? event.target.value
+      : "center";
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-poly-mtf-preset") {
+    state.polyMtfWeightPreset = POLYCHROMATIC_WEIGHT_PRESETS[event.target.value] ? event.target.value : "balanced";
+    const presetWeights = POLYCHROMATIC_WEIGHT_PRESETS[state.polyMtfWeightPreset]?.weights;
+    if (presetWeights) state.polyMtfWeights = normalizePolychromaticWeights(presetWeights);
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-poly-mtf-grid") {
+    state.polyMtfGridSize = clampWaveOpticsGridSize(event.target.value);
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-poly-mtf-weight") {
+    const lineKey = event.target.dataset.line;
+    if (SPECTRAL_LINES[lineKey]) {
+      state.polyMtfWeightPreset = "custom";
+      state.polyMtfWeights = normalizePolychromaticWeights({
+        ...state.polyMtfWeights,
+        [lineKey]: Math.max(0, toNumber(event.target.value) || 0)
+      });
+      update();
+    }
+    return;
+  }
+
+  if (event.target.dataset.action === "toggle-poly-mtf-individual") {
+    state.polyMtfShowIndividualCurves = event.target.checked;
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-mtf-plane-mode") {
+    state.mtfPlaneMode = event.target.value === "best" ? "best" : "current";
+    update();
+  }
+});
+
+mount.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-action]");
+  if (!button) return;
+
+  const action = button.dataset.action;
+
+  if (action === "run-optimizer") {
+    startOptimizerRun();
+    return;
+  }
+
+  if (action === "stop-optimizer") {
+    optimizerRunToken += 1;
+    state.optimizerStatus = state.optimizerStatus === "running" ? "stopped" : state.optimizerStatus;
+    state.optimizerWarnings = [...(state.optimizerWarnings || []), "Optimizer run was stopped by the user."];
+    update();
+    return;
+  }
+
+  if (action === "accept-optimizer") {
+    const best = state.optimizerBest?.best?.candidate;
+    if (!best) return;
+    rememberState();
+    state.lenses = cloneOptimizerLenses(best.lenses).map((lens) => ({ ...lens, id: crypto.randomUUID() }));
+    state.apertureDiameter = best.apertureDiameter;
+    state.preset = "custom";
+    state.optimizerStatus = "accepted";
+    resetGeneratedAnalysisState();
+    update();
+    return;
+  }
+
+  if (action === "revert-optimizer") {
+    if (!state.optimizerBaseline) return;
+    rememberState();
+    state.lenses = cloneOptimizerLenses(state.optimizerBaseline.lenses).map((lens) => ({ ...lens, id: crypto.randomUUID() }));
+    state.apertureDiameter = state.optimizerBaseline.apertureDiameter;
+    state.preset = "custom";
+    state.optimizerStatus = "reverted";
+    resetGeneratedAnalysisState();
+    update();
+    return;
+  }
+
+  if (action === "copy-optimizer-csv") {
+    const csvText = exportOptimizerCsv(state.optimizerBest);
+    state.optimizerCopyStatus = "Copying...";
+    copyTextToClipboard(csvText)
+      .then(() => {
+        state.optimizerCopyStatus = "Copied optimization report";
+        state.optimizerReportCsv = "";
+        update();
+      })
+      .catch(() => {
+        state.optimizerCopyStatus = "CSV ready below";
+        state.optimizerReportCsv = csvText;
+        update();
+      });
+    update();
+    return;
+  }
+
+  if (action === "generate-tolerance-sample") {
+    state.toleranceSettings = sanitizeToleranceSettings(state.toleranceSettings);
+    state.tolerancePreview = generateTolerancedDesign(state.lenses, state.toleranceSettings, state.toleranceSettings.seed);
+    state.toleranceGeneratedWarning = "";
+    update();
+    return;
+  }
+
+  if (action === "run-tolerance-monte-carlo") {
+    state.toleranceSettings = sanitizeToleranceSettings({
+      ...state.toleranceSettings,
+      enabled: true
+    });
+    const system = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
+    state.toleranceResult = runToleranceMonteCarlo(state.lenses, system, {
+      settings: state.toleranceSettings,
+      runs: state.toleranceSettings.monteCarloRuns,
+      seed: state.toleranceSettings.seed
+    });
+    state.tolerancePreview = state.toleranceResult.worstRun?.sample || state.tolerancePreview;
+    state.toleranceCopyStatus = "";
+    state.toleranceExportText = "";
+    state.toleranceGeneratedWarning = "";
+    update();
+    return;
+  }
+
+  if (action === "load-worst-tolerance-sample") {
+    const sample = state.toleranceResult?.worstRun?.sample;
+    if (!sample) return;
+    rememberState();
+    state.lenses = sample.lenses.map((lens) => normalizeLens({ ...lens, id: crypto.randomUUID() }));
+    state.preset = "custom";
+    resetGeneratedAnalysisState();
+    state.toleranceGeneratedWarning = "Loaded a generated tolerance worst-case sample into the editable design.";
+    update();
+    return;
+  }
+
+  if (action === "copy-tolerance-csv") {
+    const csvText = exportToleranceCsv(state.toleranceResult);
+    state.toleranceCopyStatus = "Copying...";
+    copyTextToClipboard(csvText)
+      .then(() => {
+        state.toleranceCopyStatus = `Copied ${state.toleranceResult?.runs?.length || 0} rows`;
+        state.toleranceExportText = "";
+        update();
+      })
+      .catch(() => {
+        state.toleranceCopyStatus = "CSV ready below";
+        state.toleranceExportText = csvText;
+        update();
+      });
+    update();
+    return;
+  }
+
+  if (action === "copy-st-ray-fan-csv") {
+    const system = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const result = calculateSagittalTangentialRayFan3DData(state.lenses, system, {
+      rayCount: state.stRayFanRayCount
+    });
+    const csvText = exportSagittalTangentialRayFanCsv(result);
+    const rowCount = result.tangentialFans.reduce((sum, fan) => sum + fan.samples.length, 0)
+      + result.sagittalFans.reduce((sum, fan) => sum + fan.samples.length, 0);
+
+    state.stRayFanCopyStatus = "Copying...";
+    copyTextToClipboard(csvText)
+      .then(() => {
+        state.stRayFanCopyStatus = `Copied ${rowCount} rows`;
+        state.stRayFanExportText = "";
+        update();
+      })
+      .catch(() => {
+        state.stRayFanCopyStatus = "CSV ready below";
+        state.stRayFanExportText = csvText;
+        update();
+        const selectExportBox = () => {
+          const exportBox = mount.querySelector(".csv-export-box");
+          if (exportBox) {
+            exportBox.focus();
+            exportBox.select();
+          }
+        };
+        if (typeof requestAnimationFrame === "function") {
+          requestAnimationFrame(selectExportBox);
+        } else {
+          selectExportBox();
+        }
+      });
+
+    update();
+    return;
+  }
+
+  if (action === "update-type") {
+    const lens = state.lenses.find((item) => item.id === button.dataset.id);
+    if (!lens) return;
+    rememberState();
+    applyLensType(lens, button.dataset.type);
+    state.preset = "custom";
+    resetGeneratedAnalysisState();
+  }
+
+  if (action === "load-preset") {
+    rememberState();
+    loadPresetIntoState(button.dataset.preset);
+  }
+
+  if (action === "toggle-panel") {
+    const panelId = button.dataset.panel;
+    const registryPanel = ANALYSIS_PANEL_BY_ID[panelId];
+    const isCurrentlyCollapsed = (state.collapsedPanels || {})[panelId] === true;
+    const nextCollapsedPanels = { ...(state.collapsedPanels || {}) };
+    if (registryPanel && isCurrentlyCollapsed) {
+      ANALYSIS_PANEL_REGISTRY
+        .filter((panel) => panel.group === registryPanel.group && panel.id !== panelId)
+        .forEach((panel) => {
+          nextCollapsedPanels[panel.id] = true;
+        });
+    }
+    nextCollapsedPanels[panelId] = !isCurrentlyCollapsed;
+    state.collapsedPanels = {
+      ...nextCollapsedPanels
+    };
+    update();
+    return;
+  }
+
+  if (action === "toggle-lens-card") {
+    const lensId = button.dataset.id;
+    const collapsed = (state.collapsedLensCards || {})[lensId] !== false;
+    state.collapsedLensCards = {
+      ...(state.collapsedLensCards || {}),
+      [lensId]: collapsed ? false : true
+    };
+    update();
+    return;
+  }
+
+  if (action === "adjust-field") {
+    if (Date.now() < holdState.suppressClickUntil) {
+      return;
+    }
+
+    rememberState();
+    adjustLensField(button.dataset.id, button.dataset.field, Number(button.dataset.delta));
+    resetGeneratedAnalysisState();
+  }
+
+  if (action === "adjust-panel-field") {
+    if (Date.now() < holdState.suppressClickUntil) {
+      return;
+    }
+
+    adjustPanelField(button.dataset.field, Number(button.dataset.delta));
+    if (button.dataset.field === "apertureDiameter") resetGeneratedAnalysisState();
+  }
+
+  if (action === "move-lens") {
+    const currentIndex = state.lenses.findIndex((lens) => lens.id === button.dataset.id);
+    const direction = Number(button.dataset.direction);
+    const nextIndex = currentIndex + direction;
+
+    if (currentIndex >= 0 && nextIndex >= 0 && nextIndex < state.lenses.length) {
+      rememberState();
+      const movedLens = state.lenses[currentIndex];
+      state.lenses[currentIndex] = state.lenses[nextIndex];
+      state.lenses[nextIndex] = movedLens;
+      state.lenses[state.lenses.length - 1].gapAfter = 0;
+      state.preset = "custom";
+      resetGeneratedAnalysisState();
+    }
+  }
+
+  if (action === "flip-lens") {
+    const lens = state.lenses.find((item) => item.id === button.dataset.id);
+
+    if (lens) {
+      rememberState();
+      const oldR1 = toNumber(lens.r1) || 0;
+      const oldR2 = toNumber(lens.r2) || 0;
+      lens.r1 = Number((-oldR2).toFixed(2));
+      lens.r2 = Number((-oldR1).toFixed(2));
+      flipLensAsphereFields(lens);
+      lens.flipped = !lens.flipped;
+      state.preset = "custom";
+      resetGeneratedAnalysisState();
+    }
+  }
+
+  if (action === "add-lens") {
+    rememberState();
+    const lens = {
+      id: crypto.randomUUID(),
+      type: "biconvex",
+      diameter: 40,
+      thickness: 5,
+      glassKey: "bk7",
+      customNd: 1.5168,
+      customVd: 64.2,
+      refractiveIndex: 1.5168,
+      r1: 70,
+      r2: -70,
+      gapAfter: 4
+    };
+
+    if (state.lenses.length) {
+      state.lenses[state.lenses.length - 1].gapAfter = state.lenses[state.lenses.length - 1].gapAfter || 4;
+    }
+
+    state.lenses.push(lens);
+    state.preset = "custom";
+    resetGeneratedAnalysisState();
+  }
+
+  if (action === "remove-lens" && state.lenses.length > 1) {
+    rememberState();
+    state.lenses = state.lenses.filter((lens) => lens.id !== button.dataset.id);
+    state.lenses[state.lenses.length - 1].gapAfter = 0;
+    state.preset = "custom";
+    resetGeneratedAnalysisState();
+  }
+
+  if (action === "reset") {
+    rememberState();
+    const resetPreset = state.preset === "custom" ? DEFAULT_PRESET_KEY : state.preset;
+    loadPresetIntoState(resetPreset);
+  }
+
+  if (action === "undo" && state.history.length) {
+    state.future.push(snapshotState());
+    restoreSnapshot(state.history.pop());
+    resetGeneratedAnalysisState();
+  }
+
+  if (action === "redo" && state.future.length) {
+    state.history.push(snapshotState());
+    restoreSnapshot(state.future.pop());
+    resetGeneratedAnalysisState();
+  }
+
+  if (action === "save-design") {
+    saveCurrentDesign();
+  }
+
+  if (action === "update-design") {
+    saveCurrentDesign({ preferExisting: true });
+  }
+
+  if (action === "load-design") {
+    const design = state.savedDesigns.find((item) => item.id === button.dataset.id);
+
+    if (design) {
+      rememberState();
+      loadDesign(design);
+    }
+  }
+
+  if (action === "delete-design") {
+    const deleteId = button.dataset.id || state.selectedSavedDesignId;
+    if (!deleteId) return;
+    state.savedDesigns = state.savedDesigns.filter((design) => design.id !== deleteId);
+    if (state.selectedSavedDesignId === deleteId) state.selectedSavedDesignId = "";
+    persistSavedDesigns();
+  }
+
+  if (action === "toggle-svg-reference-overlay") {
+    state.showSvgReferenceOverlay = !state.showSvgReferenceOverlay;
+  }
+
+  if (action === "toggle-cemented-layout") {
+    state.cementedGroupDisplayMode = state.cementedGroupDisplayMode === "individualManufacturing"
+      ? "opticalLayout"
+      : "individualManufacturing";
+  }
+
+  update();
+});
+
+const runOpticsSelfCheck = () => {
+  const tests = [];
+  const test = (name, fn) => {
+    try {
+      tests.push({ name, pass: Boolean(fn()) });
+    } catch (error) {
+      tests.push({ name, pass: false, error: error.message });
+    }
+  };
+  const optimizerQuickOptions = {
+    algorithm: "hybrid",
+    iterations: 8,
+    seed: 321,
+    stepScale: 0.5,
+    targetFocalLength: 50,
+    targetBfd: 18,
+    useTargetFocalLength: true,
+    useTargetBfd: false,
+    useSpotSize: false,
+    useMtf: false,
+    useStBalance: false,
+    useWavefront: false,
+    useDistortion: false,
+    useTransmission: false,
+    useToleranceRobustness: false,
+    useApertureDiameter: false,
+    maxTrackLength: 160,
+    minBfd: 0,
+    maxDiameter: 120,
+    apertureDiameter: 20
+  };
+  const withTemporaryState = (fn) => {
+    const fields = [
+      "preset",
+      "prescription",
+      "visualLayout",
+      "lenses",
+      "designName",
+      "selectedSavedDesignId",
+      "collapsedLensCards",
+      "collapsedPanels",
+      "tolerancePreview",
+      "toleranceResult",
+      "toleranceCopyStatus",
+      "toleranceExportText",
+      "toleranceGeneratedWarning",
+      "stRayFanCopyStatus",
+      "stRayFanExportText",
+      "patentGeometrySignature",
+      "patentApertureWarnings",
+      "entrancePupilResult",
+      ...Object.keys(DEFAULT_ANALYSIS_SETTINGS)
+    ];
+    const cloneValue = (value) => value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+    const backup = Object.fromEntries(fields.map((field) => [field, cloneValue(state[field])]));
+    try {
+      return fn();
+    } finally {
+      fields.forEach((field) => {
+        state[field] = cloneValue(backup[field]);
+      });
+    }
+  };
+
+  test("plano-plano lens does not focus and does not crash", () => {
+    const lenses = [{ diameter: 40, thickness: 5, refractiveIndex: 1.5, r1: 0, r2: 0, gapAfter: 0 }];
+    const system = calculateSystem(lenses);
+    const trace = traceSystemRealRays(lenses, system, { rayCount: 5, apertureDiameter: 20 });
+    return !Number.isFinite(system.effectiveFocalLength) && trace.totalRayCount === 5;
+  });
+
+  test("single biconvex lens traces valid rays", () => {
+    const lenses = [{ diameter: 40, thickness: 6, refractiveIndex: 1.5168, r1: 80, r2: -80, gapAfter: 0 }];
+    const system = calculateSystem(lenses);
+    const trace = traceSystemRealRays(lenses, system, { rayCount: 9, apertureDiameter: 20 });
+    return trace.validRayCount > 0;
+  });
+
+  test("disabled asphere matches spherical ray trace", () => {
+    const spherical = [{ diameter: 40, thickness: 6, refractiveIndex: 1.5168, r1: 80, r2: -80, gapAfter: 0 }];
+    const disabled = [{ ...spherical[0], frontAsphereEnabled: false, frontConicK: -1, frontA4: 0.00001 }];
+    const systemA = calculateSystem(spherical);
+    const systemB = calculateSystem(disabled);
+    const surfacesA = buildSurfaceList(spherical, systemA, { apertureDiameter: 20 });
+    const surfacesB = buildSurfaceList(disabled, systemB, { apertureDiameter: 20 });
+    const ray = { x: surfacesA[0].x + 20, y: 7, dx: -1, dy: 0 };
+    const traceA = traceRay(ray, surfacesA);
+    const traceB = traceRay(ray, surfacesB);
+    return traceA.status === "valid"
+      && traceB.status === "valid"
+      && Math.abs(traceA.finalRay.y - traceB.finalRay.y) < 1e-9
+      && Math.abs(traceA.finalRay.dy - traceB.finalRay.dy) < 1e-9;
+  });
+
+  test("all-zero enabled asphere matches spherical ray trace", () => {
+    const spherical = [{ diameter: 40, thickness: 6, refractiveIndex: 1.5168, r1: 80, r2: -80, gapAfter: 0 }];
+    const zeroAsphere = [{
+      ...spherical[0],
+      frontAsphereEnabled: true,
+      rearAsphereEnabled: true,
+      frontConicK: 0,
+      rearConicK: 0,
+      frontA4: 0,
+      frontA6: 0,
+      frontA8: 0,
+      frontA10: 0,
+      rearA4: 0,
+      rearA6: 0,
+      rearA8: 0,
+      rearA10: 0
+    }];
+    const systemA = calculateSystem(spherical);
+    const systemB = calculateSystem(zeroAsphere);
+    const surfacesA = buildSurfaceList(spherical, systemA, { apertureDiameter: 20 });
+    const surfacesB = buildSurfaceList(zeroAsphere, systemB, { apertureDiameter: 20 });
+    const ray = { x: surfacesA[0].x + 20, y: 7, dx: -1, dy: 0 };
+    const traceA = traceRay(ray, surfacesA);
+    const traceB = traceRay(ray, surfacesB);
+    return traceA.status === "valid"
+      && traceB.status === "valid"
+      && Math.abs(traceA.finalRay.dy - traceB.finalRay.dy) < 1e-9;
+  });
+
+  test("non-zero A4 changes ray intercept compared with spherical", () => {
+    const spherical = [{ diameter: 40, thickness: 6, refractiveIndex: 1.5168, r1: 80, r2: -80, gapAfter: 0 }];
+    const aspheric = [{ ...spherical[0], frontAsphereEnabled: true, frontA4: 0.00002 }];
+    const systemA = calculateSystem(spherical);
+    const systemB = calculateSystem(aspheric);
+    const surfacesA = buildSurfaceList(spherical, systemA, { apertureDiameter: 20 });
+    const surfacesB = buildSurfaceList(aspheric, systemB, { apertureDiameter: 20 });
+    const ray = { x: surfacesA[0].x + 20, y: 8, dx: -1, dy: 0 };
+    const traceA = traceRay(ray, surfacesA);
+    const traceB = traceRay(ray, surfacesB);
+    return traceA.status === "valid"
+      && traceB.status === "valid"
+      && Math.abs(traceA.finalRay.dy - traceB.finalRay.dy) > 1e-5;
+  });
+
+  test("2D and 3D meridional asphere rays agree when z is zero", () => {
+    const lenses = [{ diameter: 40, thickness: 6, refractiveIndex: 1.5168, r1: 80, r2: -80, gapAfter: 0, frontAsphereEnabled: true, frontA4: 0.00001 }];
+    const system = calculateSystem(lenses);
+    const surfaces = buildSurfaceList(lenses, system, { apertureDiameter: 20 });
+    const ray2D = traceRay({ x: surfaces[0].x + 20, y: 6, dx: -1, dy: 0 }, surfaces);
+    const ray3D = traceRay3D({ x: surfaces[0].x + 20, y: 6, z: 0, dx: -1, dy: 0, dz: 0 }, surfaces);
+    return ray2D.status === "valid"
+      && ray3D.status === "valid"
+      && Math.abs(ray2D.finalRay.y - ray3D.finalRay.y) < 1e-6
+      && Math.abs(ray2D.finalRay.dy - ray3D.finalRay.dy) < 1e-6
+      && Math.abs(ray3D.finalRay.dz) < 1e-9;
+  });
+
+  test("very small aperture clips rays correctly", () => {
+    const lenses = [{ diameter: 40, thickness: 6, refractiveIndex: 1.5168, r1: 80, r2: -80, gapAfter: 0 }];
+    const system = calculateSystem(lenses);
+    const surfaces = buildSurfaceList(lenses, system, { apertureStopIndex: "frontGroup", apertureDiameter: 1 });
+    const stopSurface = surfaces.find((surface) => surface.isStop);
+    const traced = traceRay({ x: stopSurface.x + 5, y: 2, dx: -1, dy: 0 }, surfaces);
+    return traced.status === "missed aperture";
+  });
+
+  test("invalid radius values do not crash", () => {
+    const lenses = [{ diameter: 40, thickness: 6, refractiveIndex: 1.5168, r1: "bad", r2: -80, gapAfter: 0 }];
+    const system = calculateSystem(lenses);
+    const trace = traceSystemRealRays(lenses, system, { rayCount: 9, apertureDiameter: 20 });
+    return system.validCount === 0 && trace.warning.length > 0;
+  });
+
+  test("plano surface with asphere disabled does not crash", () => {
+    const lenses = [{ diameter: 40, thickness: 5, refractiveIndex: 1.5168, r1: 0, r2: 0, gapAfter: 0, frontAsphereEnabled: false, rearAsphereEnabled: false, frontA4: 0.00001 }];
+    const system = calculateSystem(lenses);
+    const trace = traceSystemRealRays(lenses, system, { rayCount: 5, apertureDiameter: 20 });
+    return trace.totalRayCount === 5;
+  });
+
+  test("invalid asphere values do not crash", () => {
+    const lenses = [{ diameter: 40, thickness: 6, refractiveIndex: 1.5168, r1: 80, r2: -80, gapAfter: 0, frontAsphereEnabled: true, frontConicK: 1e8, frontA4: "bad" }];
+    const system = calculateSystem(lenses);
+    const trace = traceSystemRealRays(lenses, system, { rayCount: 5, apertureDiameter: 20 });
+    return trace.totalRayCount === 5 && Number.isFinite(trace.missedRayCount);
+  });
+
+  test("saved and loaded design preserves asphere fields", () => withTemporaryState(() => {
+    state.lenses = [normalizeLens({
+      id: "asphere-test",
+      diameter: 40,
+      thickness: 6,
+      refractiveIndex: 1.5168,
+      r1: 80,
+      r2: -80,
+      gapAfter: 0,
+      frontAsphereEnabled: true,
+      frontConicK: -1.2,
+      frontA4: 0.000001,
+      rearAsphereEnabled: true,
+      rearA6: -2e-9
+    })];
+    const serialized = serializeDesign();
+    loadDesign({ name: "Asphere saved", lenses: serialized });
+    const restored = normalizeLens(state.lenses[0]);
+    return restored.frontAsphereEnabled === true
+      && restored.rearAsphereEnabled === true
+      && Math.abs(restored.frontConicK + 1.2) < 1e-12
+      && Math.abs(restored.frontA4 - 0.000001) < 1e-15
+      && Math.abs(restored.rearA6 + 2e-9) < 1e-18;
+  }));
+
+  test("total internal reflection returns controlled status", () => {
+    const surface = { x: 0, radius: 0, semiDiameter: 10, nBefore: 1.5, nAfter: 1 };
+    const traced = traceRay({ x: 1, y: 0, dx: -0.5, dy: Math.sqrt(0.75) }, [surface]);
+    return traced.status === "total internal reflection";
+  });
+
+  test("ray count limits remain between 3 and 31", () => (
+    generateRayBundle({ rayCount: 1, apertureHeight: 1 }).length === 3
+    && generateRayBundle({ rayCount: 100, apertureHeight: 1 }).length === 31
+  ));
+
+  test("BK7-like glass has nF > nd > nC", () => {
+    const indices = getGlassLineIndices({ glassKey: "bk7", customNd: 1.5168, customVd: 64.2 });
+    return indices.F > indices.nd && indices.nd > indices.C;
+  });
+
+  test("changing glass changes EFL and BFD", () => {
+    const base = { diameter: 40, thickness: 6, r1: 80, r2: -80, gapAfter: 0 };
+    const crown = calculateSystem([{ ...base, glassKey: "bk7", refractiveIndex: 1.5168 }]);
+    const flint = calculateSystem([{ ...base, glassKey: "sf10", refractiveIndex: 1.728 }]);
+    return Math.abs(crown.effectiveFocalLength - flint.effectiveFocalLength) > 0.1
+      && Math.abs(crown.backFocalLength - flint.backFocalLength) > 0.1;
+  });
+
+  test("high-dispersion glass produces larger red/blue focus split", () => {
+    const base = { diameter: 40, thickness: 6, r1: 80, r2: -80, gapAfter: 0 };
+    const low = {
+      red: calculateSystem([{ ...base, glassKey: "fusedSilica", refractiveIndex: 1.4585 }], SPECTRAL_LINES.C.wavelengthNm),
+      blue: calculateSystem([{ ...base, glassKey: "fusedSilica", refractiveIndex: 1.4585 }], SPECTRAL_LINES.F.wavelengthNm)
+    };
+    const high = {
+      red: calculateSystem([{ ...base, glassKey: "sf10", refractiveIndex: 1.728 }], SPECTRAL_LINES.C.wavelengthNm),
+      blue: calculateSystem([{ ...base, glassKey: "sf10", refractiveIndex: 1.728 }], SPECTRAL_LINES.F.wavelengthNm)
+    };
+    return Math.abs(high.blue.backFocalLength - high.red.backFocalLength)
+      > Math.abs(low.blue.backFocalLength - low.red.backFocalLength);
+  });
+
+  test("existing presets still load with glass keys", () => (
+    Object.keys(PRESETS)
+      .filter((key) => key !== "custom" && PRESETS[key].prescriptionType !== "surface")
+      .every((key) => clonePresetLenses(key).every((lens) => GLASS_CATALOG[lens.glassKey]))
+  ));
+
+  test("default preset is Zeiss Biotar patent Example 2", () => (
+    DEFAULT_PRESET_KEY === "zeissBiotar50F14Us1786916Ex2"
+      && Boolean(PRESETS[DEFAULT_PRESET_KEY])
+      && PRESETS[DEFAULT_PRESET_KEY].prescriptionType === "surface"
+  ));
+
+  test("old misleading ZEISS style preset keys no longer exist", () => (
+    OLD_MISLEADING_ZEISS_PRESET_KEYS.every((key) => !(key in PRESETS))
+  ));
+
+  test("old misleading ZEISS style names no longer appear", () => {
+    const banned = [
+      "ZEISS Tessar style",
+      "ZEISS Planar style",
+      "ZEISS Sonnar style",
+      "ZEISS Biogon style",
+      "ZEISS Distagon style",
+      "ZEISS Hologon style",
+      "ZEISS Topogon style",
+      "ZEISS Tele-Tessar style",
+      "ZEISS Vario-Sonnar style",
+      "ZEISS Vario-Tessar style",
+      "ZEISS Superachromat style"
+    ];
+    return Object.values(PRESETS).every((preset) => !banned.includes(preset.name));
+  });
+
+  test("active patent entries exist as surface prescriptions", () => (
+    PATENT_PRESET_KEYS.length === 16
+      && !PATENT_PRESET_KEYS.includes("zeissTessar50F28Fr1066698Ex1")
+      && !("zeissTessar50F28Fr1066698Ex1" in PRESETS)
+      && PATENT_PRESET_KEYS.every((key) => PRESETS[key]?.sourceType === "patent" && PRESETS[key]?.prescriptionType === "surface")
+  ));
+
+  test("provided verified patent surface prescriptions are merged", () => (
+    PRESETS.gaussF2Us4123144Ex1.patentDataStatus === "verified"
+      && PRESETS.gaussF2Us4123144Ex1.surfaces.length === 11
+      && PRESETS.leicaSummilux50F14Us3291553.patentDataStatus === "verified"
+      && PRESETS.leicaSummilux50F14Us3291553.surfaces.length === 12
+      && PRESETS.leicaSummicronC40F2De2222892Ex3.patentDataStatus === "verified"
+      && PRESETS.leicaSummicronC40F2De2222892Ex3.surfaces.length === 10
+      && PRESETS.canonDreamLens50F095JpSho39_10178.patentDataStatus === "verified"
+      && PRESETS.canonDreamLens50F095JpSho39_10178.surfaces.length === 12
+      && PRESETS.zeissSonnar50F15Us2186621Ex1.patentDataStatus === "verified"
+      && PRESETS.zeissSonnar50F15Us2186621Ex1.surfaces.length === 12
+      && PRESETS.zeissSonnarType50F14Us2600610Ex3.patentDataStatus === "verified"
+      && PRESETS.zeissSonnarType50F14Us2600610Ex3.surfaces.length === 10
+      && PRESETS.zeissBiotar50F14Us1786916Ex2.patentDataStatus === "verified"
+      && PRESETS.zeissBiotar50F14Us1786916Ex2.surfaces.length === 10
+      && PRESETS.sonyZeissPlanar50F14Us20140071331Ex4.surfaces.length === 14
+      && PRESETS.sonySonnarFe55F18Us20150092100Ex1.patentDataStatus === "verified"
+      && PRESETS.sonySonnarFe55F18Us20150092100Ex1.surfaces.length === 16
+      && PRESETS.zeissSonnar40F28Us3994576Ex1.surfaces.length === 10
+      && PRESETS.nikonF12Us3738736.surfaces.length === 13
+      && PRESETS.olympusF12Us4099843.surfaces.length === 13
+  ));
+
+  test("Canon 50mm f/0.95 Dream Lens patent preset creates seven elements in five groups", () => {
+    const preset = PRESETS.canonDreamLens50F095JpSho39_10178;
+    const lenses = prescriptionToLenses(clonePresetPrescription("canonDreamLens50F095JpSho39_10178"));
+    const groupKeys = new Set(lenses.map((lens) => {
+      if (lens.patentSurfaceStart <= 2) return "G1";
+      if (lens.patentSurfaceStart <= 4) return "G2";
+      if (lens.patentSurfaceStart <= 6) return "G3";
+      if (lens.patentSurfaceStart <= 9) return "G4";
+      return "G5";
+    }));
+    return preset.name === "Canon 50mm f/0.95 “Dream Lens” — 特公昭39-10178"
+      && preset.source?.applicant === "Canon Camera Co., Ltd."
+      && preset.source?.inventor === "Jiro Mukai"
+      && preset.source?.normalizedFocalLength === 1
+      && preset.apertureRatio === "1:0.95"
+      && lenses.length === 7
+      && groupKeys.size === 5;
+  });
+
+  test("Canon Dream Lens 50mm scaling matches the supplied patent-derived values", () => {
+    const surfaces = PRESETS.canonDreamLens50F095JpSho39_10178.surfaces;
+    const values = [
+      [surfaces[0].radius, 73.05],
+      [surfaces[0].distanceToNext, 5.85],
+      [surfaces[1].radius, 290.85],
+      [surfaces[1].distanceToNext, 0.1],
+      [surfaces[2].radius, 46.15],
+      [surfaces[2].distanceToNext, 5.15],
+      [surfaces[3].radius, 82],
+      [surfaces[3].distanceToNext, 0.1],
+      [surfaces[4].radius, 27.15],
+      [surfaces[4].distanceToNext, 12.2],
+      [surfaces[5].radius, -152.15],
+      [surfaces[5].distanceToNext, 3.15],
+      [surfaces[6].radius, 15.1],
+      [surfaces[6].distanceToNext, 11.3],
+      [surfaces[7].radius, -23.1],
+      [surfaces[7].distanceToNext, 2],
+      [surfaces[8].radius, 62.45],
+      [surfaces[8].distanceToNext, 7.25],
+      [surfaces[9].radius, -36.4],
+      [surfaces[9].distanceToNext, 0.1],
+      [surfaces[10].radius, 60.65],
+      [surfaces[10].distanceToNext, 5.8],
+      [surfaces[11].radius, -65.15]
+    ];
+    return values.every(([actual, expected]) => Math.abs(actual - expected) < 1e-9)
+      && surfaces[0].nAfter === 1.79952
+      && surfaces[0].vdAfter === 42.3
+      && surfaces[8].nAfter === 1.7859
+      && surfaces[8].vdAfter === 44.3;
+  });
+
+  test("Canon Dream Lens cemented interfaces share R6 and R9 without air gaps", () => {
+    const lenses = prescriptionToLenses(clonePresetPrescription("canonDreamLens50F095JpSho39_10178"));
+    const [l1, l2, l3, l4, l5, l6, l7] = lenses;
+    return Math.abs(l3.r2 + 152.15) < 1e-9
+      && Math.abs(l4.r1 + 152.15) < 1e-9
+      && l3.patentRearCementedToNextGlass === true
+      && l4.patentFrontSharedCementedSurface === true
+      && l3.gapAfter === 0
+      && Math.abs(l5.r2 - 62.45) < 1e-9
+      && Math.abs(l6.r1 - 62.45) < 1e-9
+      && l5.patentRearCementedToNextGlass === true
+      && l6.patentFrontSharedCementedSurface === true
+      && l5.gapAfter === 0
+      && l1.gapAfter > 0
+      && l2.gapAfter > 0
+      && l4.gapAfter > 0
+      && l6.gapAfter > 0
+      && l7.gapAfter === 0;
+  });
+
+  test("Canon Dream Lens scaling helper rescales axial geometry but not glass data", () => {
+    const surfaces50 = makeCanonDreamLensSurfaces(50);
+    const surfaces75 = makeCanonDreamLensSurfaces(75);
+    return Math.abs(surfaces75[0].radius / surfaces50[0].radius - 1.5) < 1e-12
+      && Math.abs(surfaces75[6].distanceToNext / surfaces50[6].distanceToNext - 1.5) < 1e-12
+      && surfaces75[0].nAfter === surfaces50[0].nAfter
+      && surfaces75[0].vdAfter === surfaces50[0].vdAfter
+      && surfaces75[8].nAfter === surfaces50[8].nAfter
+      && surfaces75[8].vdAfter === surfaces50[8].vdAfter;
+  });
+
+  test("Canon Dream Lens uses patent glass labels and does not inherit f/1.2 data", () => {
+    const lenses = prescriptionToLenses(clonePresetPrescription("canonDreamLens50F095JpSho39_10178"));
+    const joined = [
+      PRESETS.canonDreamLens50F095JpSho39_10178.name,
+      PRESETS.canonDreamLens50F095JpSho39_10178.note,
+      ...lenses.flatMap((lens) => [lens.patentGlassLabel, getLensGlass(lens).name])
+    ].join(" ");
+    return lenses[0].patentGlassLabel === "Patent Glass 1"
+      && lenses[6].patentGlassLabel === "Patent Glass 7"
+      && lenses.every((lens) => lens.glassKey === "custom")
+      && !joined.includes("US2836102A")
+      && !joined.includes("f/1.2")
+      && !joined.includes("Ohara");
+  });
+
+  test("Canon Dream Lens lens edits propagate into ray-trace surfaces", () => {
+    const lenses = prescriptionToLenses(clonePresetPrescription("canonDreamLens50F095JpSho39_10178"));
+    const beforeSystem = calculateSystem(lenses);
+    const beforeSurfaces = buildSurfaceList(lenses, beforeSystem, { wavelengthNm: SPECTRAL_LINES.d.wavelengthNm });
+    lenses[0].r1 += 2;
+    lenses[0].thickness += 1;
+    const afterSystem = calculateSystem(lenses);
+    const afterSurfaces = buildSurfaceList(lenses, afterSystem, { wavelengthNm: SPECTRAL_LINES.d.wavelengthNm });
+    return beforeSurfaces[0].radius !== afterSurfaces[0].radius
+      && beforeSurfaces[1].x !== afterSurfaces[1].x;
+  });
+
+  test("OCR-entered patent prescriptions draw but remain flagged", () => (
+    PRESETS.zunow50F11Us2715354.patentDataStatus === "needsManualVerification"
+      && PRESETS.zunow50F11Us2715354.surfaces.length === 14
+      && PRESETS.nikonLargeApertureWideAngleUs3576360.patentDataStatus === "needsManualVerification"
+      && PRESETS.nikonLargeApertureWideAngleUs3576360.surfaces.length === 16
+      && prescriptionToLenses(clonePresetPrescription("zunow50F11Us2715354")).length > 1
+      && prescriptionToLenses(clonePresetPrescription("nikonLargeApertureWideAngleUs3576360")).length > 1
+  ));
+
+  test("Sonnar 40mm patent preset is scaled from normalized f=1 data", () => {
+    const preset = PRESETS.zeissSonnar40F28Us3994576Ex1;
+    const lenses = prescriptionToLenses(clonePresetPrescription("zeissSonnar40F28Us3994576Ex1"));
+    const system = calculateSystem(lenses);
+    return preset.focalLength === 40
+      && Math.abs(preset.backFocalLength - 25.364) < 1e-9
+      && Math.abs(preset.surfaces[0].radius - 15.6) < 1e-9
+      && lenses.length === 5
+      && system.totalTrack > 15;
+  });
+
+  test("Sonnar 50mm patent preset is scaled from US2186621 f=100 data", () => {
+    const preset = PRESETS.zeissSonnar50F15Us2186621Ex1;
+    const lenses = prescriptionToLenses(clonePresetPrescription("zeissSonnar50F15Us2186621Ex1"));
+    const system = calculateSystem(lenses);
+    return preset.focalLength === 50
+      && preset.apertureRatio === "1:1.5"
+      && Math.abs(preset.surfaces[0].radius - 32.58) < 1e-9
+      && Math.abs(preset.surfaces[1].distanceToNext - 0.115) < 1e-9
+      && lenses.length === 8
+      && system.totalTrack > 30;
+  });
+
+  test("Sonnar-type 50mm f/1.4 US2600610 Example III preset derives seven elements and mid-gap stop", () => {
+    const preset = PRESETS.zeissSonnarType50F14Us2600610Ex3;
+    const lenses = prescriptionToLenses(clonePresetPrescription("zeissSonnarType50F14Us2600610Ex3"));
+    const system = calculateSystem(lenses);
+    const defaults = preset.analysisDefaults || {};
+    return preset.name === "Zeiss Sonnar-type 50mm f/1.4 — US2600610 Example III"
+      && preset.focalLength === 50
+      && preset.apertureRatio === "1:1.4"
+      && preset.fieldAngleDeg === 45
+      && Math.abs(preset.surfaces[0].radius - 41.8) < 1e-9
+      && Math.abs(preset.surfaces[1].distanceToNext - 0.15) < 1e-9
+      && Math.abs(preset.surfaces[5].distanceToNext - 7.15) < 1e-9
+      && Math.abs(preset.surfaces[6].radius + 500) < 1e-9
+      && Math.abs(preset.surfaces[7].radius + 41) < 1e-9
+      && defaults.apertureStopMode === "surfaceNumber"
+      && defaults.apertureStopSurfaceNumber === 6
+      && Math.abs(defaults.apertureStopSurfaceOffsetMm - 3.575) < 1e-9
+      && lenses.length === 7
+      && Math.abs(system.totalTrack - 39.8) < 1e-9;
+  });
+
+  test("Sonnar-type 50mm f/1.4 US2600610 traces rays and renders all optical elements", () => withTemporaryState(() => {
+    loadPresetIntoState("zeissSonnarType50F14Us2600610Ex3");
+    state.diagramViewMode = "optical";
+    state.cementedGroupDisplayMode = "opticalLayout";
+    ensurePatentOpticalGeometry();
+    const system = calculateSystem(state.lenses);
+    const trace = traceSystemRealRays(state.lenses, system, {
+      ...rayTraceApertureOptions(state),
+      rayCount: 9,
+      fieldAngleDegrees: 0
+    });
+    const mapper = createSvgPointMapper(system, getSpectralSystems());
+    const layout = resolveOpticalLayoutGeometry(system, mapper, trace);
+    const stackMarkup = renderLensStackSvg(system, mapper, trace, layout, { diagramViewMode: "optical" }, "all");
+    const elementIndices = new Set(
+      [...stackMarkup.matchAll(/data-element-index="(\d+)"/g)].map((match) => Number(match[1]))
+    );
+    return trace.validRayCount > 0
+      && state.lenses.length === 7
+      && elementIndices.size === 7
+      && !stackMarkup.includes("is-not-manufacturable")
+      && layout.groups.some((group) => group.elements.length === 3)
+      && layout.models.filter(Boolean).every((model) => (
+        model.renderFilledGlass === false
+        || model.internalGlassRegions.every((region) => !polygonSelfIntersects(region.polygonPoints))
+      ));
+  }));
+
+  test("Tessar FR1066698 preset is removed from active presets", () => (
+    !PATENT_PRESET_KEYS.includes("zeissTessar50F28Fr1066698Ex1")
+      && !Object.prototype.hasOwnProperty.call(PRESETS, "zeissTessar50F28Fr1066698Ex1")
+      && !Object.values(PRESETS).some((preset) => preset.name === "Zeiss Tessar 50mm f/2.8 — FR1066698 Example 1")
+  ));
+
+  test("Summicron-C 40mm patent preset is scaled from DE2222892 Example 3", () => {
+    const preset = PRESETS.leicaSummicronC40F2De2222892Ex3;
+    const lenses = prescriptionToLenses(clonePresetPrescription("leicaSummicronC40F2De2222892Ex3"));
+    const system = calculateSystem(lenses);
+    return preset.focalLength === 40
+      && preset.apertureRatio === "1:2"
+      && Math.abs(preset.surfaces[0].radius - 23.9976) < 1e-9
+      && Math.abs(preset.surfaces[4].distanceToNext - 9.6192) < 1e-9
+      && lenses.length === 6
+      && system.totalTrack > 20;
+  });
+
+  test("Sony FE55 patent preset includes Example 1 aspheres and focus spacings", () => {
+    const preset = PRESETS.sonySonnarFe55F18Us20150092100Ex1;
+    const aspheres = preset.surfaces.filter((surface) => surface.asphere?.enabled);
+    const lenses = prescriptionToLenses(clonePresetPrescription("sonySonnarFe55F18Us20150092100Ex1"));
+    const system = calculateSystem(lenses);
+    return preset.focalLength === 53.61
+      && preset.apertureRatio === "1:1.86"
+      && Math.abs(preset.surfaces[6].distanceToNext - 2.81) < 1e-9
+      && Math.abs(preset.surfaces[8].distanceToNext - 13.67) < 1e-9
+      && aspheres.length === 5
+      && Math.abs(aspheres[0].asphere.A4 - 4.72026e-6) < 1e-14
+      && lenses.length >= 7
+      && system.totalTrack > 60;
+  });
+
+  const patentGeometryDiameterSnapshot = (lenses) => lenses.map((lens) => ({
+    patentSurfaceStart: lens.patentSurfaceStart,
+    patentSurfaceEnd: lens.patentSurfaceEnd,
+    diameter: toNumber(lens.diameter),
+    clearApertureDiameter: toNumber(lens.clearApertureDiameter),
+    mechanicalDiameter: toNumber(lens.mechanicalDiameter),
+    visualDiameter: toNumber(lens.visualDiameter)
+  }));
+  const geometryDiameterSnapshotsMatch = (before, after) => before.length === after.length
+    && before.every((item, index) => (
+      item.patentSurfaceStart === after[index].patentSurfaceStart
+      && item.patentSurfaceEnd === after[index].patentSurfaceEnd
+      && Math.abs((item.diameter || 0) - (after[index].diameter || 0)) < 1e-9
+      && Math.abs((item.clearApertureDiameter || 0) - (after[index].clearApertureDiameter || 0)) < 1e-9
+      && Math.abs((item.mechanicalDiameter || 0) - (after[index].mechanicalDiameter || 0)) < 1e-9
+      && Math.abs((item.visualDiameter || 0) - (after[index].visualDiameter || 0)) < 1e-9
+    ));
+
+  test("Summilux patent lens geometry is independent from aperture diameter", () => withTemporaryState(() => {
+    loadPresetIntoState("leicaSummilux50F14Us3291553");
+    ensurePatentOpticalGeometry();
+    const before = patentGeometryDiameterSnapshot(state.lenses);
+    const centralPairBefore = before.slice(-2);
+    state.matchPatentFNumber = false;
+    state.apertureDiameter = 47;
+    ensurePatentOpticalGeometry();
+    syncEntrancePupilResult();
+    const after = patentGeometryDiameterSnapshot(state.lenses);
+    const centralPairAfter = after.slice(-2);
+    return geometryDiameterSnapshotsMatch(before, after)
+      && geometryDiameterSnapshotsMatch(centralPairBefore, centralPairAfter);
+  }));
+
+  test("changing aperture diameter does not resize any patent preset geometry", () => withTemporaryState(() => (
+    PATENT_PRESET_KEYS.every((key) => {
+      loadPresetIntoState(key);
+      ensurePatentOpticalGeometry();
+      const before = patentGeometryDiameterSnapshot(state.lenses);
+      state.matchPatentFNumber = false;
+      state.apertureDiameter = 47;
+      ensurePatentOpticalGeometry();
+      syncEntrancePupilResult();
+      const after = patentGeometryDiameterSnapshot(state.lenses);
+      return geometryDiameterSnapshotsMatch(before, after);
+    })
+  )));
+
+  test("Sony Planar patent optical layout renders every derived glass element", () => withTemporaryState(() => {
+    loadPresetIntoState("sonyZeissPlanar50F14Us20140071331Ex4");
+    state.diagramViewMode = "optical";
+    state.cementedGroupDisplayMode = "opticalLayout";
+    ensurePatentOpticalGeometry();
+    const system = calculateSystem(state.lenses);
+    const mapper = createSvgPointMapper(system, getSpectralSystems());
+    const layout = resolveOpticalLayoutGeometry(system, mapper, []);
+    const glassMarkup = renderLensStackSvg(system, mapper, [], layout, { diagramViewMode: "optical" }, "glass");
+    return state.lenses.length === 8
+      && (glassMarkup.match(/class="glass-fill/g) || []).length === state.lenses.length
+      && glassMarkup.includes('data-element-index="7"');
+  }));
+
+  test("all drawable patent presets render visible optical geometry in optical view", () => withTemporaryState(() => (
+    PATENT_PRESET_KEYS
+      .filter((key) => presetHasDrawablePrescription(PRESETS[key]))
+      .every((key) => {
+        loadPresetIntoState(key);
+        state.diagramViewMode = "optical";
+        state.cementedGroupDisplayMode = "opticalLayout";
+        ensurePatentOpticalGeometry();
+        const system = calculateSystem(state.lenses);
+        const mapper = createSvgPointMapper(system, getSpectralSystems());
+        const layout = resolveOpticalLayoutGeometry(system, mapper, []);
+        const stackMarkup = renderLensStackSvg(system, mapper, [], layout, { diagramViewMode: "optical" }, "all");
+        const elementIndices = new Set(
+          [...stackMarkup.matchAll(/data-element-index="(\d+)"/g)].map((match) => Number(match[1]))
+        );
+        return elementIndices.size > 0
+          && elementIndices.size <= state.lenses.length
+          && (
+            stackMarkup.includes("glass-fill")
+            || stackMarkup.includes("patent-line-only-surface")
+            || stackMarkup.includes("surface-outline")
+          );
+      })
+  )));
+
+  test("underdocumented placeholder patent presets are hidden from preset menu", () => (
+    ["sonyFe24F14Wo2019073744Ex1", "sonyFe70200F4Us20150226945Ex1"].every((key) => (
+      PRESETS[key]
+      && !presetHasDrawablePrescription(PRESETS[key])
+    ))
+  ));
+
+  test("default Biotar preset keeps scaled 50mm patent metadata", () => (
+    PRESETS[DEFAULT_PRESET_KEY].sourcePatent === "US1786916"
+      && PRESETS[DEFAULT_PRESET_KEY].example === "Example 2 / Fig. 2"
+      && PRESETS[DEFAULT_PRESET_KEY].focalLength === 50
+      && PRESETS[DEFAULT_PRESET_KEY].apertureRatio === "1:1.4"
+      && PRESETS[DEFAULT_PRESET_KEY].surfaces[0].radius === 41.8
+      && PRESETS[DEFAULT_PRESET_KEY].surfaces[9].radius === -60
+  ));
+
+  test("default Biotar patent preset derives drawable lenses", () => {
+    const prescription = clonePresetPrescription(DEFAULT_PRESET_KEY);
+    const lenses = prescriptionToLenses(prescription);
+    const system = calculateSystem(lenses);
+    return lenses.length === 6
+      && system.validCount === 6
+      && lenses[0].r1 === 41.8
+      && lenses[0].r2 === 160.5
+      && lenses[5].r1 === 53
+      && lenses[5].r2 === -60;
+  });
+
+  test("derived patent lens diameters stay inside spherical profile limits", () => {
+    const prescription = clonePresetPrescription(DEFAULT_PRESET_KEY);
+    prescription.diameterSource = "auto";
+    prescription.diameterProfile = null;
+    const lenses = prescriptionToLenses(prescription);
+    return lenses.every((lens) => {
+      const semiDiameter = lens.diameter / 2;
+      const limits = [lens.r1, lens.r2].filter((radius) => Number.isFinite(radius) && Math.abs(radius) > 1e-9).map(Math.abs);
+      return !limits.length || semiDiameter < Math.min(...limits);
+    });
+  });
+
+  test("derived patent lens rim sag does not exceed element thickness", () => {
+    const prescription = clonePresetPrescription(DEFAULT_PRESET_KEY);
+    prescription.diameterSource = "auto";
+    prescription.diameterProfile = null;
+    const lenses = prescriptionToLenses(prescription);
+    return lenses.every((lens) => {
+      const semiDiameter = lens.diameter / 2;
+      const rimSag = sphericalSagMagnitude(lens.r1, semiDiameter) + sphericalSagMagnitude(lens.r2, semiDiameter);
+      return rimSag <= lens.thickness * 0.64 + 0.001;
+    });
+  });
+
+  test("derived patent lenses keep larger visual drawing diameters", () => {
+    const lenses = prescriptionToLenses(clonePresetPrescription(DEFAULT_PRESET_KEY));
+    return lenses.every((lens) => lens.mechanicalDiameter >= lens.clearApertureDiameter);
+  });
+
+  test("optical diagram uses one uniform millimetre scale", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    const system = calculateSystem(state.lenses);
+    const mapper = createSvgPointMapper(system, getSpectralSystems());
+    return Math.abs(mapper.pxPerMmX - mapper.pxPerMmY) < 1e-9;
+  }));
+
+  test("Biotar paraxial regression values remain unchanged", () => {
+    const lenses = prescriptionToLenses(clonePresetPrescription(DEFAULT_PRESET_KEY));
+    const system = calculateSystem(lenses);
+    return Math.abs(system.effectiveFocalLength - 49.96) < 0.1
+      && Math.abs(system.totalTrack - 46.52) < 0.01
+      && Math.abs(system.backFocalLength - 32.66) < 0.2;
+  });
+
+  test("prescription drawing sag follows signed spherical radius", () => {
+    const positive = prescriptionDrawingSurfaceXAtHeight({ x: 20, radius: 50 }, 10);
+    const negative = prescriptionDrawingSurfaceXAtHeight({ x: 20, radius: -50 }, 10);
+    const sag = 50 - Math.sqrt(50 ** 2 - 10 ** 2);
+    return Math.abs(positive - (20 - sag)) < 1e-9
+      && Math.abs(negative - (20 + sag)) < 1e-9;
+  });
+
+  test("prescription lens renderer preserves centre and positive edge thickness", () => {
+    const lens = normalizeLens({ diameter: 40, thickness: 6, r1: 80, r2: -80, refractiveIndex: 1.5168 });
+    const model = buildPrescriptionLensRenderModel(
+      { start: 10, end: 16, center: 13, thickness: 6, diameter: 40 },
+      { x: (value) => value, y: (value) => value },
+      { valid: true, diameter: 40, thickness: 6, r1: 80, r2: -80 },
+      lens,
+      0,
+      []
+    );
+    return Boolean(model)
+      && Math.abs(model.centerThicknessMm - 6) < 1e-9
+      && model.edgeThicknessMm > 0
+      && !/NaN|Infinity/.test(model.polygonPath);
+  });
+
+  test("prescription renderer uses stated clear aperture", () => {
+    const lens = normalizeLens({
+      diameter: 30,
+      visualDiameter: 30,
+      thickness: 6,
+      r1: 100,
+      r2: -100,
+      refractiveIndex: 1.5168,
+      patentSurfaceStart: 1,
+      patentSurfaceEnd: 2,
+      patentFrontClearAperture: 20,
+      patentRearClearAperture: 18
+    });
+    const model = buildPrescriptionLensRenderModel(
+      { start: 10, end: 16, center: 13, thickness: 6, diameter: 30 },
+      { x: (value) => value, y: (value) => value },
+      { valid: true, diameter: 30, thickness: 6, r1: 100, r2: -100 },
+      lens,
+      0,
+      []
+    );
+    return model?.apertureSource === "patent"
+      && Math.abs(model.clearApertureSemiDiameter - 9) < 0.001
+      && model.semiDiameter >= model.clearApertureSemiDiameter;
+  });
+
+  test("missing drawing aperture uses traced ray envelope plus margin", () => {
+    const lens = normalizeLens({
+      diameter: 30,
+      visualDiameter: 30,
+      thickness: 6,
+      r1: 100,
+      r2: -100,
+      refractiveIndex: 1.5168,
+      patentSurfaceStart: 1,
+      patentSurfaceEnd: 2,
+      clearApertureDiameter: 11,
+      mechanicalDiameter: 12,
+      apertureSource: "rayEnvelope"
+    });
+    const traceResult = {
+      surfaces: [{ patentSurfaceNumber: 1 }, { patentSurfaceNumber: 2 }],
+      rays: [
+        { path: [{ x: 30, y: 0 }, { x: 16, y: 5 }, { x: 10, y: 4 }] },
+        { path: [{ x: 30, y: 0 }, { x: 16, y: -5 }, { x: 10, y: -4 }] }
+      ]
+    };
+    const model = buildPrescriptionLensRenderModel(
+      { start: 10, end: 16, center: 13, thickness: 6, diameter: 30 },
+      { x: (value) => value, y: (value) => value },
+      { valid: true, diameter: 30, thickness: 6, r1: 100, r2: -100 },
+      lens,
+      0,
+      [traceResult]
+    );
+    return model?.apertureSource === "rayEnvelope"
+      && model.clearApertureSemiDiameter > 5
+      && model.edgeThicknessMm > 0;
+  });
+
+  test("two-pass patent aperture estimation starts oversized and does not lens-clip rays", () => {
+    const prescription = clonePresetPrescription(DEFAULT_PRESET_KEY);
+    const lenses = prescriptionToLenses(prescription);
+    const system = calculateSystem(lenses);
+    const estimate = estimatePatentAperturesTwoPass(lenses, system, {
+      prescription,
+      apertureStopMode: "surfaceNumber",
+      apertureStopSurfaceNumber: 5,
+      apertureStopSurfaceOffsetMm: 4.725,
+      apertureDiameter: 30
+    });
+    return estimate.temporaryDiameter >= 80
+      && estimate.traces.every((trace) => trace.missedRayCount === 0)
+      && estimate.lenses.every((lens) => lens.mechanicalDiameter >= lens.clearApertureDiameter);
+  });
+
+  test("cemented mechanical groups share diameter and one rendered interface", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    state.diagramViewMode = "optical";
+    state.cementedGroupDisplayMode = "opticalLayout";
+    const system = calculateSystem(state.lenses);
+    const trace = traceSystemRealRays(state.lenses, system, {
+      ...rayTraceApertureOptions(state),
+      rayCount: 9
+    });
+    const mapper = createSvgPointMapper(system, getSpectralSystems());
+    const markup = renderLensStackSvg(system, mapper, trace);
+    const groups = buildCementedMechanicalGroups(state.lenses).filter((group) => group.elements.length > 1);
+    return groups.length === 2
+      && groups.every((group) => group.elements.every((index) => (
+        Math.abs(state.lenses[index].mechanicalDiameter - group.mechanicalDiameter) < 1e-9
+      )))
+      && (markup.match(/class="cemented-group is-optical-estimate"/g) || []).length === 2
+      && (markup.match(/cemented-shared-interface/g) || []).length === 2
+      && (markup.match(/cemented-group-outer-outline/g) || []).length === 2;
+  }));
+
+  test("Biotar L2 plus L3 render as one continuous cemented silhouette", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    const system = calculateSystem(state.lenses);
+    const trace = traceSystemRealRays(state.lenses, system, { ...rayTraceApertureOptions(state), rayCount: 9 });
+    const mapper = createSvgPointMapper(system, getSpectralSystems());
+    const model = buildCementedGroupRenderModel(
+      buildCementedMechanicalGroups(state.lenses).find((group) => group.elements.join(",") === "1,2"),
+      system,
+      mapper,
+      trace,
+      { cementedGroupDisplayMode: "opticalLayout" }
+    );
+    return model?.manufacturable
+      && model.elementIndices.join(",") === "1,2"
+      && model.internalGlassRegions.length === 2
+      && model.sharedInterfacePaths.length === 1
+      && model.outerPolygonPath.endsWith(" Z");
+  }));
+
+  test("Biotar L4 plus L5 render as one continuous cemented silhouette", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    const system = calculateSystem(state.lenses);
+    const trace = traceSystemRealRays(state.lenses, system, { ...rayTraceApertureOptions(state), rayCount: 9 });
+    const mapper = createSvgPointMapper(system, getSpectralSystems());
+    const model = buildCementedGroupRenderModel(
+      buildCementedMechanicalGroups(state.lenses).find((group) => group.elements.join(",") === "3,4"),
+      system,
+      mapper,
+      trace,
+      { cementedGroupDisplayMode: "opticalLayout" }
+    );
+    return model?.manufacturable
+      && model.elementIndices.join(",") === "3,4"
+      && model.internalGlassRegions.length === 2
+      && model.sharedInterfacePaths.length === 1
+      && model.outerPolygonPath.endsWith(" Z");
+  }));
+
+  test("central cemented members do not render independent protruding silhouettes", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    state.cementedGroupDisplayMode = "opticalLayout";
+    const system = calculateSystem(state.lenses);
+    const trace = traceSystemRealRays(state.lenses, system, { ...rayTraceApertureOptions(state), rayCount: 9 });
+    const mapper = createSvgPointMapper(system, getSpectralSystems());
+    const markup = renderLensStackSvg(system, mapper, trace);
+    return (markup.match(/class="lens-shape/g) || []).length === 2
+      && (markup.match(/data-elements="1,2"/g) || []).length === 1
+      && (markup.match(/data-elements="3,4"/g) || []).length === 1
+      && !markup.includes("GROUP EDGE !");
+  }));
+
+  test("cemented shared surfaces are drawn once without an optical air gap", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    state.cementedGroupDisplayMode = "opticalLayout";
+    const system = calculateSystem(state.lenses);
+    const surfaces = buildSurfaceList(state.lenses, system, rayTraceApertureOptions(state));
+    const trace = traceSystemRealRays(state.lenses, system, { ...rayTraceApertureOptions(state), rayCount: 9 });
+    const mapper = createSvgPointMapper(system, getSpectralSystems());
+    const markup = renderLensStackSvg(system, mapper, trace);
+    return surfaces.filter((surface) => surface.isCementedInterface).length === 2
+      && surfaces.filter((surface) => surface.isCementedInterface).every((surface) => surface.nBefore > 1 && surface.nAfter > 1)
+      && (markup.match(/cemented-shared-interface/g) || []).length === 2;
+  }));
+
+  test("Biotar central air-gap solver reproduces zero-contact diameter", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    const system = calculateSystem(state.lenses);
+    const mapper = createSvgPointMapper(system, getSpectralSystems());
+    const groups = buildCementedMechanicalGroups(state.lenses);
+    const requestedRadii = groups.map(() => 20);
+    const constraint = resolveAdjacentAirGapConstraints(
+      state.lenses,
+      system,
+      mapper,
+      requestedRadii,
+      { groups, minimumAirGapClearanceMm: 0 }
+    ).find((item) => item.leftSurfaceNumber === 5 && item.rightSurfaceNumber === 6);
+    return Boolean(constraint)
+      && Math.abs(constraint.vertexGapMm - 9.45) < 1e-9
+      && Math.abs(constraint.maximumZeroContactDiameterMm - 22.746) < 0.01;
+  }));
+
+  test("Biotar central air-gap solver maintains 0.5 mm clearance", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    state.minimumAirGapClearanceMm = 0.5;
+    const system = calculateSystem(state.lenses);
+    const trace = traceSystemRealRays(state.lenses, system, { ...rayTraceApertureOptions(state), rayCount: 9 });
+    const mapper = createSvgPointMapper(system, getSpectralSystems());
+    const resolution = resolveOpticalLayoutGeometry(system, mapper, trace);
+    const constraint = resolution.airGapConstraints.find((item) => (
+      item.leftSurfaceNumber === 5 && item.rightSurfaceNumber === 6
+    ));
+    if (!constraint) return false;
+    const height = constraint.maximumSafeRadiusMm;
+    const xA0 = prescriptionDrawingSurfaceXAtHeight(constraint.surfaceA, 0);
+    const xB0 = prescriptionDrawingSurfaceXAtHeight(constraint.surfaceB, 0);
+    const orderSign = Math.sign(xB0 - xA0);
+    const separation = orderSign * (
+      prescriptionDrawingSurfaceXAtHeight(constraint.surfaceB, height)
+      - prescriptionDrawingSurfaceXAtHeight(constraint.surfaceA, height)
+    );
+    return Math.abs(constraint.maximumSafeDiameterMm - 22.254) < 0.01
+      && separation >= 0.5 - 1e-8
+      && resolution.models.filter(Boolean).every((model) => (
+        model.mechanicalDiameter <= constraint.maximumSafeDiameterMm + 1e-8
+      ));
+  }));
+
+  test("all rendered non-cemented air gaps preserve signed surface order", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    state.minimumAirGapClearanceMm = 0.5;
+    const system = calculateSystem(state.lenses);
+    const mapper = createSvgPointMapper(system, getSpectralSystems());
+    const resolution = resolveOpticalLayoutGeometry(system, mapper, []);
+    return resolution.airGapConstraints.every((constraint) => {
+      const radius = Math.min(
+        constraint.renderSafeRadiusMm,
+        resolution.groupRadiusLimits[constraint.leftGroupIndex],
+        resolution.groupRadiusLimits[constraint.rightGroupIndex]
+      );
+      const requiredSeparation = constraint.selectedClearanceAchievable
+        ? constraint.minimumClearanceMm
+        : 0;
+      return Array.from({ length: 65 }, (_, index) => radius * index / 64).every((height) => {
+        const xA0 = prescriptionDrawingSurfaceXAtHeight(constraint.surfaceA, 0);
+        const xB0 = prescriptionDrawingSurfaceXAtHeight(constraint.surfaceB, 0);
+        const orderSign = Math.sign(xB0 - xA0);
+        const separation = orderSign * (
+          prescriptionDrawingSurfaceXAtHeight(constraint.surfaceB, height)
+          - prescriptionDrawingSurfaceXAtHeight(constraint.surfaceA, height)
+        );
+        return separation >= requiredSeparation - 1e-7;
+      });
+    });
+  }));
+
+  test("invalid aperture assumptions warn and clip only the mechanical drawing", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    state.diagramViewMode = "debug";
+    state.cementedGroupDisplayMode = "opticalLayout";
+    const opticalBefore = calculateSystem(state.lenses);
+    const mapper = createSvgPointMapper(opticalBefore, getSpectralSystems());
+    const resolution = resolveOpticalLayoutGeometry(opticalBefore, mapper, []);
+    const markup = renderLensStackSvg(opticalBefore, mapper, [], resolution, {
+      lensLabelY: 600,
+      stopDiameterY: 620,
+      dimensionY: 640,
+      diagramViewMode: "debug"
+    });
+    const opticalAfter = calculateSystem(state.lenses);
+    return resolution.models.filter(Boolean).every((model) => (
+      model.safeInvalidGeometry
+      && model.warnings.some((warning) => warning.includes("Air-gap collision"))
+      && model.warnings.some((warning) => warning.includes("Estimated clear aperture exceeds"))
+    ))
+      && (markup.match(/is-air-gap-constrained/g) || []).length >= 2
+      && (markup.match(/air-gap-clearance-marker/g) || []).length >= 1
+      && !markup.includes("air-gap-construction-line")
+      && Math.abs(opticalBefore.effectiveFocalLength - opticalAfter.effectiveFocalLength) < 1e-12
+      && Math.abs(opticalBefore.backFocalLength - opticalAfter.backFocalLength) < 1e-12
+      && Math.abs(opticalBefore.totalTrack - opticalAfter.totalTrack) < 1e-12;
+  }));
+
+  test("Biotar central filled group polygons do not overlap", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    const system = calculateSystem(state.lenses);
+    const mapper = createSvgPointMapper(system, getSpectralSystems());
+    const resolution = resolveOpticalLayoutGeometry(system, mapper, []);
+    const constraint = resolution.airGapConstraints.find((item) => (
+      item.leftSurfaceNumber === 5 && item.rightSurfaceNumber === 6
+    ));
+    if (!constraint) return false;
+    const leftModel = resolution.models[constraint.leftGroupIndex];
+    const rightModel = resolution.models[constraint.rightGroupIndex];
+    return constraint.filledPolygonOverlap === false
+      && leftModel.internalGlassRegions.every((leftRegion) => (
+        rightModel.internalGlassRegions.every((rightRegion) => (
+          !polygonsOverlap(leftRegion.polygonPoints, rightRegion.polygonPoints)
+        ))
+      ));
+  }));
+
+  test("central group polygons have no self-intersection or outward spike", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    const system = calculateSystem(state.lenses);
+    const mapper = createSvgPointMapper(system, getSpectralSystems());
+    const resolution = resolveOpticalLayoutGeometry(system, mapper, []);
+    return resolution.models.filter(Boolean).every((model) => (
+      model.polygonGeometryValid
+      && !polygonSelfIntersects(model.outerPolygonPoints)
+      && model.internalGlassRegions.every((region) => !polygonSelfIntersects(region.polygonPoints))
+      && model.frontRuns.radialRun <= model.mechanicalDiameter / 2 + 1e-9
+      && model.rearRuns.radialRun <= model.mechanicalDiameter / 2 + 1e-9
+    ));
+  }));
+
+  test("cemented internal interfaces remain inside the common silhouette", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    const system = calculateSystem(state.lenses);
+    const mapper = createSvgPointMapper(system, getSpectralSystems());
+    const resolution = resolveOpticalLayoutGeometry(system, mapper, []);
+    return resolution.models.filter(Boolean).every((model) => (
+      model.internalInterfacesContained
+      && model.sharedInterfacePaths.every((surface) => (
+        surface.points.every((point) => polygonContainsPoint(point, model.outerPolygonPoints))
+      ))
+    ));
+  }));
+
+  test("aperture stop marker is split into bars and never becomes lens geometry", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    state.cementedGroupDisplayMode = "opticalLayout";
+    state.apertureDiameter = 23.36;
+    const system = calculateSystem(state.lenses);
+    const trace = traceSystemRealRays(state.lenses, system, { ...rayTraceApertureOptions(state), rayCount: 9 });
+    const mapper = createSvgPointMapper(system, getSpectralSystems());
+    const resolution = resolveOpticalLayoutGeometry(system, mapper, trace);
+    const stackMarkup = renderLensStackSvg(system, mapper, trace, resolution, {
+      lensLabelY: 600,
+      stopDiameterY: 620,
+      dimensionY: 640
+    });
+    const stopMarkup = renderApertureStopMarkerSvg(trace, mapper, {
+      lensLabelY: 600,
+      stopDiameterY: 620,
+      dimensionY: 640
+    });
+    return stopMarkup.includes("aperture-stop-bar")
+      && !stopMarkup.includes("STOP")
+      && !stopMarkup.includes("23.36 mm")
+      && !resolution.requestedGroupRadii.some((radius) => Math.abs(radius * 2 - 23.36) < 1e-9)
+      && (stackMarkup.match(/cemented-group-label/g) || []).length === 2
+      && (stackMarkup.match(/class="cemented-group-label"[^>]*y="600"/g) || []).length === 2
+      && 600 < 620;
+  }));
+
+  test("Double Gauss uses clean educational glass rendering", () => withTemporaryState(() => {
+    loadPresetIntoState("doubleGauss");
+    const system = calculateSystem(state.lenses);
+    const spectralSystems = getSpectralSystems();
+    const trace = traceSystemRealRays(state.lenses, spectralSystems.d || system, {
+      ...rayTraceApertureOptions(state),
+      rayCount: 9
+    });
+    const markup = renderOpticalDiagram(system, spectralSystems, trace);
+    return shouldUseMechanicalValidation() === false
+      && (markup.match(/class="glass-fill/g) || []).length === state.lenses.length
+      && (markup.match(/is-clean-optical-layout/g) || []).length >= state.lenses.length
+      && !markup.includes("is-air-gap-constrained")
+      && !markup.includes("air-gap-clearance-marker")
+      && !markup.includes("AIR GAP !")
+      && !markup.includes("Mechanical data not supplied by patent");
+  }));
+
+  test("educational presets do not receive patent mechanical validation", () => (
+    ["manual", "petzval", "rapidRectilinear", "doubleGauss"].every((presetKey) => withTemporaryState(() => {
+      loadPresetIntoState(presetKey);
+      const system = calculateSystem(state.lenses);
+      const mapper = createSvgPointMapper(system, getSpectralSystems());
+      const markup = renderLensStackSvg(system, mapper, [], null, {}, "all");
+      return shouldUseMechanicalValidation() === false
+        && !markup.includes("is-air-gap-constrained")
+        && !markup.includes("is-not-manufacturable")
+        && !markup.includes("geometry-warning-marker")
+        && (markup.match(/class="glass-fill/g) || []).length === state.lenses.length;
+    }))
+  ));
+
+  test("Double Gauss rendering does not change paraxial or ray-trace results", () => withTemporaryState(() => {
+    loadPresetIntoState("doubleGauss");
+    const systemBefore = calculateSystem(state.lenses);
+    const traceBefore = traceSystemRealRays(state.lenses, systemBefore, {
+      ...rayTraceApertureOptions(state),
+      rayCount: 9
+    });
+    const mapper = createSvgPointMapper(systemBefore, getSpectralSystems());
+    renderLensStackSvg(systemBefore, mapper, traceBefore, null, {}, "all");
+    const systemAfter = calculateSystem(state.lenses);
+    const traceAfter = traceSystemRealRays(state.lenses, systemAfter, {
+      ...rayTraceApertureOptions(state),
+      rayCount: 9
+    });
+    return Math.abs(systemBefore.effectiveFocalLength - systemAfter.effectiveFocalLength) < 1e-12
+      && Math.abs(systemBefore.backFocalLength - systemAfter.backFocalLength) < 1e-12
+      && Math.abs(systemBefore.totalTrack - systemAfter.totalTrack) < 1e-12
+      && traceBefore.validRayCount === traceAfter.validRayCount
+      && Math.abs(traceBefore.rmsSpotRadius - traceAfter.rmsSpotRadius) < 1e-12;
+  }));
+
+  test("Biotar keeps patent air-gap and cemented-group diagnostics", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    state.diagramViewMode = "optical";
+    state.cementedGroupDisplayMode = "opticalLayout";
+    const system = calculateSystem(state.lenses);
+    const spectralSystems = getSpectralSystems();
+    const trace = traceSystemRealRays(state.lenses, spectralSystems.d || system, {
+      ...rayTraceApertureOptions(state),
+      rayCount: 9
+    });
+    const markup = renderMechanicalDiagnosticsPanel(system, trace);
+    return shouldUseMechanicalValidation()
+      && markup.includes("Adjacent air-gap clearance")
+      && markup.includes("Surface 5 → 6")
+      && !markup.includes("AIR GAP !");
+  }));
+
+  test("Biotar optical, mechanical and debug diagram modes separate warnings", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    state.cementedGroupDisplayMode = "opticalLayout";
+    const system = calculateSystem(state.lenses);
+    const spectralSystems = getSpectralSystems();
+    const trace = traceSystemRealRays(state.lenses, spectralSystems.d || system, {
+      ...rayTraceApertureOptions(state),
+      rayCount: 9
+    });
+    state.diagramViewMode = "optical";
+    const opticalMarkup = renderOpticalDiagram(system, spectralSystems, trace);
+    state.diagramViewMode = "mechanical";
+    const mechanicalMarkup = renderOpticalDiagram(system, spectralSystems, trace);
+    state.diagramViewMode = "debug";
+    const debugMarkup = renderOpticalDiagram(system, spectralSystems, trace);
+    return DEFAULT_ANALYSIS_SETTINGS.diagramViewMode === "optical"
+      && opticalMarkup.includes("is-optical-estimate")
+      && !opticalMarkup.includes("AIR GAP !")
+      && !opticalMarkup.includes("air-gap-debug-construction")
+      && mechanicalMarkup.includes("is-mechanically-constrained")
+      && mechanicalMarkup.includes("air-gap-mechanical-marker")
+      && !mechanicalMarkup.includes("AIR GAP !")
+      && debugMarkup.includes("is-air-gap-constrained")
+      && debugMarkup.includes("air-gap-debug-construction")
+      && debugMarkup.includes("AIR GAP !");
+  }));
+
+  test("new side-view modes separate ray, line and production cutaway layers", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    const system = calculateSystem(state.lenses);
+    const spectralSystems = getSpectralSystems();
+    const trace = traceSystemRealRays(state.lenses, spectralSystems.d || system, {
+      ...rayTraceApertureOptions(state),
+      rayCount: 9
+    });
+    state.diagramViewMode = "optical";
+    const opticalMarkup = renderOpticalDiagram(system, spectralSystems, trace);
+    state.diagramViewMode = "patentLine";
+    const patentLineMarkup = renderOpticalDiagram(system, spectralSystems, trace);
+    state.diagramViewMode = "productionCutaway";
+    const productionMarkup = renderOpticalDiagram(system, spectralSystems, trace);
+    return opticalMarkup.includes("view-optical")
+      && opticalMarkup.includes("real-ray")
+      && patentLineMarkup.includes("view-patentLine")
+      && patentLineMarkup.includes("surface-outline")
+      && !patentLineMarkup.includes("real-ray")
+      && productionMarkup.includes("view-productionCutaway")
+      && productionMarkup.includes("svg-production-reference")
+      && productionMarkup.includes("assets/biotar-5cm-f14-production.svg")
+      && !productionMarkup.includes("real-ray")
+      && !productionMarkup.includes("url(#grid)");
+  }));
+
+  test("system result stays open and appears above spot diagrams", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    state.collapsedPanels = { ...state.collapsedPanels, system: false, rayTraceSpot: false };
+    const markup = render();
+    const systemIndex = markup.indexOf(tx("systemResult"));
+    const spotIndex = markup.indexOf("Spot Diagrams");
+    return state.collapsedPanels.system === false
+      && systemIndex >= 0
+      && spotIndex >= 0
+      && systemIndex < spotIndex
+      && markup.includes("system-kpi-grid")
+      && markup.includes("system-detail-grid");
+  }));
+
+  test("individual manufacturing is the default side-view drawing mode", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    const system = calculateSystem(state.lenses);
+    const spectralSystems = getSpectralSystems();
+    const trace = traceSystemRealRays(state.lenses, spectralSystems.d || system, {
+      ...rayTraceApertureOptions(state),
+      rayCount: 9
+    });
+    const markup = renderOpticalDiagram(system, spectralSystems, trace);
+    return DEFAULT_ANALYSIS_SETTINGS.cementedGroupDisplayMode === "individualManufacturing"
+      && state.cementedGroupDisplayMode === "individualManufacturing"
+      && markup.includes('data-action="toggle-cemented-layout"')
+      && markup.includes('title="Switch to Optical layout"')
+      && !markup.includes('data-field="cementedGroupDisplayMode"');
+  }));
+
+  test("visual-only C Sonnar and Biotar SVG presets are removed from preset menu", () => (
+    !PRESETS.zeissCSonnarZm50F15VisualReference
+    && !PRESETS.zeissBiotar50F14Us1786916Ex2SvgVisualReference
+    && !renderPresetSelect().includes("production layout reference")
+    && !renderPresetSelect().includes("SVG production silhouette reference")
+  ));
+
+  test("workflow sidebar groups panels and keeps collapsed expensive bodies lazy", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    state.collapsedPanels = {
+      ...state.collapsedPanels,
+      lensData: false,
+      mtfResolution: false,
+      wavefrontDiagnostics: true,
+      debugTools: true,
+      coverageIllumination: true
+    };
+    const markup = render();
+    return ["Design", "Analyse", "Advanced", "Build", "Utility"].every((group) => markup.includes(`>${group}</h2>`))
+      && markup.includes('data-panel="mtfResolution"')
+      && markup.includes("Sagittal / Tangential Geometric MTF")
+      && !markup.includes("Wavefront OPD / Strehl Estimate")
+      && !markup.includes("Polychromatic Wavefront MTF")
+      && !markup.includes("Ray-traced Image Circle / Vignetting");
+  }));
+
+  test("workflow panel toggle collapses siblings inside the same group", () => withTemporaryState(() => {
+    state.collapsedPanels = { ...state.collapsedPanels, rayTraceSpot: true, mtfResolution: false };
+    const panelId = "rayTraceSpot";
+    const registryPanel = ANALYSIS_PANEL_BY_ID[panelId];
+    const nextCollapsedPanels = { ...(state.collapsedPanels || {}) };
+    ANALYSIS_PANEL_REGISTRY
+      .filter((panel) => panel.group === registryPanel.group && panel.id !== panelId)
+      .forEach((panel) => {
+        nextCollapsedPanels[panel.id] = true;
+      });
+    nextCollapsedPanels[panelId] = false;
+    return nextCollapsedPanels.rayTraceSpot === false
+      && nextCollapsedPanels.mtfResolution === true
+      && nextCollapsedPanels.rayFanAberrations === true;
+  }));
+
+  test("sagittal tangential MTF styling uses sagittal solid and tangential dashed", () => (
+    renderSagittalTangentialMTFChart(RAY_TRACE_FIELDS[0], [{
+      status: "valid",
+      spectralLineKey: "d",
+      tangential: { frequencies: [0, 10], values: [1, 0.8] },
+      sagittal: { frequencies: [0, 10], values: [1, 0.9] }
+    }]).includes("st-mtf-sagittal")
+    && renderSagittalTangentialGeometricMTFPanel({
+      rayCount: 0,
+      wavelengthMode: "d",
+      activeResults: [],
+      comparisons: [],
+      warnings: []
+    }).includes("Solid: sagittal")
+  ));
+
+  test("Biotar SVG production reference is visual-only and leaves optical calculation unchanged", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    const systemBefore = calculateSystem(state.lenses);
+    const spectralSystems = getSpectralSystems();
+    const trace = traceSystemRealRays(state.lenses, spectralSystems.d || systemBefore, {
+      ...rayTraceApertureOptions(state),
+      rayCount: 9
+    });
+    state.diagramViewMode = "productionCutaway";
+    state.productionSilhouetteSource = "svgReference";
+    const markup = renderOpticalDiagram(systemBefore, spectralSystems, trace);
+    const systemAfter = calculateSystem(state.lenses);
+    return markup.includes("svg-production-reference")
+      && markup.includes("assets/biotar-5cm-f14-production.svg")
+      && markup.includes("Visual SVG reference only")
+      && markup.includes('data-visual-flip-x="false"')
+      && !markup.includes("scale(-1 1)")
+      && !markup.includes("real-ray")
+      && !markup.includes("Back focal distance")
+      && !markup.includes("Sony E flange")
+      && !markup.includes("Full-frame reference")
+      && Math.abs(systemBefore.effectiveFocalLength - systemAfter.effectiveFocalLength) < 1e-12
+      && Math.abs(systemBefore.backFocalLength - systemAfter.backFocalLength) < 1e-12;
+  }));
+
+  test("Biotar production cutaway uses only the uploaded SVG when available", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    state.diagramViewMode = "productionCutaway";
+    state.productionSilhouetteSource = "generated";
+    const system = calculateSystem(state.lenses);
+    const spectralSystems = getSpectralSystems();
+    const trace = traceSystemRealRays(state.lenses, spectralSystems.d || system, {
+      ...rayTraceApertureOptions(state),
+      rayCount: 9
+    });
+    const markup = renderOpticalDiagram(system, spectralSystems, trace);
+    return markup.includes("svg-production-reference")
+      && markup.includes("assets/biotar-5cm-f14-production.svg")
+      && markup.includes("Uploaded SVG reference")
+      && !markup.includes("production-cutaway-lens")
+      && !markup.includes("data-action=\"update-production-silhouette-source\"");
+  }));
+
+  test("Biotar SVG overlay can be shown in Optical Ray View without changing rays", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    state.diagramViewMode = "optical";
+    const system = calculateSystem(state.lenses);
+    const spectralSystems = getSpectralSystems();
+    const trace = traceSystemRealRays(state.lenses, spectralSystems.d || system, {
+      ...rayTraceApertureOptions(state),
+      rayCount: 9
+    });
+    state.showSvgReferenceOverlay = false;
+    const hiddenMarkup = renderOpticalDiagram(system, spectralSystems, trace);
+    state.showSvgReferenceOverlay = true;
+    const overlayMarkup = renderOpticalDiagram(system, spectralSystems, trace);
+    return !hiddenMarkup.includes("svg-optical-overlay")
+      && overlayMarkup.includes("svg-optical-overlay")
+      && overlayMarkup.includes("assets/biotar-5cm-f14-production.svg")
+      && overlayMarkup.includes("real-ray")
+      && !overlayMarkup.includes("Back focal distance")
+      && !overlayMarkup.includes("STOP");
+  }));
+
+  test("Biotar SVG reference width aligns to the optical lens group length", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    state.diagramViewMode = "optical";
+    state.showSvgReferenceOverlay = true;
+    const system = calculateSystem(state.lenses);
+    const spectralSystems = getSpectralSystems();
+    const mapper = createSvgPointMapper(system, spectralSystems);
+    const positions = lensPositions(system, state.lenses).filter(Boolean);
+    const expectedLeft = Math.min(
+      mapper.x(Math.min(...positions.map((position) => position.start))),
+      mapper.x(Math.max(...positions.map((position) => position.end)))
+    );
+    const expectedRight = Math.max(
+      mapper.x(Math.min(...positions.map((position) => position.start))),
+      mapper.x(Math.max(...positions.map((position) => position.end)))
+    );
+    const trace = traceSystemRealRays(state.lenses, spectralSystems.d || system, {
+      ...rayTraceApertureOptions(state),
+      rayCount: 9
+    });
+    const markup = renderOpticalDiagram(system, spectralSystems, trace);
+    const start = Number((markup.match(/data-target-start="([^"]+)"/) || [])[1]);
+    const end = Number((markup.match(/data-target-end="([^"]+)"/) || [])[1]);
+    return Number.isFinite(start)
+      && Number.isFinite(end)
+      && Math.abs(start - expectedLeft) < 1e-6
+      && Math.abs(end - expectedRight) < 1e-6;
+  }));
+
+  test("canonical side view displays L1 on the left and image plane on the right", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    const system = calculateSystem(state.lenses);
+    const mapper = createSvgPointMapper(system, getSpectralSystems());
+    const positions = lensPositions(system, state.lenses).filter(Boolean);
+    const l1X = mapper.x(positions[0].center);
+    const lastLensX = mapper.x(positions[positions.length - 1].center);
+    const sensorX = mapper.x(0);
+    const validation = validateSequentialDisplayConvention(system, mapper);
+    return mapper.displayDirection === "objectToImage"
+      && l1X < lastLensX
+      && sensorX > lastLensX
+      && validation.valid;
+  }));
+
+  test("optical side view centres the lens stack horizontally", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    const system = calculateSystem(state.lenses);
+    const mapper = createSvgPointMapper(system, getSpectralSystems());
+    return Math.abs(mapper.x(mapper.lensStackCenter) - mapper.width / 2) < 1e-6;
+  }));
+
+  test("Biotar SVG no longer flips and still preserves optical order", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    state.showSvgReferenceOverlay = true;
+    const svgReference = getProductionSvgReferenceForPreset(PRESETS[DEFAULT_PRESET_KEY]);
+    const system = calculateSystem(state.lenses);
+    const mapper = createSvgPointMapper(system, getSpectralSystems());
+    const validation = validateSequentialDisplayConvention(system, mapper, state.lenses, PRESETS[DEFAULT_PRESET_KEY]);
+    return svgReference.visualFlipX === false
+      && validation.valid
+      && mapper.x(lensPositions(system, state.lenses)[0].center) < mapper.x(lensPositions(system, state.lenses).at(-1).center);
+  }));
+
+  test("lens summary uses structured bold labels and no index circle", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    const markup = renderLens(state.lenses[0], 0, calculateLens(state.lenses[0]), null);
+    return markup.includes("lens-summary-label")
+      && markup.includes("lens-summary-value")
+      && markup.includes("<strong class=\"lens-summary-label\">R1</strong>")
+      && markup.includes("<strong class=\"lens-summary-label\">D</strong>")
+      && markup.includes("<strong class=\"lens-summary-label\">n</strong>")
+      && markup.includes("<strong class=\"lens-summary-label\">Vd</strong>")
+      && !markup.includes("lens-index");
+  }));
+
+  test("manual lens diameter edit updates clear, mechanical and visual diameters only", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    const lens = state.lenses[0];
+    const before = {
+      r1: lens.r1,
+      r2: lens.r2,
+      thickness: lens.thickness,
+      gapAfter: lens.gapAfter,
+      mechanicalMargin: lens.mechanicalDiameter - lens.clearApertureDiameter
+    };
+    const nextDiameter = lens.diameter * 1.2;
+    applyManualLensDiameter(lens, nextDiameter);
+    return Math.abs(lens.diameter - nextDiameter) < 1e-9
+      && Math.abs(lens.clearApertureDiameter - nextDiameter) < 1e-9
+      && Math.abs(lens.mechanicalDiameter - (nextDiameter + before.mechanicalMargin)) < 1e-9
+      && Math.abs(lens.visualDiameter - lens.mechanicalDiameter) < 1e-9
+      && lens.apertureSource === "manual"
+      && lens.diameterSource === "manual"
+      && lens.r1 === before.r1
+      && lens.r2 === before.r2
+      && lens.thickness === before.thickness
+      && lens.gapAfter === before.gapAfter;
+  }));
+
+  test("manual lens diameter edit immediately increases side-view drawing diameter", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    const beforeSystem = calculateSystem(state.lenses);
+    const beforeDiameter = lensPositions(beforeSystem, state.lenses)[0].diameter;
+    applyManualLensDiameter(state.lenses[0], state.lenses[0].diameter * 1.2);
+    const afterSystem = calculateSystem(state.lenses);
+    const afterDiameter = lensPositions(afterSystem, state.lenses)[0].diameter;
+    return afterDiameter > beforeDiameter * 1.05;
+  }));
+
+  test("optical side view omits instructional labels and keeps compact guides", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    const system = calculateSystem(state.lenses);
+    const spectralSystems = getSpectralSystems();
+    const trace = traceSystemRealRays(state.lenses, spectralSystems.d || system, {
+      ...rayTraceApertureOptions(state),
+      rayCount: 9
+    });
+    const markup = renderOpticalDiagram(system, spectralSystems, trace);
+    return ![
+      "Full-frame reference",
+      "36 x 24 mm",
+      "43.3 mm diag.",
+      "18 mm from sensor",
+      "Rear focal plane",
+      "Back focal distance:",
+      "Object side / incoming rays",
+      "STOP"
+    ].some((label) => markup.includes(label))
+      && markup.includes(">Sony E<")
+      && !markup.includes("Lens group length:")
+      && !markup.includes("Optical Side View")
+      && markup.includes("aperture-stop-bar")
+      && markup.includes("bfd-guide-line");
+  }));
+
+  test("Biotar SVG reference is attached directly to the real patent preset", () => {
+    const svgReference = getProductionSvgReferenceForPreset(PRESETS[DEFAULT_PRESET_KEY]);
+    return svgReference?.href === "assets/biotar-5cm-f14-production.svg"
+      && PRESETS[DEFAULT_PRESET_KEY].svgProductionReference?.href === "assets/biotar-5cm-f14-production.svg"
+      && !PRESETS.zeissBiotar50F14Us1786916Ex2SvgVisualReference;
+  });
+
+  test("Biotar SVG-estimated diameter profile applies without changing patent surfaces", () => withTemporaryState(() => {
+    const originalSurfaces = JSON.stringify(PRESETS[DEFAULT_PRESET_KEY].surfaces);
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    const expected = [
+      [36, 38, 38],
+      [33.5, 35.5, 35.5],
+      [33.5, 35.5, 35.5],
+      [27, 29, 29],
+      [27, 29, 29],
+      [27.5, 29.5, 29.5]
+    ];
+    const derivedMatches = state.patentDiameterSource === "svgEstimated"
+      && state.lenses.length === expected.length
+      && state.lenses.every((lens, index) => (
+        lens.apertureSource === "svgEstimated"
+        && lens.diameterSource === "svgEstimated"
+        && Math.abs(lens.clearApertureDiameter - expected[index][0]) < 1e-9
+        && Math.abs(lens.mechanicalDiameter - expected[index][1]) < 1e-9
+        && Math.abs(lens.visualDiameter - expected[index][2]) < 1e-9
+      ));
+    return derivedMatches
+      && JSON.stringify(PRESETS[DEFAULT_PRESET_KEY].surfaces) === originalSurfaces
+      && state.prescription.diameterProfile.referenceSvg === "assets/biotar-5cm-f14-production.svg";
+  }));
+
+  test("Biotar SVG diameter source can switch to auto without altering prescription", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    const originalSurfaces = JSON.stringify(state.prescription.surfaces);
+    const svgDiameters = state.lenses.map((lens) => lens.clearApertureDiameter);
+    state.patentDiameterSource = "auto";
+    setCurrentPrescription(state.prescription);
+    ensurePatentOpticalGeometry();
+    const autoDiameters = state.lenses.map((lens) => lens.clearApertureDiameter);
+    state.patentDiameterSource = "svgEstimated";
+    setCurrentPrescription(state.prescription);
+    const restoredDiameters = state.lenses.map((lens) => lens.clearApertureDiameter);
+    return JSON.stringify(state.prescription.surfaces) === originalSurfaces
+      && autoDiameters.some((diameter, index) => Math.abs(diameter - svgDiameters[index]) > 1e-6)
+      && restoredDiameters.every((diameter, index) => Math.abs(diameter - svgDiameters[index]) < 1e-9);
+  }));
+
+  test("Biotar surface table marks SVG-estimated apertures", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    const system = calculateSystem(state.lenses);
+    const trace = traceSystemRealRays(state.lenses, system, {
+      ...rayTraceApertureOptions(state),
+      rayCount: 9
+    });
+    const markup = renderSurfacePrescriptionPanel(trace.surfaces || [], PRESETS[DEFAULT_PRESET_KEY]);
+    return markup.includes("SVG-estimated")
+      && markup.includes("<th>Visual diameter</th>")
+      && markup.includes("<th>Diameter source</th>");
+  }));
+
+  test("only the uploaded Biotar SVG asset is registered for the Biotar patent preset", () => {
+    const linkedReference = getProductionSvgReferenceForPreset(PRESETS[DEFAULT_PRESET_KEY]);
+    return linkedReference?.href === "assets/biotar-5cm-f14-production.svg"
+      && !linkedReference.href.includes("V2");
+  });
+
+  test("Sonnar 40 zero-distance cemented duplicate surface traces valid rays", () => withTemporaryState(() => {
+    loadPresetIntoState("zeissSonnar40F28Us3994576Ex1");
+    ensurePatentOpticalGeometry();
+    const system = calculateSystem(state.lenses);
+    const options = { ...rayTraceApertureOptions(state), rayCount: 9, fieldAngleDegrees: 0 };
+    const trace = traceSystemRealRays(state.lenses, system, options);
+    const opticalSurfaces = buildSurfaceList(state.lenses, system, options).filter((surface) => !surface.isStop);
+    const duplicated = opticalSurfaces.some((surface, index) => opticalSurfaces.slice(index + 1).some((other) => (
+      Math.abs(surface.x - other.x) < 1e-9
+      && Math.abs((surface.radius || 0) - (other.radius || 0)) < 1e-9
+      && Math.abs((surface.nBefore || 1) - (surface.nAfter || 1)) > 1e-9
+      && Math.abs((other.nBefore || 1) - (other.nAfter || 1)) > 1e-9
+    )));
+    return trace.validRayCount > 0
+      && !duplicated
+      && state.lenses.some((lens) => lens.patentZeroDistanceDuplicateFrontSurface === 9)
+      && state.lenses.some((lens) => lens.patentZeroDistanceSharedRearSurface === 8);
+  }));
+
+  test("surface patent paraxial calculation keeps Sonnar 40 BFL near patent value", () => withTemporaryState(() => {
+    loadPresetIntoState("zeissSonnar40F28Us3994576Ex1");
+    ensurePatentOpticalGeometry();
+    const system = calculateSystem(state.lenses);
+    return Math.abs(system.backFocalLength - 25.364) < 0.8
+      && Number.isFinite(system.effectiveFocalLength)
+      && system.validCount === state.lenses.length;
+  }));
+
+  test("Sonnar 50 patent drawing falls back safely for tiny estimated air gaps", () => withTemporaryState(() => {
+    loadPresetIntoState("zeissSonnar50F15Us2186621Ex1");
+    state.diagramViewMode = "optical";
+    state.cementedGroupDisplayMode = "opticalLayout";
+    state.minimumAirGapClearanceMm = 0.5;
+    ensurePatentOpticalGeometry();
+    const system = calculateSystem(state.lenses);
+    const trace = traceSystemRealRays(state.lenses, system, {
+      ...rayTraceApertureOptions(state),
+      rayCount: 9,
+      fieldAngleDegrees: 0
+    });
+    const mapper = createSvgPointMapper(system, getSpectralSystems());
+    const resolution = resolveOpticalLayoutGeometry(system, mapper, trace);
+    const markup = renderOpticalDiagram(system, getSpectralSystems(), trace);
+    const diagnosticsMarkup = renderMechanicalDiagnosticsPanel(system, trace);
+    const filledPolygonsForGroup = (groupIndex) => {
+      const groupModel = resolution.models[groupIndex];
+      if (groupModel) {
+        return groupModel.renderFilledGlass === false
+          ? []
+          : groupModel.internalGlassRegions.map((region) => region.polygonPoints);
+      }
+      const individualModel = resolution.individualModels[groupIndex];
+      return individualModel?.renderFilledGlass === false
+        ? []
+        : individualModel?.polygonPoints?.length ? [individualModel.polygonPoints] : [];
+    };
+    const filledPolygons = resolution.groups.flatMap((_, groupIndex) => filledPolygonsForGroup(groupIndex));
+    const adjacentFilledOverlap = resolution.airGapConstraints.some((constraint) => (
+      filledPolygonsForGroup(constraint.leftGroupIndex).some((leftPolygon) => (
+        filledPolygonsForGroup(constraint.rightGroupIndex).some((rightPolygon) => polygonsOverlap(leftPolygon, rightPolygon))
+      ))
+    ));
+    return trace.validRayCount > 0
+      && filledPolygons.every((polygon) => !polygonSelfIntersects(polygon))
+      && !adjacentFilledOverlap
+      && resolution.airGapConstraints.some((constraint) => (
+        constraint.selectedClearanceAchievable === false
+        || constraint.warning.includes("selected minimum clearance exceeds")
+      ))
+      && resolution.models.filter(Boolean).some((model) => model.lineOnlyOpticalFallback || model.renderFilledGlass === false)
+      && markup.includes("patent-line-only-surface")
+      && !markup.includes("Mechanical data not supplied by patent")
+      && diagnosticsMarkup.includes("Mechanical data not supplied by patent");
+  }));
+
+  test("Sonnar 50 optical view shows fallback clear-aperture fill for unsafe patent geometry", () => withTemporaryState(() => {
+    loadPresetIntoState("zeissSonnar50F15Us2186621Ex1");
+    state.diagramViewMode = "optical";
+    ensurePatentOpticalGeometry();
+    const system = calculateSystem(state.lenses);
+    const trace = traceSystemRealRays(state.lenses, system, {
+      ...rayTraceApertureOptions(state),
+      rayCount: 9,
+      fieldAngleDegrees: 0
+    });
+    const mapper = createSvgPointMapper(system, getSpectralSystems());
+    const resolution = resolveOpticalLayoutGeometry(system, mapper, trace);
+    const glassMarkup = renderLensStackSvg(system, mapper, trace, resolution, {
+      ...diagramAnnotationLanes(mapper, FULL_FRAME_SENSOR.diagonal / 2),
+      diagramViewMode: "optical"
+    }, "glass");
+    return resolution.models.filter(Boolean).some((model) => model.renderFilledGlass === false || model.lineOnlyOpticalFallback)
+      && glassMarkup.includes("optical-fill-fallback")
+      && glassMarkup.includes(OPTICAL_FILL_FALLBACK_NOTE);
+  }));
+
+  test("mechanical view does not draw optical fallback fill for unsafe patent geometry", () => withTemporaryState(() => {
+    loadPresetIntoState("zeissSonnar50F15Us2186621Ex1");
+    state.diagramViewMode = "mechanical";
+    ensurePatentOpticalGeometry();
+    const system = calculateSystem(state.lenses);
+    const trace = traceSystemRealRays(state.lenses, system, {
+      ...rayTraceApertureOptions(state),
+      rayCount: 9,
+      fieldAngleDegrees: 0
+    });
+    const mapper = createSvgPointMapper(system, getSpectralSystems());
+    const resolution = resolveOpticalLayoutGeometry(system, mapper, trace, {
+      minimumAirGapClearanceMm: state.minimumAirGapClearanceMm
+    });
+    const glassMarkup = renderLensStackSvg(system, mapper, trace, resolution, {
+      ...diagramAnnotationLanes(mapper, FULL_FRAME_SENSOR.diagonal / 2),
+      diagramViewMode: "mechanical"
+    }, "glass");
+    return resolution.models.filter(Boolean).some((model) => model.renderFilledGlass === false || model.lineOnlyOpticalFallback)
+      && !glassMarkup.includes("optical-fill-fallback");
+  }));
+
+  test("failed real rays are rendered as dashed partial paths", () => {
+    const mapper = { x: (value) => value * 10, y: (value) => value * 10 };
+    const markup = renderRealRayPathsSvg({
+      fieldKey: "center",
+      spectralLineKey: "d",
+      rays: [
+        {
+          status: "missed aperture",
+          path: [{ x: 2, y: 0 }, { x: 1, y: 0.5 }],
+          hitPoint: { x: 0.5, y: 0.75 }
+        }
+      ]
+    }, mapper, { diagramViewMode: "debug" });
+    return markup.includes("real-ray-failed")
+      && markup.includes("20,0 10,5 5,7.5")
+      && markup.includes("real-ray-failure-marker");
+  });
+
+  test("diagram annotation lanes remain ordered and inside the viewBox", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    const system = calculateSystem(state.lenses);
+    const mapper = createSvgPointMapper(system, getSpectralSystems());
+    const lanes = diagramAnnotationLanes(mapper, FULL_FRAME_SENSOR.diagonal / 2);
+    return lanes.topLabelY > 0
+      && lanes.lensLabelY < lanes.stopDiameterY
+      && lanes.stopDiameterY < lanes.dimensionY
+      && lanes.dimensionY < lanes.groupLengthY
+      && lanes.groupLengthY < mapper.height;
+  }));
+
+  test("optical diagram layers keep rays below labels and stop annotations", () => withTemporaryState(() => {
+    loadPresetIntoState("doubleGauss");
+    const system = calculateSystem(state.lenses);
+    const spectralSystems = getSpectralSystems();
+    const markup = renderOpticalDiagram(system, spectralSystems, []);
+    const layerOrder = [
+      "layer-background",
+      "layer-glass-fill",
+      "layer-rays",
+      "layer-optical-surfaces",
+      "layer-mechanical-edges",
+      "layer-stop",
+      "layer-annotations",
+      "layer-warnings"
+    ].map((className) => markup.indexOf(`class="${className}"`));
+    return layerOrder.every((index) => index >= 0)
+      && layerOrder.every((index, arrayIndex) => arrayIndex === 0 || index > layerOrder[arrayIndex - 1]);
+  }));
+
+  test("cemented glass materials remain separately visible", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    const system = calculateSystem(state.lenses);
+    const trace = traceSystemRealRays(state.lenses, system, { ...rayTraceApertureOptions(state), rayCount: 9 });
+    const mapper = createSvgPointMapper(system, getSpectralSystems());
+    const markup = renderLensStackSvg(system, mapper, trace);
+    return (markup.match(/data-element-index="1"/g) || []).length === 1
+      && (markup.match(/data-element-index="2"/g) || []).length === 1
+      && (markup.match(/data-element-index="3"/g) || []).length === 1
+      && (markup.match(/data-element-index="4"/g) || []).length === 1;
+  }));
+
+  test("group-level invalid geometry remains authoritative", () => withTemporaryState(() => {
+    state.lenses = [
+      normalizeLens({
+        id: "group-a",
+        diameter: 14,
+        clearApertureDiameter: 14,
+        mechanicalDiameter: 16,
+        chipZoneWidthMm: 0.5,
+        thickness: 5,
+        r1: 100,
+        r2: -100,
+        refractiveIndex: 1.52,
+        gapAfter: 0,
+        patentSurfaceStart: 1,
+        patentSurfaceEnd: 2,
+        patentRearCementedToNextGlass: true
+      }),
+      normalizeLens({
+        id: "group-b",
+        diameter: 6,
+        clearApertureDiameter: 6,
+        mechanicalDiameter: 8,
+        chipZoneWidthMm: 0.5,
+        thickness: 5,
+        r1: 100,
+        r2: -7,
+        refractiveIndex: 1.62,
+        gapAfter: 0,
+        patentSurfaceStart: 2,
+        patentSurfaceEnd: 3,
+        patentFrontSharedCementedSurface: true
+      })
+    ];
+    const system = calculateSystem(state.lenses);
+    const mapper = {
+      ...createSvgPointMapper(system, { d: system }),
+      positions: lensPositions(system, state.lenses)
+    };
+    const individual = state.lenses.map((lens, index) => buildPrescriptionLensRenderModel(
+      mapper.positions[index],
+      mapper,
+      system.results[index],
+      lens,
+      index,
+      [],
+      { cementedGroupDisplayMode: "individualManufacturing", cementedInterfaceBevelMode: "hidden" }
+    ));
+    const group = buildCementedGroupRenderModel(
+      buildCementedMechanicalGroups(state.lenses)[0],
+      system,
+      mapper,
+      [],
+      { cementedGroupDisplayMode: "opticalLayout" }
+    );
+    return individual.every((model) => model?.manufacturable)
+      && group?.manufacturable === false
+      && group.safeInvalidGeometry === true
+      && group.internalGlassRegions.length === 2
+      && group.warnings.some((warning) => warning.includes("optical layout fallback"));
+  }));
+
+  test("individual manufacturing mode shows estimated cemented interface relief", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    state.patentDiameterSource = "auto";
+    setCurrentPrescription(state.prescription);
+    ensurePatentOpticalGeometry();
+    state.cementedGroupDisplayMode = "individualManufacturing";
+    state.cementedInterfaceBevelMode = "estimated";
+    state.cementedInterfaceBevelFaceWidthMm = 0.15;
+    state.cementedInterfaceBevelAngleDeg = 45;
+    const system = calculateSystem(state.lenses);
+    const trace = traceSystemRealRays(state.lenses, system, { ...rayTraceApertureOptions(state), rayCount: 9 });
+    const mapper = createSvgPointMapper(system, getSpectralSystems());
+    const markup = renderLensStackSvg(system, mapper, trace);
+    return (markup.match(/class="cement-edge-relief"/g) || []).length === 2
+      && markup.includes("Estimated cement-filled edge relief")
+      && !buildSurfaceList(state.lenses, system, rayTraceApertureOptions(state)).some((surface) => (
+        surface.isCementedInterface && (surface.nBefore === 1 || surface.nAfter === 1)
+      ));
+  }));
+
+  test("cemented display mode does not change optical analysis", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    const systemBefore = calculateSystem(state.lenses);
+    const traceBefore = traceSystemRealRays(state.lenses, systemBefore, { ...rayTraceApertureOptions(state), rayCount: 9 });
+    state.cementedGroupDisplayMode = "individualManufacturing";
+    state.cementedInterfaceBevelMode = "estimated";
+    const systemAfter = calculateSystem(state.lenses);
+    const traceAfter = traceSystemRealRays(state.lenses, systemAfter, { ...rayTraceApertureOptions(state), rayCount: 9 });
+    return Math.abs(systemBefore.effectiveFocalLength - systemAfter.effectiveFocalLength) < 1e-12
+      && Math.abs(systemBefore.backFocalLength - systemAfter.backFocalLength) < 1e-12
+      && Math.abs(systemBefore.totalTrack - systemAfter.totalTrack) < 1e-12
+      && Math.abs(calculateFNumber(systemBefore) - calculateFNumber(systemAfter)) < 1e-12
+      && traceBefore.validRayCount === traceAfter.validRayCount
+      && Math.abs(traceBefore.rmsSpotRadius - traceAfter.rmsSpotRadius) < 1e-12;
+  }));
+
+  test("cemented rendering preserves patent surface values", () => withTemporaryState(() => {
+    const before = JSON.stringify(PRESETS[DEFAULT_PRESET_KEY].surfaces);
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    const system = calculateSystem(state.lenses);
+    const mapper = createSvgPointMapper(system, getSpectralSystems());
+    buildCementedGroupRenderModels(system, mapper, [], { cementedGroupDisplayMode: "opticalLayout" });
+    return JSON.stringify(PRESETS[DEFAULT_PRESET_KEY].surfaces) === before;
+  }));
+
+  test("drawn patent polygons are closed with non-negative edge thickness", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    state.patentDiameterSource = "auto";
+    setCurrentPrescription(state.prescription);
+    ensurePatentOpticalGeometry();
+    const system = calculateSystem(state.lenses);
+    const trace = traceSystemRealRays(state.lenses, system, { ...rayTraceApertureOptions(state), rayCount: 9 });
+    const mapper = createSvgPointMapper(system, getSpectralSystems());
+    return mapper.positions.every((position, index) => {
+      const model = buildPrescriptionLensRenderModel(
+        position,
+        mapper,
+        system.results[index],
+        state.lenses[index],
+        index,
+        trace
+      );
+      return model
+        && model.manufacturable
+        && model.polygonPath.endsWith(" Z")
+        && model.edgeThicknessMm >= 0
+        && model.remainingFlatLandMm >= -1e-9
+        && state.lenses[index].mechanicalDiameter >= state.lenses[index].clearApertureDiameter;
+    });
+  }));
+
+  test("enabled bevels remove knife edges and are included in filled polygons", () => {
+    const lens = normalizeLens({
+      diameter: 20,
+      clearApertureDiameter: 20,
+      mechanicalDiameter: 24,
+      chipZoneWidthMm: 0.5,
+      thickness: 8,
+      r1: 100,
+      r2: -100,
+      refractiveIndex: 1.5168,
+      frontBevelEnabled: true,
+      rearBevelEnabled: true,
+      frontBevelFaceWidthMm: 0.3,
+      rearBevelFaceWidthMm: 0.3,
+      minimumFlatLandMm: 0.2
+    });
+    const model = buildPrescriptionLensRenderModel(
+      { start: 10, end: 18, center: 14, thickness: 8, diameter: 20 },
+      { x: (value) => value, y: (value) => value },
+      { valid: true, diameter: 20, thickness: 8, r1: 100, r2: -100 },
+      lens,
+      0,
+      []
+    );
+    return model?.manufacturable
+      && model.frontRuns.radialRun > 0
+      && model.rearRuns.radialRun > 0
+      && model.polygonPath.endsWith(" Z")
+      && model.frontBevelTop.outer.y > model.frontBevelTop.optical.y
+      && model.rearBevelTop.outer.y > model.rearBevelTop.optical.y;
+  });
+
+  test("bevel remains outside clear aperture and chip zone", () => {
+    const lens = normalizeLens({
+      diameter: 18,
+      clearApertureDiameter: 18,
+      mechanicalDiameter: 24,
+      chipZoneWidthMm: 0.5,
+      thickness: 7,
+      r1: 90,
+      r2: -90,
+      refractiveIndex: 1.5168,
+      frontBevelFaceWidthMm: 0.3,
+      rearBevelFaceWidthMm: 0.3
+    });
+    const geometry = resolveManufacturingEdgeGeometry(
+      { x: 17, radius: 90, asphere: null },
+      { x: 10, radius: -90, asphere: null },
+      lens,
+      12
+    );
+    return geometry.manufacturable
+      && geometry.clearApertureRadius <= geometry.chipZoneRadius
+      && geometry.chipZoneRadius <= geometry.frontBevelStartRadius + 1e-9
+      && geometry.chipZoneRadius <= geometry.rearBevelStartRadius + 1e-9
+      && geometry.remainingFlatLandMm >= geometry.minimumFlatLandMm - 1e-9;
+  });
+
+  test("ray clipping uses clear aperture rather than mechanical diameter", () => {
+    const lens = normalizeLens({
+      diameter: 10,
+      clearApertureDiameter: 10,
+      mechanicalDiameter: 20,
+      thickness: 6,
+      r1: 80,
+      r2: -80,
+      refractiveIndex: 1.5168
+    });
+    const system = calculateSystem([lens]);
+    const surfaces = buildSurfaceList([lens], system, { apertureDiameter: 20 });
+    const opticalSurface = surfaces.find((surface) => !surface.isStop);
+    return Math.abs(opticalSurface.semiDiameter - 5) < 1e-9;
+  });
+
+  test("invalid edge geometry warns instead of drawing a self-intersecting polygon", () => {
+    const lens = normalizeLens({
+      diameter: 18,
+      clearApertureDiameter: 18,
+      mechanicalDiameter: 19,
+      chipZoneWidthMm: 0.5,
+      thickness: 0.5,
+      r1: 12,
+      r2: -12,
+      refractiveIndex: 1.5168,
+      frontBevelFaceWidthMm: 0.4,
+      rearBevelFaceWidthMm: 0.4,
+      minimumFlatLandMm: 0.4
+    });
+    const model = buildPrescriptionLensRenderModel(
+      { start: 10, end: 10.5, center: 10.25, thickness: 0.5, diameter: 18 },
+      { x: (value) => value, y: (value) => value },
+      { valid: true, diameter: 18, thickness: 0.5, r1: 12, r2: -12 },
+      lens,
+      0,
+      []
+    );
+    return model?.manufacturable === false
+      && model.polygonPath === ""
+      && /Insufficient edge thickness|cannot coexist|intersect/.test(model.geometryWarning);
+  });
+
+  test("cemented interfaces have no internal bevel or false notch", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    state.cementedInterfaceBevelMode = "hidden";
+    const system = calculateSystem(state.lenses);
+    const positions = lensPositions(system, state.lenses);
+    return state.lenses.every((lens, index) => {
+      const model = buildPrescriptionLensRenderModel(
+        positions[index],
+        { x: (value) => value, y: (value) => value },
+        system.results[index],
+        lens,
+        index,
+        []
+      );
+      return (!lens.patentFrontSharedCementedSurface || model.frontRuns.radialRun === 0)
+        && (!lens.patentRearCementedToNextGlass || model.rearRuns.radialRun === 0);
+    });
+  }));
+
+  test("aspherical surfaces support bevel geometry", () => {
+    const lens = normalizeLens({
+      diameter: 16,
+      clearApertureDiameter: 16,
+      mechanicalDiameter: 22,
+      thickness: 8,
+      r1: 60,
+      r2: -80,
+      refractiveIndex: 1.5168,
+      frontAsphereEnabled: true,
+      frontConicK: -0.8,
+      frontA4: 1e-6
+    });
+    const model = buildPrescriptionLensRenderModel(
+      { start: 10, end: 18, center: 14, thickness: 8, diameter: 16 },
+      { x: (value) => value, y: (value) => value },
+      { valid: true, diameter: 16, thickness: 8, r1: 60, r2: -80 },
+      lens,
+      0,
+      []
+    );
+    return model?.manufacturable
+      && model.frontSurface.asphere.active
+      && model.frontRuns.radialRun > 0
+      && !/NaN|Infinity/.test(model.polygonPath);
+  });
+
+  test("disabling bevel restores mathematical outline without changing ray trace", () => {
+    const base = normalizeLens({
+      diameter: 18,
+      clearApertureDiameter: 18,
+      mechanicalDiameter: 22,
+      thickness: 7,
+      r1: 90,
+      r2: -90,
+      refractiveIndex: 1.5168
+    });
+    const noBevel = normalizeLens({
+      ...base,
+      frontBevelEnabled: false,
+      rearBevelEnabled: false
+    });
+    const systemA = calculateSystem([base]);
+    const systemB = calculateSystem([noBevel]);
+    const traceA = traceSystemRealRays([base], systemA, { rayCount: 9, apertureDiameter: 12 });
+    const traceB = traceSystemRealRays([noBevel], systemB, { rayCount: 9, apertureDiameter: 12 });
+    const model = buildPrescriptionLensRenderModel(
+      { start: 10, end: 17, center: 13.5, thickness: 7, diameter: 18 },
+      { x: (value) => value, y: (value) => value },
+      { valid: true, diameter: 18, thickness: 7, r1: 90, r2: -90 },
+      noBevel,
+      0,
+      []
+    );
+    return model?.frontRuns.radialRun === 0
+      && model.rearRuns.radialRun === 0
+      && traceA.validRayCount === traceB.validRayCount
+      && Math.abs(traceA.rmsSpotRadius - traceB.rmsSpotRadius) < 1e-12;
+  });
+
+  test("missing patent air gaps default to editable 0.1 mm", () => {
+    const lenses = surfacePrescriptionToDerivedLenses({
+      focalLength: 50,
+      apertureRatio: "1:2",
+      surfaces: [
+        { no: 1, radius: 50, distanceToNext: 4, nAfter: 1.5, vdAfter: 50 },
+        { no: 2, radius: -50, distanceToNext: null },
+        { no: 3, radius: 45, distanceToNext: 3, nAfter: 1.6, vdAfter: 40 },
+        { no: 4, radius: -45, distanceToNext: null }
+      ]
+    });
+    return lenses.length === 2
+      && Math.abs(lenses[0].gapAfter - PATENT_DEFAULT_MISSING_AIR_GAP_MM) < 1e-9
+      && lenses[0].patentGapEstimated === true;
+  });
+
+  test("cemented patent glass surfaces become one glass-to-glass interface", () => {
+    const lenses = prescriptionToLenses(clonePresetPrescription(DEFAULT_PRESET_KEY));
+    const system = calculateSystem(lenses);
+    const surfaces = buildSurfaceList(lenses, system, {
+      apertureStopMode: "auto",
+      apertureStopIndex: "lens-0-front",
+      apertureDiameter: 20,
+      wavelengthNm: SPECTRAL_LINES.d.wavelengthNm
+    });
+    const cementedSurfaces = surfaces.filter((surface) => surface.isCementedInterface);
+    return surfaces.length === 10
+      && cementedSurfaces.length === 2
+      && cementedSurfaces.every((surface) => surface.nBefore > 1 && surface.nAfter > 1)
+      && !surfaces.some((surface) => surface.lensIndex === 2 && surface.surfaceIndex === 0)
+      && !surfaces.some((surface) => surface.lensIndex === 4 && surface.surfaceIndex === 0);
+  });
+
+  test("manual aperture stop position changes resolved ray-trace stop", () => {
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses);
+    const nearSensor = traceSystemRealRays(lenses, system, {
+      rayCount: 5,
+      apertureDiameter: 8,
+      apertureStopMode: "distanceFromSensor",
+      apertureStopDistanceFromSensorMm: 5
+    });
+    const nearFront = traceSystemRealRays(lenses, system, {
+      rayCount: 5,
+      apertureDiameter: 8,
+      apertureStopMode: "distanceFromFront",
+      apertureStopDistanceFromFrontMm: 0
+    });
+    const stopA = nearSensor.surfaces.find((surface) => surface.isStop);
+    const stopB = nearFront.surfaces.find((surface) => surface.isStop);
+    return Number.isFinite(stopA?.x)
+      && Number.isFinite(stopB?.x)
+      && Math.abs(stopA.x - stopB.x) > 1
+      && nearSensor.totalRayCount > 0
+      && nearFront.totalRayCount > 0;
+  });
+
+  test("patent STOP surface is detected when available", () => withTemporaryState(() => {
+    setCurrentPrescription(clonePresetPrescription("gaussF2Us4123144Ex1"));
+    const system = calculateSystem(state.lenses);
+    const surfaces = buildSurfaceList(state.lenses, system, {
+      apertureStopMode: "patentStop",
+      apertureDiameter: 20,
+      wavelengthNm: SPECTRAL_LINES.d.wavelengthNm
+    });
+    const stop = surfaces.find((surface) => surface.isStop);
+    return stop?.patentSurfaceNumber === 6
+      && Number.isFinite(stop.x)
+      && String(stop.stopSource || stop.label).includes("Patent STOP surface 6");
+  }));
+
+  test("invalid aperture stop inputs fall back safely", () => {
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses);
+    const trace = traceSystemRealRays(lenses, system, {
+      rayCount: 5,
+      apertureDiameter: 8,
+      apertureStopMode: "surfaceNumber",
+      apertureStopSurfaceNumber: 999
+    });
+    const stop = trace.surfaces.find((surface) => surface.isStop);
+    return Number.isFinite(stop?.x)
+      && (stop.stopWarning || "").includes("using the auto aperture stop")
+      && trace.totalRayCount > 0;
+  });
+
+  test("Biotar stop resolves to midpoint after patent surface 5", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    const system = calculateSystem(state.lenses);
+    const surfaces = buildSurfaceList(state.lenses, system, rayTraceApertureOptions(state));
+    const stop = surfaces.find((surface) => surface.isStop);
+    const surface5 = surfaces.find((surface) => toNumber(surface.patentSurfaceNumber) === 5);
+    return state.apertureStopMode === "surfaceNumber"
+      && state.apertureStopSurfaceNumber === 5
+      && Math.abs(state.apertureStopSurfaceOffsetMm - 4.725) < 1e-9
+      && Math.abs(stop.x - (surface5.x - 4.725)) < 1e-9;
+  }));
+
+  test("2D and 3D ray bundles share the resolved stop configuration", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    const system = calculateSystem(state.lenses);
+    const options = { ...rayTraceApertureOptions(state), rayCount: 7, sampleCount: 7 };
+    const trace2D = traceSystemRealRays(state.lenses, system, options);
+    const trace3D = traceSystem3D(state.lenses, system, options);
+    const stop2D = trace2D.surfaces.find((surface) => surface.isStop);
+    const stop3D = trace3D.surfaces.find((surface) => surface.isStop);
+    return Math.abs(stop2D.x - stop3D.x) < 1e-9
+      && Math.abs(stop2D.stopSemiDiameter - stop3D.stopSemiDiameter) < 1e-9;
+  }));
+
+  test("entrance-pupil patent matching approaches f/1.4", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    const system = calculateSystem(state.lenses);
+    const pupil = calculateEntrancePupil(state.lenses, system, {
+      ...rayTraceApertureOptions(state),
+      prescription: state.prescription
+    });
+    const workingFNumber = Math.abs(system.effectiveFocalLength) / pupil.entrancePupilDiameter;
+    return Number.isFinite(pupil.entrancePupilDiameter)
+      && pupil.entrancePupilDiameter > 0
+      && Math.abs(workingFNumber - 1.4) < 0.08;
+  }));
+
+  test("verified Sony Planar patent keeps per-surface aspheres", () => {
+    const asphericSurfaces = PRESETS.sonyZeissPlanar50F14Us20140071331Ex4.surfaces.filter((surface) => surface.asphere?.enabled);
+    return asphericSurfaces.length === 2
+      && asphericSurfaces[0].no === 5
+      && Math.abs(asphericSurfaces[0].asphere.A4 + 1.05e-6) < 1e-15
+      && asphericSurfaces[1].no === 14
+      && Math.abs(asphericSurfaces[1].asphere.k + 1.6554) < 1e-12;
+  });
+
+  test("Sony Planar patent preset derives aspherical lenses", () => {
+    const prescription = clonePresetPrescription("sonyZeissPlanar50F14Us20140071331Ex4");
+    const lenses = prescriptionToLenses(prescription);
+    return lenses.length > 0
+      && lenses.some((lens) => lens.frontAsphereEnabled === true && Math.abs(lens.frontA4 + 1.05e-6) < 1e-15)
+      && lenses.some((lens) => lens.rearAsphereEnabled === true && Math.abs(lens.rearConicK + 1.6554) < 1e-12);
+  });
+
+  test("loading the default Biotar patent preset does not crash", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    const system = calculateSystem(state.lenses);
+    return state.preset === DEFAULT_PRESET_KEY
+      && state.prescription.prescriptionType === "surface"
+      && Array.isArray(state.prescription.surfaces)
+      && Number.isFinite(system.totalTrack);
+  }));
+
+  test("reset from custom loads the Biotar patent preset", () => withTemporaryState(() => {
+    state.preset = "custom";
+    loadPresetIntoState(state.preset === "custom" ? DEFAULT_PRESET_KEY : state.preset);
+    return state.preset === DEFAULT_PRESET_KEY && state.prescription.prescriptionType === "surface";
+  }));
+
+  test("surface table renders the Biotar patent surfaces", () => {
+    const markup = renderSurfacePrescriptionPanel([], PRESETS[DEFAULT_PRESET_KEY]);
+    return markup.includes("Patent source prescription") && markup.includes("US1786916");
+  });
+
+  test("patent surface normalizer preserves per-surface asphere fields", () => {
+    const surface = normalizePatentSurface({
+      no: 5,
+      radius: 28.547,
+      distanceToNext: 7.17,
+      nAfter: 1.851348,
+      vdAfter: 40.1,
+      asphere: {
+        enabled: true,
+        k: 0,
+        A4: -1.05e-6,
+        A6: -6.57e-10,
+        A8: -1.73e-12,
+        A10: 4.21e-15
+      }
+    });
+    return surface.asphere?.enabled === true
+      && surface.asphere.k === 0
+      && Math.abs(surface.asphere.A4 + 1.05e-6) < 1e-15
+      && Math.abs(surface.asphere.A10 - 4.21e-15) < 1e-22;
+  });
+
+  test("patent-style asphere k affects sag calculation", () => {
+    const spherical = evaluateAsphereSag(50, { enabled: true, k: 0, A4: 0, A6: 0, A8: 0, A10: 0 }, 10);
+    const conic = evaluateAsphereSag(50, { enabled: true, k: -1, A4: 0, A6: 0, A8: 0, A10: 0 }, 10);
+    return spherical.valid && conic.valid && Math.abs(spherical.sag - conic.sag) > 0.001;
+  });
+
+  test("patent surface table shows ASP and asphere coefficients", () => {
+    const preset = {
+      ...PRESETS[DEFAULT_PRESET_KEY],
+      surfaces: [normalizePatentSurface({
+        no: 1,
+        radius: 30,
+        distanceToNext: 2,
+        nAfter: 1.5,
+        vdAfter: 50,
+        asphere: { enabled: true, k: -1, A4: 1e-6 }
+      })],
+      patentDataStatus: "entered"
+    };
+    const markup = renderSurfacePrescriptionPanel([], preset);
+    return markup.includes("ASP") && markup.includes("0.000001");
+  });
+
+  test("manual preset still works when selected manually", () => {
+    const lenses = clonePresetLenses("manual");
+    return lenses.length === 2 && calculateSystem(lenses).validCount > 0;
+  });
+
+  test("generated analysis reset clears tolerance and ray fan exports", () => withTemporaryState(() => {
+    state.tolerancePreview = { fake: true };
+    state.toleranceResult = { fake: true };
+    state.toleranceCopyStatus = "Copied";
+    state.toleranceExportText = "csv";
+    state.toleranceGeneratedWarning = "warning";
+    state.stRayFanCopyStatus = "Copied";
+    state.stRayFanExportText = "csv";
+    resetGeneratedAnalysisState();
+    return state.tolerancePreview === null
+      && state.toleranceResult === null
+      && state.toleranceCopyStatus === ""
+      && state.toleranceExportText === ""
+      && state.toleranceGeneratedWarning === ""
+      && state.stRayFanCopyStatus === ""
+      && state.stRayFanExportText === "";
+  }));
+
+  test("wide-angle presets apply corner analysis defaults", () => withTemporaryState(() => {
+    applyAnalysisDefaults("sonyFe24F14Wo2019073744Ex1");
+    return state.rayFanFieldPreset === "corner"
+      && state.stRayFanFieldPreset === "corner"
+      && state.diffractionMtfFieldKey === "corner"
+      && state.wavefrontFieldKey === "corner"
+      && state.waveOpticsFieldKey === "corner"
+      && state.polyMtfFieldKey === "corner"
+      && state.rayTrace3DFieldAngleDegrees === 20;
+  }));
+
+  test("normal presets apply mid-field analysis defaults", () => withTemporaryState(() => {
+    applyAnalysisDefaults("doubleGauss");
+    return state.rayFanFieldPreset === "mid"
+      && state.stRayFanFieldPreset === "mid"
+      && state.diffractionMtfFieldKey === "mid"
+      && state.wavefrontFieldKey === "mid"
+      && state.waveOpticsFieldKey === "mid"
+      && state.polyMtfFieldKey === "mid"
+      && state.rayTrace3DFieldAngleDegrees === 10;
+  }));
+
+  test("portrait telephoto presets apply centre analysis defaults", () => withTemporaryState(() => {
+    applyAnalysisDefaults("petzval");
+    return state.rayFanFieldPreset === "center"
+      && state.stRayFanFieldPreset === "mid"
+      && state.diffractionMtfFieldKey === "center"
+      && state.wavefrontFieldKey === "center"
+      && state.waveOpticsFieldKey === "center"
+      && state.polyMtfFieldKey === "center"
+      && state.rayTrace3DFieldAngleDegrees === 6;
+  }));
+
+  test("loading saved designs clears generated analysis", () => withTemporaryState(() => {
+    state.toleranceResult = { fake: true };
+    state.stRayFanExportText = "old csv";
+    loadDesign({
+      name: "Self-check design",
+      lenses: serializeDesign()
+    });
+    return state.toleranceResult === null && state.stRayFanExportText === "";
+  }));
+
+  test("saved designs without glassKey migrate to custom glass", () => {
+    const migrated = normalizeLens({ diameter: 40, thickness: 5, refractiveIndex: 1.61, r1: 90, r2: -90, gapAfter: 0 });
+    return migrated.glassKey === "custom" && migrated.customNd === 1.61 && migrated.customVd === 40;
+  });
+
+  test("uncoated BK7 air glass reflectance is around four percent", () => {
+    const reflectance = calculateSurfaceReflectance({
+      nBefore: 1,
+      nAfter: GLASS_CATALOG.bk7.nd,
+      coatingKey: "uncoated"
+    }, "d").reflectance;
+    return reflectance > 0.035 && reflectance < 0.045;
+  });
+
+  test("multi-coated surfaces have lower reflectance than uncoated", () => {
+    const uncoated = calculateSurfaceReflectance({ nBefore: 1, nAfter: 1.5168, coatingKey: "uncoated" }, "d").reflectance;
+    const multi = calculateSurfaceReflectance({ nBefore: 1, nAfter: 1.5168, coatingKey: "multiCoated" }, "d").reflectance;
+    return multi < uncoated;
+  });
+
+  test("more coated surfaces reduce total transmission", () => {
+    const lens = { diameter: 40, thickness: 5, glassKey: "bk7", r1: 80, r2: -80, gapAfter: 0, internalTransmissionPerMm: 1 };
+    const one = [{ ...lens, frontCoatingKey: "multiCoated", rearCoatingKey: "multiCoated" }];
+    const two = [...one, { ...lens, gapAfter: 0 }];
+    const oneTransmission = calculateSystemTransmission(one, calculateSystem(one)).dLineTransmission;
+    const twoTransmission = calculateSystemTransmission(two, calculateSystem(two)).dLineTransmission;
+    return twoTransmission < oneTransmission;
+  });
+
+  test("lower internal transmission per mm reduces total transmission", () => {
+    const base = { diameter: 40, thickness: 10, glassKey: "bk7", r1: 80, r2: -80, gapAfter: 0, frontCoatingKey: "multiCoated", rearCoatingKey: "multiCoated" };
+    const clear = [{ ...base, internalTransmissionPerMm: 1 }];
+    const absorbing = [{ ...base, internalTransmissionPerMm: 0.98 }];
+    return calculateSystemTransmission(absorbing, calculateSystem(absorbing)).dLineTransmission
+      < calculateSystemTransmission(clear, calculateSystem(clear)).dLineTransmission;
+  });
+
+  test("T-stop is equal to or higher than f-number", () => {
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses);
+    const result = calculateSystemTransmission(lenses, system, { apertureDiameter: 20 });
+    return Number.isFinite(result.tStop) && Number.isFinite(result.fNumber) && result.tStop >= result.fNumber;
+  });
+
+  test("transmission values stay between zero and one", () => {
+    const lenses = clonePresetLenses("manual");
+    const result = calculateSystemTransmission(lenses, calculateSystem(lenses));
+    return Object.values(result.lineResults).every((line) => (
+      line.totalTransmission >= 0 && line.totalTransmission <= 1
+      && line.surfaceTransmission >= 0 && line.surfaceTransmission <= 1
+      && line.internalTransmission >= 0 && line.internalTransmission <= 1
+    ));
+  });
+
+  test("invalid coating values do not crash", () => {
+    const lenses = [{
+      diameter: 40,
+      thickness: 5,
+      glassKey: "bk7",
+      r1: 80,
+      r2: -80,
+      gapAfter: 0,
+      frontCoatingKey: "not-real",
+      rearCoatingKey: "also-bad",
+      internalTransmissionPerMm: "bad"
+    }];
+    const normalized = normalizeLens(lenses[0]);
+    const result = calculateSystemTransmission(lenses, calculateSystem(lenses));
+    return normalized.frontCoatingKey === "multiCoated"
+      && normalized.rearCoatingKey === "multiCoated"
+      && Number.isFinite(result.dLineTransmission);
+  });
+
+  test("seeded random produces repeatable values", () => {
+    const a = createSeededRandom(42);
+    const b = createSeededRandom(42);
+    const first = [a(), a(), a()];
+    const second = [b(), b(), b()];
+    return first.every((value, index) => Math.abs(value - second[index]) < 0.000001);
+  });
+
+  test("same tolerance seed gives same generated sample", () => {
+    const lenses = clonePresetLenses("manual");
+    const settings = { ...DEFAULT_TOLERANCE_SETTINGS, radiusToleranceMm: 0.5 };
+    const first = generateTolerancedDesign(lenses, settings, 100).changes.map((change) => change.difference);
+    const second = generateTolerancedDesign(lenses, settings, 100).changes.map((change) => change.difference);
+    return first.length === second.length && first.every((value, index) => Math.abs(value - second[index]) < 0.000001);
+  });
+
+  test("different tolerance seed gives different generated sample", () => {
+    const lenses = clonePresetLenses("manual");
+    const settings = { ...DEFAULT_TOLERANCE_SETTINGS, radiusToleranceMm: 0.5 };
+    const first = generateTolerancedDesign(lenses, settings, 100).changes.map((change) => change.difference).join(",");
+    const second = generateTolerancedDesign(lenses, settings, 101).changes.map((change) => change.difference).join(",");
+    return first !== second;
+  });
+
+  test("zero tolerances produce identical design values", () => {
+    const lenses = clonePresetLenses("manual");
+    const zeroSettings = {
+      ...DEFAULT_TOLERANCE_SETTINGS,
+      radiusToleranceMm: 0,
+      thicknessToleranceMm: 0,
+      airGapToleranceMm: 0,
+      diameterToleranceMm: 0,
+      refractiveIndexTolerance: 0,
+      abbeTolerance: 0,
+      decenterToleranceMm: 0,
+      tiltToleranceDegrees: 0
+    };
+    const sample = generateTolerancedDesign(lenses, zeroSettings, 10);
+    return sample.changes.length === 0
+      && sample.lenses.every((lens, index) => (
+        lens.r1 === lenses[index].r1
+        && lens.r2 === lenses[index].r2
+        && lens.thickness === lenses[index].thickness
+        && lens.gapAfter === lenses[index].gapAfter
+      ));
+  });
+
+  test("radius tolerance changes r1 or r2", () => {
+    const lenses = clonePresetLenses("manual");
+    const sample = generateTolerancedDesign(lenses, { ...DEFAULT_TOLERANCE_SETTINGS, radiusToleranceMm: 1, thicknessToleranceMm: 0, airGapToleranceMm: 0, diameterToleranceMm: 0, refractiveIndexTolerance: 0, abbeTolerance: 0, decenterToleranceMm: 0, tiltToleranceDegrees: 0 }, 11);
+    return sample.changes.some((change) => change.field === "r1" || change.field === "r2");
+  });
+
+  test("thickness tolerance changes thickness", () => {
+    const lenses = clonePresetLenses("manual");
+    const sample = generateTolerancedDesign(lenses, { ...DEFAULT_TOLERANCE_SETTINGS, radiusToleranceMm: 0, thicknessToleranceMm: 0.5, airGapToleranceMm: 0, diameterToleranceMm: 0, refractiveIndexTolerance: 0, abbeTolerance: 0, decenterToleranceMm: 0, tiltToleranceDegrees: 0 }, 12);
+    return sample.changes.some((change) => change.field === "thickness");
+  });
+
+  test("refractive index tolerance changes customNd or refractiveIndex", () => {
+    const lenses = clonePresetLenses("manual");
+    const sample = generateTolerancedDesign(lenses, { ...DEFAULT_TOLERANCE_SETTINGS, radiusToleranceMm: 0, thicknessToleranceMm: 0, airGapToleranceMm: 0, diameterToleranceMm: 0, refractiveIndexTolerance: 0.001, abbeTolerance: 0, decenterToleranceMm: 0, tiltToleranceDegrees: 0 }, 13);
+    return sample.changes.some((change) => change.field === "customNd")
+      && sample.lenses.some((lens) => lens.glassKey === "custom");
+  });
+
+  test("Monte Carlo returns requested number of runs", () => {
+    const lenses = clonePresetLenses("manual");
+    const result = runToleranceMonteCarlo(lenses, calculateSystem(lenses), {
+      settings: { ...DEFAULT_TOLERANCE_SETTINGS, monteCarloRuns: 3, seed: 20 },
+      runs: 3,
+      seed: 20
+    });
+    return result.runsCompleted === 3 && result.runs.length === 3;
+  });
+
+  test("tolerance metrics remain finite or safely invalid", () => {
+    const lenses = clonePresetLenses("manual");
+    const result = runToleranceMonteCarlo(lenses, calculateSystem(lenses), {
+      settings: { ...DEFAULT_TOLERANCE_SETTINGS, monteCarloRuns: 2, seed: 21 },
+      runs: 2,
+      seed: 21
+    });
+    return result.runs.every((run) => ["worstRmsSpotRadius", "worstMtf40", "rmsOpdWaves", "strehl"].every((field) => (
+      Number.isFinite(run.metrics[field]) || Number.isNaN(run.metrics[field])
+    )));
+  });
+
+  test("tolerance pass rate stays between zero and one", () => {
+    const lenses = clonePresetLenses("manual");
+    const result = runToleranceMonteCarlo(lenses, calculateSystem(lenses), {
+      settings: { ...DEFAULT_TOLERANCE_SETTINGS, monteCarloRuns: 2, seed: 22 },
+      runs: 2,
+      seed: 22
+    });
+    return result.passRate >= 0 && result.passRate <= 1;
+  });
+
+  test("tolerance CSV export returns valid text", () => {
+    const lenses = clonePresetLenses("manual");
+    const result = runToleranceMonteCarlo(lenses, calculateSystem(lenses), {
+      settings: { ...DEFAULT_TOLERANCE_SETTINGS, monteCarloRuns: 2, seed: 23 },
+      runs: 2,
+      seed: 23
+    });
+    const csv = exportToleranceCsv(result);
+    return csv.includes("runIndex,seed,pass") && csv.split("\n").length === 3;
+  });
+
+  test("invalid tolerance values do not crash", () => {
+    const lenses = clonePresetLenses("manual");
+    const result = runToleranceMonteCarlo(lenses, calculateSystem(lenses), {
+      settings: { ...DEFAULT_TOLERANCE_SETTINGS, radiusToleranceMm: -1, monteCarloRuns: "bad", seed: "bad" },
+      runs: 1
+    });
+    return result.runsCompleted === 1 && result.settings.radiusToleranceMm === 0;
+  });
+
+  test("zero optimizer iterations do not change design", () => {
+    const lenses = clonePresetLenses("manual");
+    const result = runOptimizer(lenses, { ...optimizerQuickOptions, iterations: 0 });
+    return result.progress.length === 1
+      && result.best.candidate.lenses.every((lens, index) => (
+        lens.r1 === normalizeLens(lenses[index]).r1
+        && lens.r2 === normalizeLens(lenses[index]).r2
+        && lens.thickness === normalizeLens(lenses[index]).thickness
+        && lens.gapAfter === normalizeLens(lenses[index]).gapAfter
+      ));
+  });
+
+  test("same optimizer seed gives same optimized result", () => {
+    const lenses = clonePresetLenses("manual");
+    const first = runOptimizer(lenses, { ...optimizerQuickOptions, seed: 123 });
+    const second = runOptimizer(lenses, { ...optimizerQuickOptions, seed: 123 });
+    return Math.abs(first.best.evaluation.score - second.best.evaluation.score) < 0.000001
+      && first.best.candidate.lenses.every((lens, index) => Math.abs(lens.r1 - second.best.candidate.lenses[index].r1) < 0.000001);
+  });
+
+  test("optimizer invalid candidates are rejected", () => {
+    const lenses = clonePresetLenses("manual");
+    const candidate = clampOptimizationCandidate({ lenses, apertureDiameter: 20 });
+    const system = calculateSystem(candidate.lenses, SPECTRAL_LINES.d.wavelengthNm);
+    return candidateViolatesConstraints(candidate, system, { ...optimizerQuickOptions, maxTrackLength: 1 });
+  });
+
+  test("optimizer merit improves or stays the same", () => {
+    const lenses = clonePresetLenses("manual");
+    const result = runOptimizer(lenses, optimizerQuickOptions);
+    return result.best.evaluation.score <= result.baselineEval.score;
+  });
+
+  test("optimized design remains valid", () => {
+    const lenses = clonePresetLenses("manual");
+    const result = runOptimizer(lenses, optimizerQuickOptions);
+    const system = calculateSystem(result.best.candidate.lenses, SPECTRAL_LINES.d.wavelengthNm);
+    return system.validCount === result.best.candidate.lenses.length
+      && result.best.candidate.lenses.every((lens) => lens.thickness > 0 && lens.diameter > 0 && lens.gapAfter >= 0);
+  });
+
+  test("optimizer baseline can restore original design values", () => {
+    const lenses = clonePresetLenses("manual");
+    const result = runOptimizer(lenses, optimizerQuickOptions);
+    const restored = cloneOptimizerLenses(result.baseline.lenses);
+    return restored.every((lens, index) => (
+      lens.r1 === normalizeLens(lenses[index]).r1
+      && lens.r2 === normalizeLens(lenses[index]).r2
+      && lens.thickness === normalizeLens(lenses[index]).thickness
+      && lens.gapAfter === normalizeLens(lenses[index]).gapAfter
+    ));
+  });
+
+  test("optimizer CSV report returns valid text", () => {
+    const lenses = clonePresetLenses("manual");
+    const result = runOptimizer(lenses, optimizerQuickOptions);
+    const csv = exportOptimizerCsv(result);
+    return csv.startsWith("iteration,bestScore") && csv.includes("baselineScore") && csv.includes("bestScore");
+  });
+
+  test("optimizer constraints prevent impossible values", () => {
+    const lenses = clonePresetLenses("manual").map((lens) => ({ ...lens, thickness: -5, diameter: 999, gapAfter: -10, glassKey: "custom", customNd: 4, customVd: -2 }));
+    const candidate = clampOptimizationCandidate({ lenses, apertureDiameter: 999 });
+    return candidate.apertureDiameter <= Math.max(...candidate.lenses.map((lens) => lens.diameter))
+      && candidate.lenses.every((lens) => (
+        lens.thickness >= 0.5
+        && lens.diameter <= 120
+        && lens.gapAfter >= 0
+        && lens.customNd <= 1.9
+        && lens.customVd >= 20
+      ));
+  });
+
+  test("optimizer completes 25 browser-safe iterations", () => {
+    const lenses = clonePresetLenses("manual");
+    const result = runOptimizer(lenses, { ...optimizerQuickOptions, iterations: 25 });
+    return result.progress.length === 26 && Number.isFinite(result.best.evaluation.score);
+  });
+
+  test("ray tracing still works with aperture stop and d-line glass", () => {
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const trace = traceSystemRealRays(lenses, system, {
+      rayCount: 9,
+      apertureStopIndex: "frontGroup",
+      apertureDiameter: 12,
+      wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+      spectralLineKey: "d"
+    });
+    return trace.validRayCount > 0 && trace.surfaces.some((surface) => surface.isStop);
+  });
+
+  test("spot diagram renders from spectral overlay data", () => {
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const traces = traceSpectralFieldSet(lenses, system, { rayCount: 5, apertureDiameter: 12 });
+    return renderSingleSpotDiagram(traces.filter((trace) => trace.fieldKey === "center")).includes("spot-diagram");
+  });
+
+  test("invalid glass values do not crash", () => {
+    const lens = { diameter: 40, thickness: 5, glassKey: "custom", customNd: "bad", customVd: 0, r1: 80, r2: -80, gapAfter: 0 };
+    const system = calculateSystem([lens]);
+    const trace = traceSystemRealRays([lens], system, { rayCount: 5, apertureDiameter: 10 });
+    return system.validCount === 1 && trace.totalRayCount === 5;
+  });
+
+  test("ray-traced image circle sampler returns field samples", () => {
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const result = sampleImageCircleCoverage(lenses, system, {
+      maxFieldAngleDegrees: 5,
+      fieldStepDegrees: 2.5,
+      rayCountPerField: 5,
+      apertureDiameter: 20,
+      apertureStopIndex: "frontGroup"
+    });
+    return result.samples.length >= 3 && result.coverageFormats.length === 3;
+  });
+
+  test("RGB worst-case image circle sampler does not crash", () => {
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const result = sampleImageCircleCoverage(lenses, system, {
+      maxFieldAngleDegrees: 3,
+      fieldStepDegrees: 3,
+      rayCountPerField: 5,
+      wavelengthMode: "rgbWorst",
+      apertureDiameter: 20
+    });
+    return result.samples.length === 2 && result.samples.every((sample) => sample.traces.length === 3);
+  });
+
+  test("transverse ray fan returns pupil samples", () => {
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const fan = calculateRayFan(lenses, system, {
+      fieldAngleDegrees: 10,
+      rayCount: 7,
+      apertureDiameter: 20
+    });
+    return fan.samples.length === 7 && fan.samples.some((sample) => Number.isFinite(sample.transverseError));
+  });
+
+  test("aberration graph calculations do not crash", () => {
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const longitudinal = calculateLongitudinalAberration(lenses, system, { rayCount: 7, apertureDiameter: 20 });
+    const distortion = calculateDistortionCurve(lenses, system, { rayCount: 5, maxFieldAngleDegrees: 6, fieldStepDegrees: 3, apertureDiameter: 20 });
+    const curvature = estimateBestFocusByField(lenses, system, { rayCount: 5, maxFieldAngleDegrees: 6, fieldStepDegrees: 3, apertureDiameter: 20 });
+    return longitudinal.samples.length === 7 && distortion.samples.length >= 3 && curvature.samples.length >= 3;
+  });
+
+  test("central 3D meridional ray matches 2D trace when z is zero", () => {
+    const lenses = [{ diameter: 40, thickness: 6, refractiveIndex: 1.5168, r1: 80, r2: -80, gapAfter: 0 }];
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const surfaces = buildSurfaceList(lenses, system, { apertureDiameter: 20 });
+    const ray2D = traceRay({ x: surfaces[0].x + 20, y: 4, dx: -1, dy: 0 }, surfaces);
+    const ray3D = traceRay3D({ x: surfaces[0].x + 20, y: 4, z: 0, dx: -1, dy: 0, dz: 0 }, surfaces);
+    return ray2D.status === "valid"
+      && ray3D.status === "valid"
+      && Math.abs(ray2D.finalRay.x - ray3D.finalRay.x) < 0.000001
+      && Math.abs(ray2D.finalRay.y - ray3D.finalRay.y) < 0.000001
+      && Math.abs(ray2D.finalRay.dx - ray3D.finalRay.dx) < 0.000001
+      && Math.abs(ray2D.finalRay.dy - ray3D.finalRay.dy) < 0.000001
+      && Math.abs(ray3D.finalRay.dz) < 0.000001;
+  });
+
+  test("3D plano surface does not crash", () => {
+    const surface = { x: 0, radius: 0, semiDiameter: 10, nBefore: 1, nAfter: 1 };
+    const traced = traceRay3D({ x: 5, y: 1, z: 1, dx: -1, dy: 0, dz: 0 }, [surface]);
+    return traced.status === "valid" && traced.path.length === 2;
+  });
+
+  test("3D aperture clips by radial height", () => {
+    const surface = { x: 0, radius: 0, semiDiameter: 1, nBefore: 1, nAfter: 1, isStop: true };
+    const traced = traceRay3D({ x: 5, y: 0.8, z: 0.8, dx: -1, dy: 0, dz: 0 }, [surface]);
+    return traced.status === "missed aperture";
+  });
+
+  test("3D glass dispersion still changes trace result", () => {
+    const lenses = [{ diameter: 40, thickness: 6, glassKey: "sf10", refractiveIndex: 1.728, r1: 80, r2: -80, gapAfter: 0 }];
+    const redSystem = calculateSystem(lenses, SPECTRAL_LINES.C.wavelengthNm);
+    const blueSystem = calculateSystem(lenses, SPECTRAL_LINES.F.wavelengthNm);
+    const red = traceSystem3D(lenses, redSystem, { rayTrace3DSampleCount: 5, sampleCount: 5, sampling: "line", apertureDiameter: 20, wavelengthNm: SPECTRAL_LINES.C.wavelengthNm, spectralLineKey: "C" });
+    const blue = traceSystem3D(lenses, blueSystem, { rayTrace3DSampleCount: 5, sampleCount: 5, sampling: "line", apertureDiameter: 20, wavelengthNm: SPECTRAL_LINES.F.wavelengthNm, spectralLineKey: "F" });
+    return red.validRayCount > 0 && blue.validRayCount > 0 && Math.abs(red.rmsSpotRadius - blue.rmsSpotRadius) > 0.000001;
+  });
+
+  test("3D total internal reflection returns controlled status", () => {
+    const surface = { x: 0, radius: 0, semiDiameter: 10, nBefore: 1.5, nAfter: 1 };
+    const traced = traceRay3D({ x: 1, y: 0, z: 0, dx: -0.5, dy: Math.sqrt(0.75), dz: 0 }, [surface]);
+    return traced.status === "total internal reflection";
+  });
+
+  test("invalid 3D rays do not crash", () => {
+    const surface = { x: 0, radius: 0, semiDiameter: 10, nBefore: 1, nAfter: 1 };
+    const traced = traceRay3D({ x: 1, y: 0, z: 0, dx: 0, dy: 0, dz: 0 }, [surface]);
+    return traced.status === "invalid";
+  });
+
+  test("3D spot diagram renders", () => {
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const trace = traceSystem3D(lenses, system, { sampleCount: 5, sampling: "grid", apertureDiameter: 20 });
+    return renderSpotDiagram3D([trace]).includes("spot-3d-diagram") && trace.totalRayCount > 0;
+  });
+
+  test("tangential 3D ray fan returns valid rays for manual starter preset", () => {
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const fan = calculateTangentialRayFan3D(lenses, system, { fieldAngleDegrees: 10, rayCount: 7, apertureDiameter: 20 });
+    return fan.samples.length === 7 && fan.validCount > 0 && fan.samples.some((sample) => Number.isFinite(sample.tangentialError));
+  });
+
+  test("sagittal 3D ray fan returns valid rays for manual starter preset", () => {
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const fan = calculateSagittalRayFan3D(lenses, system, { fieldAngleDegrees: 10, rayCount: 7, apertureDiameter: 20 });
+    return fan.samples.length === 7 && fan.validCount > 0 && fan.samples.some((sample) => Number.isFinite(sample.sagittalError));
+  });
+
+  test("off-axis sagittal 3D ray fan is not all zero", () => {
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const fan = calculateSagittalRayFan3D(lenses, system, { fieldAngleDegrees: 10, rayCount: 9, apertureDiameter: 20 });
+    const errors = fan.samples
+      .filter((sample) => sample.status === "valid" && Number.isFinite(sample.sagittalError))
+      .map((sample) => Math.abs(sample.sagittalError));
+    return errors.length >= 5 && Math.max(...errors) > 0.00000001;
+  });
+
+  test("centre-field tangential 3D ray fan agrees with 2D meridional fan", () => {
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const fan2D = calculateRayFan(lenses, system, { fieldAngleDegrees: 0, rayCount: 7, apertureDiameter: 20 });
+    const fan3D = calculateTangentialRayFan3D(lenses, system, { fieldAngleDegrees: 0, rayCount: 7, apertureDiameter: 20 });
+    const pairs = fan2D.samples.map((sample2D) => {
+      const sample3D = fan3D.samples.find((candidate) => Math.abs(candidate.normalizedPupilCoordinate - sample2D.pupil) < 0.000001);
+      return { sample2D, sample3D };
+    }).filter(({ sample2D, sample3D }) => sample3D && Number.isFinite(sample2D.transverseError) && Number.isFinite(sample3D.tangentialError));
+    return pairs.length >= 3 && pairs.every(({ sample2D, sample3D }) => Math.abs(sample2D.transverseError - sample3D.tangentialError) < 0.00001);
+  });
+
+  test("aperture diameter changes sagittal and tangential 3D fan values", () => {
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const wideTangential = calculateTangentialRayFan3D(lenses, system, { fieldAngleDegrees: 10, rayCount: 7, apertureDiameter: 24 });
+    const narrowTangential = calculateTangentialRayFan3D(lenses, system, { fieldAngleDegrees: 10, rayCount: 7, apertureDiameter: 8 });
+    const wideSagittal = calculateSagittalRayFan3D(lenses, system, { fieldAngleDegrees: 10, rayCount: 7, apertureDiameter: 24 });
+    const narrowSagittal = calculateSagittalRayFan3D(lenses, system, { fieldAngleDegrees: 10, rayCount: 7, apertureDiameter: 8 });
+    return Math.abs(wideTangential.rmsError - narrowTangential.rmsError) > 0.000001
+      && Math.abs(wideSagittal.rmsError - narrowSagittal.rmsError) > 0.000001;
+  });
+
+  test("glass change affects RGB 3D ray fan overlay", () => {
+    const base = { type: "biconvex", diameter: 40, thickness: 6, r1: 80, r2: -80, gapAfter: 0 };
+    const lenses = [{ ...base, glassKey: "sf10", refractiveIndex: 1.728 }];
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const red = calculateTangentialRayFan3D(lenses, system, { fieldAngleDegrees: 8, rayCount: 7, apertureDiameter: 18, wavelengthNm: SPECTRAL_LINES.C.wavelengthNm, spectralLineKey: "C" });
+    const blue = calculateTangentialRayFan3D(lenses, system, { fieldAngleDegrees: 8, rayCount: 7, apertureDiameter: 18, wavelengthNm: SPECTRAL_LINES.F.wavelengthNm, spectralLineKey: "F" });
+    return red.validCount > 0 && blue.validCount > 0 && Math.abs(red.rmsError - blue.rmsError) > 0.000001;
+  });
+
+  test("changing glass from BK7-like to SF10-like changes RGB fan result", () => {
+    const base = { type: "biconvex", diameter: 40, thickness: 6, r1: 80, r2: -80, gapAfter: 0 };
+    const crown = [{ ...base, glassKey: "bk7", refractiveIndex: 1.5168 }];
+    const denseFlint = [{ ...base, glassKey: "sf10", refractiveIndex: 1.728 }];
+    const crownSystem = calculateSystem(crown, SPECTRAL_LINES.d.wavelengthNm);
+    const denseSystem = calculateSystem(denseFlint, SPECTRAL_LINES.d.wavelengthNm);
+    const crownBlue = calculateTangentialRayFan3D(crown, crownSystem, { fieldAngleDegrees: 8, rayCount: 7, apertureDiameter: 18, wavelengthNm: SPECTRAL_LINES.F.wavelengthNm, spectralLineKey: "F" });
+    const denseBlue = calculateTangentialRayFan3D(denseFlint, denseSystem, { fieldAngleDegrees: 8, rayCount: 7, apertureDiameter: 18, wavelengthNm: SPECTRAL_LINES.F.wavelengthNm, spectralLineKey: "F" });
+    return crownBlue.validCount > 0
+      && denseBlue.validCount > 0
+      && Math.abs(crownBlue.rmsError - denseBlue.rmsError) > 0.000001;
+  });
+
+  test("sagittal/tangential ray fan CSV export returns valid text", () => {
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const result = calculateSagittalTangentialRayFan3DData(lenses, system, { rayCount: 7 });
+    const csv = exportSagittalTangentialRayFanCsv(result);
+    return csv.startsWith("fanType,spectralLine,fieldAngleDegrees")
+      && csv.includes("\ntangential,d,")
+      && csv.includes("\nsagittal,d,");
+  });
+
+  test("sagittal/tangential geometric MTF returns valid values for manual starter preset", () => {
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const result = calculateSagittalTangentialGeometricMTF(lenses, system, {
+      fieldAngleDegrees: 10,
+      rayCount: 7,
+      apertureDiameter: 8,
+      apertureStopIndex: "frontGroup",
+      wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+      spectralLineKey: "d"
+    });
+    return result.status === "valid"
+      && result.validRayCount >= 5
+      && Number.isFinite(result.tangential.readouts[10])
+      && Number.isFinite(result.sagittal.readouts[10]);
+  });
+
+  test("sagittal/tangential MTF values remain between 0 and 1", () => {
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const result = calculateSagittalTangentialGeometricMTF(lenses, system, {
+      fieldAngleDegrees: 10,
+      rayCount: 7,
+      apertureDiameter: 8,
+      apertureStopIndex: "frontGroup",
+      wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+      spectralLineKey: "d"
+    });
+    const values = [...result.tangential.values, ...result.sagittal.values];
+    return values.length > 0 && values.every((value) => value >= 0 && value <= 1);
+  });
+
+  test("sagittal/tangential MTF generally decreases as frequency increases", () => {
+    const curve = mtfCurveFromSigma(0.02, 100, 5).values;
+    return curve.every((value, index) => index === 0 || value <= curve[index - 1] + 0.000001);
+  });
+
+  test("smaller RMS spot size gives higher geometric MTF", () => (
+    geometricMtfValueFromSigma(0.01, 40) > geometricMtfValueFromSigma(0.04, 40)
+  ));
+
+  test("changing aperture diameter changes sagittal/tangential MTF", () => {
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const wide = calculateSagittalTangentialGeometricMTF(lenses, system, {
+      fieldAngleDegrees: 10,
+      rayCount: 7,
+      apertureDiameter: 24,
+      apertureStopIndex: "frontGroup",
+      wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+      spectralLineKey: "d"
+    });
+    const narrow = calculateSagittalTangentialGeometricMTF(lenses, system, {
+      fieldAngleDegrees: 10,
+      rayCount: 7,
+      apertureDiameter: 8,
+      apertureStopIndex: "frontGroup",
+      wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+      spectralLineKey: "d"
+    });
+    return Math.abs(wide.tangential.sigma - narrow.tangential.sigma) > 0.000001
+      && Math.abs(wide.sagittal.sigma - narrow.sagittal.sigma) > 0.000001;
+  });
+
+  test("changing glass changes RGB sagittal/tangential MTF", () => {
+    const base = { type: "biconvex", diameter: 40, thickness: 6, r1: 80, r2: -80, gapAfter: 0 };
+    const crown = [{ ...base, glassKey: "bk7", refractiveIndex: 1.5168 }];
+    const denseFlint = [{ ...base, glassKey: "sf10", refractiveIndex: 1.728 }];
+    const crownResult = calculateSagittalTangentialGeometricMTF(crown, calculateSystem(crown, SPECTRAL_LINES.F.wavelengthNm), {
+      fieldAngleDegrees: 8,
+      rayCount: 7,
+      apertureDiameter: 18,
+      wavelengthNm: SPECTRAL_LINES.F.wavelengthNm,
+      spectralLineKey: "F"
+    });
+    const denseResult = calculateSagittalTangentialGeometricMTF(denseFlint, calculateSystem(denseFlint, SPECTRAL_LINES.F.wavelengthNm), {
+      fieldAngleDegrees: 8,
+      rayCount: 7,
+      apertureDiameter: 18,
+      wavelengthNm: SPECTRAL_LINES.F.wavelengthNm,
+      spectralLineKey: "F"
+    });
+    return crownResult.validRayCount > 0
+      && denseResult.validRayCount > 0
+      && Math.abs(crownResult.tangential.sigma - denseResult.tangential.sigma) > 0.000001;
+  });
+
+  test("current plane and best focus plane can produce different sagittal/tangential MTF", () => {
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const comparison = calculateSagittalTangentialMTFComparisons(lenses, system, {
+      fieldAngleDegrees: 10,
+      fieldName: "Mid field",
+      fieldKey: "mid",
+      rayCount: 7,
+      apertureDiameter: 20,
+      apertureStopIndex: "frontGroup",
+      wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+      spectralLineKey: "d"
+    });
+    return Number.isFinite(comparison.best.imagePlaneX)
+      && Math.abs(comparison.best.imagePlaneX - comparison.current.imagePlaneX) > 0.000001
+      && Math.abs(comparison.best.combinedRms - comparison.current.combinedRms) > 0.000001;
+  });
+
+  test("invalid sagittal/tangential geometric MTF traces do not crash", () => {
+    const lenses = [{ diameter: 40, thickness: 6, refractiveIndex: 1.5168, r1: "bad", r2: -80, gapAfter: 0 }];
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const result = calculateSagittalTangentialGeometricMTF(lenses, system, {
+      fieldAngleDegrees: 10,
+      rayCount: 7,
+      apertureDiameter: 20,
+      wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+      spectralLineKey: "d"
+    });
+    return result.status !== "valid" && result.warnings.length > 0;
+  });
+
+  test("diffraction MTF at zero lp/mm equals one", () => {
+    const result = calculateDiffractionLimitedMTF({ fNumber: 2, wavelengthNm: 500, maxFrequencyLpMm: 100, frequencyStepLpMm: 5 });
+    return Math.abs(result.values[0] - 1) < 0.000001;
+  });
+
+  test("diffraction MTF falls to zero at cutoff frequency", () => {
+    const result = calculateDiffractionLimitedMTF({ fNumber: 2, wavelengthNm: 500, maxFrequencyLpMm: 1000, frequencyStepLpMm: 1000 });
+    return Math.abs(result.cutoffFrequency - 1000) < 0.000001 && result.values[1] === 0;
+  });
+
+  test("smaller f-number gives higher diffraction cutoff", () => {
+    const fast = calculateDiffractionLimitedMTF({ fNumber: 2, wavelengthNm: 587.6 });
+    const slow = calculateDiffractionLimitedMTF({ fNumber: 8, wavelengthNm: 587.6 });
+    return fast.cutoffFrequency > slow.cutoffFrequency;
+  });
+
+  test("shorter wavelength gives higher diffraction cutoff", () => {
+    const blue = calculateDiffractionLimitedMTF({ fNumber: 4, wavelengthNm: SPECTRAL_LINES.F.wavelengthNm });
+    const red = calculateDiffractionLimitedMTF({ fNumber: 4, wavelengthNm: SPECTRAL_LINES.C.wavelengthNm });
+    return blue.cutoffFrequency > red.cutoffFrequency;
+  });
+
+  test("hybrid MTF is never greater than geometric or diffraction MTF", () => {
+    const geometric = mtfCurveFromSigma(0.01, 100, 5);
+    const diffraction = calculateDiffractionLimitedMTF({ fNumber: 4, wavelengthNm: 587.6, maxFrequencyLpMm: 100, frequencyStepLpMm: 5 });
+    const hybrid = calculateHybridMTF(geometric, diffraction);
+    return hybrid.values.every((value, index) => (
+      value <= geometric.values[index] + 0.000001
+      && value <= diffraction.values[index] + 0.000001
+    ));
+  });
+
+  test("diffraction and hybrid MTF values remain between zero and one", () => {
+    const geometric = mtfCurveFromSigma(0.02, 100, 5);
+    const diffraction = calculateDiffractionLimitedMTF({ fNumber: 5.6, wavelengthNm: 587.6, maxFrequencyLpMm: 100, frequencyStepLpMm: 5 });
+    const hybrid = calculateHybridMTF(geometric, diffraction);
+    const values = [...diffraction.values, ...hybrid.values].filter(Number.isFinite);
+    return values.length > 0 && values.every((value) => value >= 0 && value <= 1);
+  });
+
+  test("wavefront OPD returns finite values for manual starter preset", () => {
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const result = calculateWavefrontOPD(lenses, system, {
+      fieldAngleDegrees: 0,
+      sampleCount: 7,
+      apertureDiameter: 20,
+      apertureStopIndex: "frontGroup",
+      wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+      spectralLineKey: "d"
+    });
+    return result.status === "valid"
+      && result.validRayCount >= 5
+      && Number.isFinite(result.rmsOpdMm)
+      && Number.isFinite(result.rmsOpdWaves)
+      && Number.isFinite(result.peakToValleyOpdWaves);
+  });
+
+  test("wavefront Strehl estimate remains between zero and one", () => {
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const result = calculateWavefrontOPD(lenses, system, {
+      fieldAngleDegrees: 0,
+      sampleCount: 7,
+      apertureDiameter: 8,
+      apertureStopIndex: "frontGroup",
+      wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+      spectralLineKey: "d"
+    });
+    return Number.isFinite(result.strehlEstimate)
+      && result.strehlEstimate >= 0
+      && result.strehlEstimate <= 1;
+  });
+
+  test("wavefront piston and tilt removal removes a plane", () => {
+    const samples = [
+      { pupilU: -1, pupilV: -1, opdMm: 0.1 - 0.02 - 0.03 },
+      { pupilU: 1, pupilV: -1, opdMm: 0.1 + 0.02 - 0.03 },
+      { pupilU: -1, pupilV: 1, opdMm: 0.1 - 0.02 + 0.03 },
+      { pupilU: 1, pupilV: 1, opdMm: 0.1 + 0.02 + 0.03 },
+      { pupilU: 0, pupilV: 0, opdMm: 0.1 }
+    ];
+    return removePistonTiltFromOPD(samples)
+      .every((sample) => Math.abs(sample.residualOpdMm) < 0.000000001);
+  });
+
+  test("changing aperture diameter changes wavefront OPD estimate", () => {
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const wide = calculateWavefrontOPD(lenses, system, {
+      fieldAngleDegrees: 0,
+      sampleCount: 7,
+      apertureDiameter: 20,
+      apertureStopIndex: "frontGroup",
+      wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+      spectralLineKey: "d"
+    });
+    const narrow = calculateWavefrontOPD(lenses, system, {
+      fieldAngleDegrees: 0,
+      sampleCount: 7,
+      apertureDiameter: 8,
+      apertureStopIndex: "frontGroup",
+      wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+      spectralLineKey: "d"
+    });
+    return Math.abs(wide.rmsOpdWaves - narrow.rmsOpdWaves) > 0.000001;
+  });
+
+  test("changing wavelength changes OPD measured in waves", () => {
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const red = calculateWavefrontOPD(lenses, system, {
+      fieldAngleDegrees: 0,
+      sampleCount: 7,
+      apertureDiameter: 12,
+      apertureStopIndex: "frontGroup",
+      wavelengthNm: SPECTRAL_LINES.C.wavelengthNm,
+      spectralLineKey: "C"
+    });
+    const blue = calculateWavefrontOPD(lenses, system, {
+      fieldAngleDegrees: 0,
+      sampleCount: 7,
+      apertureDiameter: 12,
+      apertureStopIndex: "frontGroup",
+      wavelengthNm: SPECTRAL_LINES.F.wavelengthNm,
+      spectralLineKey: "F"
+    });
+    return red.validRayCount > 0
+      && blue.validRayCount > 0
+      && Math.abs(red.rmsOpdWaves - blue.rmsOpdWaves) > 0.000001;
+  });
+
+  test("invalid wavefront OPD traces do not crash", () => {
+    const lenses = [{ diameter: 40, thickness: 6, refractiveIndex: 1.5168, r1: "bad", r2: -80, gapAfter: 0 }];
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const result = calculateWavefrontOPD(lenses, system, {
+      fieldAngleDegrees: 0,
+      sampleCount: 7,
+      apertureDiameter: 20,
+      wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+      spectralLineKey: "d"
+    });
+    return result.status !== "valid" && result.warnings.length > 0;
+  });
+
+  const fakeOpdSamples = (scale = 0) => {
+    const samples = [];
+    for (let row = -2; row <= 2; row += 1) {
+      for (let column = -2; column <= 2; column += 1) {
+        const pupilU = column / 2;
+        const pupilV = row / 2;
+        if (Math.hypot(pupilU, pupilV) <= 1.000001) {
+          samples.push({
+            pupilU,
+            pupilV,
+            residualOpdMm: scale * (pupilU ** 2 + pupilV ** 2)
+          });
+        }
+      }
+    }
+    return {
+      status: "valid",
+      wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+      samples,
+      rmsOpdWaves: scale / (SPECTRAL_LINES.d.wavelengthNm / 1000000),
+      peakToValleyOpdWaves: scale / (SPECTRAL_LINES.d.wavelengthNm / 1000000),
+      strehlEstimate: Math.exp(-((2 * Math.PI * (scale / (SPECTRAL_LINES.d.wavelengthNm / 1000000))) ** 2))
+    };
+  };
+
+  test("flat OPD produces high Strehl and compact PSF", () => {
+    const flat = fakeOpdSamples(0);
+    const pupil = buildPupilComplexField(flat, 16);
+    const psf = calculatePSFFromPupil(pupil);
+    return flat.strehlEstimate > 0.999 && psf.peakIntensity > 0.05;
+  });
+
+  test("wavefront prototype MTF at zero normalized frequency equals one", () => {
+    const pupil = buildPupilComplexField(fakeOpdSamples(0), 16);
+    const psf = calculatePSFFromPupil(pupil);
+    const otf = calculateOTFFromPSF(psf);
+    const center = Math.floor(otf.gridSize / 2);
+    return Math.abs(otf.mtfValues[center][center] - 1) < 0.000001;
+  });
+
+  test("wavefront prototype MTF values remain between zero and one", () => {
+    const pupil = buildPupilComplexField(fakeOpdSamples(0.0002), 16);
+    const psf = calculatePSFFromPupil(pupil);
+    const otf = calculateOTFFromPSF(psf);
+    const values = otf.mtfValues.flat().filter(Number.isFinite);
+    return values.length > 0 && values.every((value) => value >= 0 && value <= 1);
+  });
+
+  test("larger RMS OPD reduces Strehl estimate", () => (
+    fakeOpdSamples(0.00005).strehlEstimate > fakeOpdSamples(0.0004).strehlEstimate
+  ));
+
+  test("larger RMS OPD generally lowers wavefront MTF", () => {
+    const flatOtf = calculateOTFFromPSF(calculatePSFFromPupil(buildPupilComplexField(fakeOpdSamples(0), 16)));
+    const roughOtf = calculateOTFFromPSF(calculatePSFFromPupil(buildPupilComplexField(fakeOpdSamples(0.0004), 16)));
+    const flatCuts = extractWavefrontMTFCuts(flatOtf);
+    const roughCuts = extractWavefrontMTFCuts(roughOtf);
+    return mtfCutValueAtNormalized(flatCuts.tangential, 0.5) >= mtfCutValueAtNormalized(roughCuts.tangential, 0.5);
+  });
+
+  test("invalid wavefront PSF prototype data does not crash", () => {
+    const pupil = buildPupilComplexField({ wavelengthNm: SPECTRAL_LINES.d.wavelengthNm, samples: [] }, 32);
+    return pupil.status === "invalid" && pupil.values.length === 32;
+  });
+
+  test("wavefront PSF grid size is clamped to safe values", () => (
+    clampWaveOpticsGridSize(3) === 16
+    && clampWaveOpticsGridSize(24) === 32
+    && clampWaveOpticsGridSize(200) === 48
+  ));
+
+  const fakeMonoMtfResults = () => ([
+    {
+      lineKey: "C",
+      gridSize: 16,
+      cuts: {
+        tangential: [{ normalizedFrequency: 0, lpMm: 0, value: 1 }, { normalizedFrequency: 0.5, lpMm: 50, value: 0.2 }, { normalizedFrequency: 1, lpMm: 100, value: 0 }],
+        sagittal: [{ normalizedFrequency: 0, lpMm: 0, value: 1 }, { normalizedFrequency: 0.5, lpMm: 50, value: 0.25 }, { normalizedFrequency: 1, lpMm: 100, value: 0 }]
+      }
+    },
+    {
+      lineKey: "d",
+      gridSize: 16,
+      cuts: {
+        tangential: [{ normalizedFrequency: 0, lpMm: 0, value: 1 }, { normalizedFrequency: 0.5, lpMm: 50, value: 0.5 }, { normalizedFrequency: 1, lpMm: 100, value: 0 }],
+        sagittal: [{ normalizedFrequency: 0, lpMm: 0, value: 1 }, { normalizedFrequency: 0.5, lpMm: 50, value: 0.55 }, { normalizedFrequency: 1, lpMm: 100, value: 0 }]
+      }
+    },
+    {
+      lineKey: "F",
+      gridSize: 16,
+      cuts: {
+        tangential: [{ normalizedFrequency: 0, lpMm: 0, value: 1 }, { normalizedFrequency: 0.5, lpMm: 50, value: 0.8 }, { normalizedFrequency: 1, lpMm: 100, value: 0 }],
+        sagittal: [{ normalizedFrequency: 0, lpMm: 0, value: 1 }, { normalizedFrequency: 0.5, lpMm: 50, value: 0.85 }, { normalizedFrequency: 1, lpMm: 100, value: 0 }]
+      }
+    }
+  ]);
+
+  test("polychromatic weights normalize to one", () => {
+    const weights = normalizePolychromaticWeights({ C: 2, d: 1, F: 1 });
+    const total = weights.C + weights.d + weights.F;
+    return Math.abs(total - 1) < 0.000001 && Math.abs(weights.C - 0.5) < 0.000001;
+  });
+
+  test("polychromatic combined MTF stays between zero and one", () => {
+    const combined = combinePolychromaticCuts(fakeMonoMtfResults(), { C: 0.25, d: 0.5, F: 0.25 });
+    const values = [...combined.tangential, ...combined.sagittal].map((point) => point.value).filter(Number.isFinite);
+    return values.length > 0 && values.every((value) => value >= 0 && value <= 1);
+  });
+
+  test("polychromatic combined MTF at zero frequency equals one", () => {
+    const combined = combinePolychromaticCuts(fakeMonoMtfResults(), { C: 0.25, d: 0.5, F: 0.25 });
+    return Math.abs(combined.tangential[0].value - 1) < 0.000001
+      && Math.abs(combined.sagittal[0].value - 1) < 0.000001;
+  });
+
+  test("changing polychromatic weights changes the combined curve", () => {
+    const mono = fakeMonoMtfResults();
+    const redHeavy = combinePolychromaticCuts(mono, { C: 1, d: 0, F: 0 });
+    const blueHeavy = combinePolychromaticCuts(mono, { C: 0, d: 0, F: 1 });
+    return Math.abs(mtfCutValueAtNormalized(redHeavy.tangential, 0.5) - mtfCutValueAtNormalized(blueHeavy.tangential, 0.5)) > 0.1;
+  });
+
+  test("single polychromatic weight matches that wavelength", () => {
+    const mono = fakeMonoMtfResults();
+    const combined = combinePolychromaticCuts(mono, { C: 0, d: 0, F: 1 });
+    return Math.abs(mtfCutValueAtNormalized(combined.sagittal, 0.5) - mtfCutValueAtNormalized(mono[2].cuts.sagittal, 0.5)) < 0.000001;
+  });
+
+  test("invalid polychromatic wavefront MTF does not crash", () => {
+    const lenses = [{ diameter: 40, thickness: 6, refractiveIndex: 1.5168, r1: "bad", r2: -80, gapAfter: 0 }];
+    const result = calculatePolychromaticWavefrontMTF(lenses, calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm), {
+      fieldKey: "center",
+      gridSize: 16,
+      weights: { C: 0.25, d: 0.5, F: 0.25 },
+      apertureDiameter: 12
+    });
+    return result.status !== "valid" && result.warnings.length > 0;
+  });
+
+  test("polychromatic wavefront grid size is clamped safely", () => (
+    calculatePolychromaticWavefrontMTF(clonePresetLenses("manual"), calculateSystem(clonePresetLenses("manual"), SPECTRAL_LINES.d.wavelengthNm), {
+      fieldKey: "center",
+      gridSize: 99,
+      weights: { C: 0.25, d: 0.5, F: 0.25 },
+      apertureDiameter: 12
+    }).gridSize === 48
+  ));
+
+  test("wavefront MTF cuts stay finite at the positive frequency endpoint", () => (
+    [16, 32, 48].every((gridSize) => {
+      const center = Math.floor(gridSize / 2);
+      const mtfValues = Array.from({ length: gridSize }, () => (
+        Array.from({ length: gridSize }, () => 0.5)
+      ));
+      mtfValues[center][center] = 1;
+      const cuts = extractWavefrontMTFCuts({ gridSize, mtfValues }, 100);
+      return ["tangential", "sagittal"].every((axis) => {
+        const cut = cuts[axis];
+        const last = cut[cut.length - 1];
+        return cut.length > 0
+          && cut.every((point) => (
+            Number.isFinite(point.normalizedFrequency)
+            && Number.isFinite(point.lpMm)
+            && Number.isFinite(point.value)
+          ))
+          && Math.abs(last.normalizedFrequency - 1) < 1e-12
+          && Math.abs(last.lpMm - 100) < 1e-12;
+      });
+    })
+  ));
+
+  test("invalid 3D sagittal/tangential fan rays do not crash", () => {
+    const lenses = [{ diameter: 40, thickness: 6, refractiveIndex: 1.5168, r1: "bad", r2: -80, gapAfter: 0 }];
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const tangential = calculateTangentialRayFan3D(lenses, system, { fieldAngleDegrees: 10, rayCount: 7, apertureDiameter: 20 });
+    const sagittal = calculateSagittalRayFan3D(lenses, system, { fieldAngleDegrees: 10, rayCount: 7, apertureDiameter: 20 });
+    return tangential.samples.length === 0 && sagittal.samples.length === 0 && tangential.warning && sagittal.warning;
+  });
+
+  const passed = tests.filter((item) => item.pass).length;
+  return {
+    passed,
+    total: tests.length,
+    ok: passed === tests.length,
+    tests
+  };
+};
+
+globalThis.runOpticsSelfCheck = runOpticsSelfCheck;
+document.runOpticsSelfCheck = runOpticsSelfCheck;
+
+update();
+
+if (new URLSearchParams(globalThis.location?.search || "").has("selfcheck")) {
+  setTimeout(() => {
+    document.documentElement.dataset.opticsSelfCheck = JSON.stringify(runOpticsSelfCheck());
+  }, 0);
+}

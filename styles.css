@@ -1,0 +1,5279 @@
+:root {
+  color-scheme: light;
+  --ink: #001f54;
+  --muted: #486177;
+  --line: #b9e3f2;
+  --panel: #ffffff;
+  --soft: #dff6ff;
+  --teal: #0a6cf1;
+  --teal-dark: #001f54;
+  --coral: #c94b58;
+  --amber: #ffb703;
+  --blue: #0a6cf1;
+  --cyan: #16c3ff;
+  --red-ray: #d83a3a;
+  --green-ray: #0a8f62;
+  --blue-ray: #0a6cf1;
+  --shadow: 0 8px 20px rgba(0, 31, 84, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  min-height: 100vh;
+  color: var(--ink);
+  background: linear-gradient(180deg, #dff6ff 0%, #f7fcff 34%, #ffffff 100%);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+.app-shell {
+  width: min(1900px, calc(100% - 20px));
+  height: 100vh;
+  margin: 0 auto;
+  padding: 10px 0;
+  overflow: hidden;
+}
+
+.app-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  align-items: stretch;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app-main {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.work-layout {
+  display: grid;
+  grid-template-columns: minmax(420px, 1fr) minmax(560px, 760px);
+  gap: 10px;
+  align-items: stretch;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.center-workspace,
+.analysis-sidebar {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+  max-height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  padding-right: 6px;
+  scrollbar-width: thin;
+}
+
+.center-workspace {
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  padding-right: 0;
+}
+
+.center-scroll-stack {
+  display: grid;
+  gap: 8px;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  padding-right: 6px;
+  scrollbar-width: thin;
+}
+
+.center-workspace > *,
+.analysis-sidebar > * {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+.analysis-sidebar {
+  align-content: start;
+  grid-auto-rows: max-content;
+}
+
+.analysis-sidebar * {
+  min-width: 0;
+}
+
+.tool-header {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  min-width: 0;
+}
+
+.header-title-block {
+  flex: 0 0 auto;
+}
+
+.header-control-row {
+  display: flex;
+  align-items: end;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.header-select-control {
+  display: grid;
+  gap: 3px;
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 850;
+  min-width: 220px;
+}
+
+.preset-select-control {
+  width: clamp(260px, 28vw, 420px);
+}
+
+.header-select-control select,
+.saved-design-select,
+.header-design-name {
+  min-height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  color: var(--ink);
+  padding: 5px 28px 5px 8px;
+  font-size: 0.76rem;
+}
+
+.header-save-controls {
+  display: flex;
+  align-items: end;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.header-design-name {
+  width: clamp(130px, 13vw, 190px);
+  padding-right: 8px;
+}
+
+.saved-design-select {
+  width: clamp(150px, 14vw, 220px);
+}
+
+.compact-save-button,
+.compact-delete-button {
+  min-height: 32px;
+  border-radius: 7px;
+  padding: 0 10px;
+  font-size: 0.74rem;
+  font-weight: 850;
+}
+
+.compact-delete-button {
+  width: 32px;
+  padding: 0;
+}
+
+.eyebrow {
+  margin: 0 0 3px;
+  color: var(--teal-dark);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(1.45rem, 2.7vw, 2.25rem);
+  line-height: 1.05;
+  letter-spacing: 0;
+}
+
+.panel-intro {
+  display: none;
+  max-width: 76ch;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.summary-panel .panel-intro {
+  grid-column: 1 / -1;
+}
+
+.toolbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.icon-button,
+.action-button {
+  border: 1px solid transparent;
+  border-radius: 7px;
+  min-height: 34px;
+  cursor: pointer;
+  transition: transform 140ms ease, border-color 140ms ease, background 140ms ease;
+}
+
+.icon-button {
+  width: 34px;
+  display: inline-grid;
+  place-items: center;
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: 0 7px 18px rgba(0, 31, 84, 0.08);
+  font-size: 0.95rem;
+}
+
+.action-button {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  padding: 0 10px;
+  background: var(--teal);
+  color: #fff;
+  font-weight: 800;
+}
+
+.icon-button:hover,
+.action-button:hover {
+  transform: translateY(-1px);
+}
+
+.icon-button:disabled,
+.action-button:disabled {
+  cursor: not-allowed;
+  color: #a7b1b5;
+  background: #f4f7f7;
+  border-color: var(--line);
+  box-shadow: none;
+  transform: none;
+}
+
+.icon-button:focus-visible,
+.action-button:focus-visible,
+.preset-button:focus-visible,
+.save-button:focus-visible,
+.saved-load:focus-visible,
+.saved-delete:focus-visible,
+.diagram-toggle:focus-visible,
+.type-button:focus-visible,
+.step-button:focus-visible,
+.order-button:focus-visible,
+.flip-button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 3px solid rgba(8, 127, 140, 0.24);
+  outline-offset: 2px;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(430px, 0.95fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.input-zone,
+.result-zone {
+  display: grid;
+  gap: 14px;
+}
+
+.top-diagram {
+  display: grid;
+  place-items: center;
+  margin: 0 0 10px;
+}
+
+.top-diagram .diagram-panel {
+  width: 100%;
+}
+
+.top-diagram .ray-diagram {
+  min-height: clamp(300px, 30vw, 430px);
+}
+
+.stack-panel {
+  border: 1px solid rgba(10, 108, 241, 0.18);
+  border-radius: 7px;
+  background: var(--panel);
+  box-shadow: 0 4px 12px rgba(0, 31, 84, 0.045);
+  overflow: visible;
+  align-self: start;
+}
+
+.stack-panel-header {
+  width: 100%;
+  min-height: 30px;
+  border: 0;
+  border-radius: 0;
+  background: linear-gradient(180deg, #ffffff, #eefaff);
+  color: var(--ink);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 9px;
+  font-size: 0.72rem;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.stack-panel-title,
+.stack-panel-summary {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stack-panel-summary {
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 760;
+}
+
+.stack-panel-badges {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.stack-panel-badges span {
+  border-radius: 999px;
+  padding: 2px 6px;
+  color: #071f34;
+  background: #d7e5ee;
+  font-size: 0.58rem;
+  font-weight: 900;
+}
+
+.workflow-group {
+  display: grid;
+  gap: 6px;
+}
+
+.workflow-group + .workflow-group {
+  margin-top: 10px;
+}
+
+.workflow-group-title {
+  margin: 0;
+  padding: 0 2px;
+  color: rgba(215, 229, 238, 0.74);
+  font-size: 0.62rem;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.workflow-group-panels {
+  display: grid;
+  gap: 6px;
+}
+
+.sub-analysis-section {
+  margin-top: 8px;
+  border: 1px solid rgba(215, 229, 238, 0.14);
+  border-radius: 7px;
+  background: rgba(248, 246, 242, 0.04);
+  overflow: hidden;
+}
+
+.sub-analysis-section > summary {
+  cursor: pointer;
+  padding: 6px 8px;
+  color: #f8f6f2;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.sub-analysis-section > :not(summary) {
+  margin: 8px;
+}
+
+.segmented-note,
+.mtf-status-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 8px;
+  color: rgba(215, 229, 238, 0.82);
+  font-size: 0.68rem;
+  font-weight: 760;
+}
+
+.stack-panel-header:hover {
+  background: #dff6ff;
+}
+
+.stack-chevron {
+  color: var(--teal);
+  font-size: 0.72rem;
+  line-height: 1;
+}
+
+.stack-panel-body {
+  padding: 7px;
+  overflow: visible;
+}
+
+.stack-panel.is-collapsed .stack-panel-body {
+  display: none;
+}
+
+.stack-panel-body > section {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0;
+  background: transparent;
+  max-height: none;
+  overflow: visible;
+}
+
+.stack-panel-body > section > .panel-heading:first-child {
+  display: none;
+}
+
+.design-controls {
+  display: grid;
+  gap: 12px;
+  margin: 18px 0 0;
+}
+
+.lens-control-section {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.section-heading h2 {
+  margin: 0;
+  font-size: 0.86rem;
+  letter-spacing: 0;
+}
+
+.section-heading span {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.66rem;
+  line-height: 1.25;
+  text-align: left;
+}
+
+.lens-toolbar {
+  flex-shrink: 0;
+}
+
+.lens-control-actions-heading {
+  justify-content: flex-end;
+  margin-bottom: 2px;
+}
+
+.lens-control-section .input-zone {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 7px;
+  overflow: visible;
+  padding: 0;
+}
+
+.analysis-sidebar .lens-control-section .input-zone {
+  grid-template-columns: 1fr;
+}
+
+.lens-control-section .lens-card {
+  box-shadow: 0 5px 14px rgba(0, 31, 84, 0.055);
+}
+
+.analysis-sidebar .lens-control-section .lens-card {
+  display: block;
+}
+
+.lens-control-section .lens-top {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  padding: 6px;
+}
+
+.analysis-sidebar .lens-control-section .lens-top {
+  align-content: center;
+  border-right: 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.lens-card-summary {
+  background: linear-gradient(180deg, #ffffff, #f5fcff);
+}
+
+.lens-summary-toggle {
+  min-width: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  display: grid;
+  grid-template-columns: minmax(42px, auto) minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 2px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.lens-summary-toggle:hover {
+  background: rgba(22, 195, 255, 0.12);
+}
+
+.lens-summary-title {
+  font-size: 0.75rem;
+  font-weight: 900;
+}
+
+.lens-summary-meta {
+  color: var(--muted);
+  font-size: 0.62rem;
+  font-weight: 400;
+  display: grid;
+  grid-template-columns:
+    minmax(58px, max-content)
+    minmax(48px, max-content)
+    minmax(68px, max-content)
+    minmax(46px, max-content)
+    minmax(70px, max-content)
+    minmax(54px, max-content)
+    minmax(54px, max-content);
+  column-gap: 10px;
+  align-items: baseline;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lens-summary-item {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 5px;
+  align-items: baseline;
+}
+
+.lens-summary-label {
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.lens-summary-value {
+  color: var(--muted);
+  font-weight: 400;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lens-card-chevron {
+  color: var(--teal);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.lens-card-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(118px, 0.28fr);
+}
+
+.lens-stack-card.is-collapsed .lens-card-body {
+  display: none;
+}
+
+.lens-control-section .lens-title {
+  gap: 7px;
+}
+
+.lens-control-section .lens-title h2 {
+  font-size: 0.82rem;
+}
+
+.lens-control-section .lens-actions {
+  justify-content: start;
+  gap: 3px;
+}
+
+.lens-control-section .order-button,
+.lens-control-section .flip-button,
+.lens-control-section .remove-button {
+  width: 24px;
+  height: 24px;
+  min-height: 24px;
+  border-radius: 6px;
+  font-size: 0.68rem;
+}
+
+.lens-control-section .input-grid {
+  grid-template-columns: 1fr;
+  gap: 5px;
+  padding: 7px;
+}
+
+.analysis-sidebar .lens-control-section .input-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  align-content: start;
+}
+
+.lens-control-section .type-control,
+.lens-control-section .glass-control,
+.lens-control-section .coating-control,
+.lens-control-section .lens-asphere-control,
+.lens-control-section .lens-manufacturing-control,
+.lens-control-section .lens-tolerance-control,
+.lens-control-section .lens-optimizer-control {
+  grid-column: span 1;
+}
+
+.analysis-sidebar .lens-control-section .lens-asphere-control,
+.analysis-sidebar .lens-control-section .lens-manufacturing-control,
+.analysis-sidebar .lens-control-section .lens-tolerance-control,
+.analysis-sidebar .lens-control-section .lens-optimizer-control {
+  grid-column: 1 / -1;
+}
+
+.analysis-sidebar .lens-control-section .coating-control {
+  grid-column: span 3;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.analysis-sidebar .lens-control-section .glass-control,
+.analysis-sidebar .lens-control-section .type-control {
+  grid-column: span 1;
+}
+
+.lens-control-section .control-label,
+.lens-control-section label,
+.lens-control-section .type-control,
+.lens-control-section .glass-control,
+.lens-control-section .coating-control,
+.lens-control-section .lens-asphere-control,
+.lens-control-section .lens-manufacturing-control,
+.lens-control-section .lens-tolerance-control,
+.lens-control-section .lens-optimizer-control,
+.lens-control-section .control {
+  font-size: 0.6rem;
+  gap: 3px;
+  min-width: 0;
+}
+
+.lens-control-section .type-options {
+  display: none;
+}
+
+.lens-control-section .type-button {
+  min-height: 29px;
+  padding: 4px;
+  font-size: 0.6rem;
+}
+
+.lens-control-section .glass-custom-grid {
+  grid-template-columns: 1fr;
+  gap: 5px;
+}
+
+.lens-control-section .asphere-grid {
+  grid-template-columns: 1fr;
+  gap: 5px;
+}
+
+.lens-control-section .glass-readout {
+  gap: 3px;
+}
+
+.lens-control-section .glass-readout span {
+  padding: 2px 4px;
+  font-size: 0.5rem;
+}
+
+.lens-control-section .stepper {
+  grid-template-columns: 22px minmax(0, 1fr) 22px;
+}
+
+.lens-control-section .stepper input {
+  min-height: 27px;
+  padding: 3px;
+  font-size: 0.66rem;
+}
+
+.lens-control-section .step-button {
+  min-height: 27px;
+  font-size: 0.72rem;
+}
+
+.lens-control-section select {
+  min-height: 29px;
+  padding: 4px 22px 4px 6px;
+  font-size: 0.64rem;
+}
+
+.lens-control-section .control-unit {
+  display: none;
+}
+
+.lens-control-section .lens-output {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 0 7px 7px;
+}
+
+.analysis-sidebar .lens-control-section .lens-output {
+  grid-template-columns: 1fr;
+  align-content: start;
+  border-left: 1px solid var(--line);
+  padding: 7px;
+}
+
+.lens-control-section .metric {
+  min-height: 38px;
+  padding: 5px;
+}
+
+.lens-control-section .metric-name {
+  font-size: 0.54rem;
+}
+
+.lens-control-section .metric-value {
+  margin-top: 2px;
+  font-size: 0.7rem;
+}
+
+.lens-control-section .metric-unit {
+  margin-top: 1px;
+  font-size: 0.5rem;
+}
+
+.lens-control-section .warning {
+  margin: 0 9px 9px;
+  padding: 7px;
+  font-size: 0.68rem;
+}
+
+.support-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 14px;
+  align-items: start;
+  margin: 0 0 18px;
+}
+
+.center-workspace .top-diagram,
+.center-workspace .system-bottom {
+  margin: 0;
+}
+
+.center-workspace .spot-panel,
+.center-workspace .transmission-panel,
+.center-workspace .surface-panel,
+.analysis-sidebar .lens-control-section,
+.analysis-sidebar .sagitta-panel,
+.analysis-sidebar .aperture-stop-panel,
+.analysis-sidebar .ray-trace-panel,
+.analysis-sidebar .ray-trace-3d-panel,
+.analysis-sidebar .ray-image-circle-panel,
+.analysis-sidebar .ray-fan-panel,
+.analysis-sidebar .st-ray-fan-panel,
+.analysis-sidebar .mtf-panel,
+.analysis-sidebar .st-mtf-panel,
+.analysis-sidebar .diffraction-hybrid-panel,
+.analysis-sidebar .wavefront-panel,
+.analysis-sidebar .wave-optics-panel,
+.analysis-sidebar .poly-mtf-panel,
+.analysis-sidebar .tolerance-panel,
+.analysis-sidebar .optimizer-panel {
+  grid-column: 1 / -1;
+}
+
+.analysis-sidebar .panel-heading {
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.analysis-sidebar .panel-heading h3 {
+  min-width: 0;
+}
+
+.analysis-sidebar svg,
+.center-workspace svg {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+}
+
+.system-bottom {
+  margin-top: 2px;
+}
+
+.system-bottom .summary-panel {
+  align-items: stretch;
+}
+
+.analysis-sidebar .input-grid,
+.analysis-sidebar .lens-output,
+.analysis-sidebar .mount-readout,
+.analysis-sidebar .ray-trace-inputs,
+.analysis-sidebar .aperture-stop-controls,
+.analysis-sidebar .aperture-stop-readout,
+.analysis-sidebar .ray-trace-results,
+.analysis-sidebar .ray-circle-controls,
+.analysis-sidebar .ray-circle-layout,
+.analysis-sidebar .ray-circle-results,
+.analysis-sidebar .format-coverage-grid,
+.analysis-sidebar .ray-fan-controls,
+.analysis-sidebar .ray-fan-toggles,
+.analysis-sidebar .ray-fan-grid,
+.analysis-sidebar .ray-3d-controls,
+.analysis-sidebar .ray-3d-layout,
+.analysis-sidebar .ray-3d-results,
+.analysis-sidebar .st-ray-fan-controls,
+.analysis-sidebar .st-ray-fan-grid,
+.analysis-sidebar .st-ray-fan-diagnostics,
+.analysis-sidebar .st-ray-fan-results,
+.analysis-sidebar .st-mtf-controls,
+.analysis-sidebar .st-mtf-chart-grid,
+.analysis-sidebar .st-mtf-focus-grid,
+.analysis-sidebar .diffraction-cutoff-grid,
+.analysis-sidebar .wavefront-grid,
+.analysis-sidebar .wavefront-card-metrics,
+.analysis-sidebar .wave-optics-controls,
+.analysis-sidebar .wave-optics-layout,
+.analysis-sidebar .poly-mtf-controls,
+.analysis-sidebar .poly-weight-controls,
+.analysis-sidebar .poly-mtf-main,
+.analysis-sidebar .poly-focus-grid,
+.analysis-sidebar .tolerance-controls,
+.analysis-sidebar .tolerance-criteria,
+.analysis-sidebar .optimizer-controls,
+.analysis-sidebar .optimizer-goals,
+.analysis-sidebar .optimizer-progress-grid,
+.analysis-sidebar .tolerance-result-grid,
+.analysis-sidebar .mtf-focus-grid,
+.analysis-sidebar .sagitta-inputs,
+.analysis-sidebar .sagitta-results,
+.analysis-sidebar .spot-results,
+.analysis-sidebar .rgb-readout {
+  grid-template-columns: 1fr;
+}
+
+.analysis-sidebar .spot-field-grid {
+  grid-template-columns: 1fr;
+}
+
+.analysis-sidebar .toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.analysis-sidebar .mtf-readout-table,
+.analysis-sidebar .csv-export-box,
+.analysis-sidebar .surface-table-wrap,
+.center-workspace .surface-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.analysis-sidebar .mtf-readout-row {
+  min-width: 520px;
+}
+
+.analysis-sidebar .st-ray-fan-diagnostics {
+  min-width: 0;
+}
+
+.analysis-sidebar .chart-wrap,
+.analysis-sidebar .aberration-card,
+.analysis-sidebar .wave-optics-card,
+.analysis-sidebar .st-mtf-card {
+  min-width: 0;
+}
+
+.lens-card,
+.summary-panel,
+.diagram-panel,
+.ray-trace-panel,
+.ray-trace-3d-panel,
+.st-ray-fan-panel,
+.spot-panel,
+.mtf-panel,
+.transmission-panel,
+.tolerance-panel,
+.optimizer-panel,
+.sagitta-panel,
+.image-circle-panel,
+.ray-image-circle-panel,
+.ray-fan-panel,
+.surface-panel,
+.formula-panel,
+.assumption-panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.lens-card {
+  overflow: hidden;
+}
+
+.lens-top {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.lens-title {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+}
+
+.lens-title h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  letter-spacing: 0;
+}
+
+.lens-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.order-button,
+.flip-button {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #eef5f4;
+  color: var(--teal-dark);
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 950;
+}
+
+.order-button:hover,
+.flip-button:hover {
+  background: #dff1ef;
+}
+
+.remove-button {
+  width: 36px;
+  height: 36px;
+  border: 1px solid #f1c8ce;
+  border-radius: 8px;
+  background: #fff5f6;
+  color: var(--coral);
+  cursor: pointer;
+  font-size: 1.2rem;
+}
+
+.remove-button:disabled,
+.order-button:disabled {
+  cursor: not-allowed;
+  color: #b8c0c4;
+  border-color: var(--line);
+  background: #f7f9f9;
+}
+
+.input-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 14px;
+}
+
+.lens-setup-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.preset-note {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  margin: -4px 0 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--muted);
+  box-shadow: 0 8px 22px rgba(26, 40, 45, 0.06);
+}
+
+.preset-note strong {
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.save-panel {
+  display: grid;
+  grid-template-columns: minmax(240px, 360px) minmax(0, 1fr);
+  gap: 12px;
+  align-items: end;
+  margin: 0 0 14px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.74);
+  box-shadow: 0 8px 22px rgba(26, 40, 45, 0.06);
+}
+
+.save-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.save-name {
+  min-width: 0;
+}
+
+.save-button,
+.update-button {
+  min-height: 44px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 0 13px;
+  cursor: pointer;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.save-button {
+  color: #fff;
+  background: var(--teal);
+}
+
+.save-button:hover {
+  background: var(--teal-dark);
+}
+
+.update-button {
+  color: var(--teal-dark);
+  background: #eef7f6;
+  border-color: #bfd8da;
+}
+
+.update-button:hover {
+  background: #dff1ef;
+}
+
+.header-save-controls .save-button,
+.header-save-controls .update-button,
+.header-save-controls .saved-delete {
+  min-height: 32px;
+  border-radius: 7px;
+  padding: 0 10px;
+  font-size: 0.74rem;
+}
+
+.header-save-controls .saved-delete {
+  width: 32px;
+  border-left: 1px solid var(--line);
+  padding: 0;
+}
+
+.saved-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  min-height: 44px;
+}
+
+.saved-item {
+  display: inline-grid;
+  grid-template-columns: minmax(80px, auto) 34px;
+  align-items: stretch;
+}
+
+.saved-load,
+.saved-delete {
+  min-height: 36px;
+  border: 1px solid var(--line);
+  background: #fbfdfd;
+  cursor: pointer;
+  font-weight: 850;
+}
+
+.saved-load {
+  max-width: 190px;
+  border-radius: 8px 0 0 8px;
+  padding: 0 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.saved-delete {
+  border-left: 0;
+  border-radius: 0 8px 8px 0;
+  color: var(--coral);
+}
+
+.saved-load:hover,
+.saved-delete:hover {
+  background: #eef5f4;
+}
+
+.empty-saved {
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 750;
+}
+
+.preset-panel {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 10px;
+}
+
+.preset-heading {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.preset-options {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.preset-group {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 8px 22px rgba(26, 40, 45, 0.06);
+}
+
+.preset-group-summary {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 9px;
+  color: var(--teal-dark);
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 900;
+}
+
+.preset-group-summary:hover {
+  background: #eef5f4;
+}
+
+.preset-group-summary span:last-child {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.preset-options-nested {
+  padding: 6px;
+  border-top: 1px solid var(--line);
+  background: rgba(246, 250, 250, 0.72);
+}
+
+.preset-button {
+  display: grid;
+  gap: 3px;
+  min-height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 8px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.78);
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 850;
+  line-height: 1.2;
+  text-align: left;
+  box-shadow: 0 8px 22px rgba(26, 40, 45, 0.06);
+}
+
+.preset-button small {
+  color: var(--muted);
+  font-size: 0.61rem;
+  font-weight: 750;
+  line-height: 1.1;
+}
+
+.preset-button:hover {
+  border-color: #b8cfd1;
+  background: #eef5f4;
+}
+
+.diagram-design-name {
+  display: block;
+  max-width: min(64vw, 640px);
+  margin-top: 3px;
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.preset-button.is-active {
+  border-color: var(--teal);
+  background: #dff1ef;
+  color: var(--teal-dark);
+  box-shadow: inset 0 0 0 1px rgba(8, 127, 140, 0.22);
+}
+
+label {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 750;
+  line-height: 1.25;
+  min-width: 0;
+}
+
+.type-control,
+.glass-control,
+.coating-control,
+.lens-tolerance-control,
+.lens-optimizer-control,
+.control {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 750;
+  line-height: 1.25;
+  min-width: 0;
+}
+
+.type-control {
+  grid-column: span 2;
+}
+
+.glass-control {
+  grid-column: span 2;
+}
+
+.coating-control {
+  grid-column: span 2;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.coating-control label {
+  display: grid;
+  gap: 7px;
+}
+
+.lens-tolerance-control {
+  grid-column: span 2;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px;
+  background: #fbfdfd;
+}
+
+.lens-asphere-control {
+  grid-column: span 2;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px;
+  background: #fbfdfd;
+}
+
+.lens-asphere-control summary,
+.lens-manufacturing-control summary,
+.lens-tolerance-control summary {
+  cursor: pointer;
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.lens-manufacturing-control {
+  grid-column: span 2;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px;
+  background: #fbfdfd;
+}
+
+.manufacturing-note {
+  margin: 7px 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.lens-manufacturing-grid,
+.lens-bevel-grid,
+.manufacturing-diagnostics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.lens-bevel-grid {
+  margin-top: 7px;
+}
+
+.lens-bevel-group {
+  display: grid;
+  gap: 5px;
+  padding: 6px;
+  border: 1px solid rgba(217, 226, 228, 0.8);
+  border-radius: 6px;
+}
+
+.manufacturing-diagnostics {
+  margin-top: 7px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.manufacturing-diagnostics .metric {
+  padding: 6px;
+  min-width: 0;
+}
+
+.manufacturing-warning {
+  margin: 6px 0 0;
+}
+
+.asphere-note {
+  margin: 7px 0;
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.35;
+}
+
+.asphere-surface-group {
+  display: grid;
+  gap: 7px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(217, 226, 228, 0.72);
+}
+
+.asphere-surface-group + .asphere-surface-group {
+  margin-top: 8px;
+}
+
+.asphere-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.lens-tolerance-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 7px;
+}
+
+.lens-optimizer-control {
+  grid-column: span 2;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px;
+  background: #fbfdfd;
+}
+
+.lens-optimizer-control summary {
+  cursor: pointer;
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.lens-optimizer-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 7px;
+}
+
+.glass-select-label {
+  display: grid;
+  gap: 7px;
+}
+
+.glass-custom-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.glass-readout,
+.rgb-overlay-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.glass-readout span,
+.rgb-overlay-legend span,
+.catalog-note {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 5px 7px;
+  background: #fbfdfd;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 850;
+  line-height: 1.2;
+}
+
+.catalog-note {
+  margin: 0;
+  display: inline-block;
+}
+
+.type-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.type-button {
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 8px;
+  color: var(--ink);
+  background: #fbfdfd;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 850;
+  line-height: 1.2;
+}
+
+.type-button:hover {
+  border-color: #b8cfd1;
+  background: #eef5f4;
+}
+
+.type-button.is-active {
+  border-color: var(--teal);
+  background: #dff1ef;
+  color: var(--teal-dark);
+  box-shadow: inset 0 0 0 1px rgba(8, 127, 140, 0.22);
+}
+
+.control-label {
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 750;
+}
+
+.stepper {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) 38px;
+  align-items: center;
+}
+
+.stepper input {
+  border-radius: 0;
+  text-align: center;
+  font-weight: 800;
+}
+
+.step-button {
+  min-height: 44px;
+  border: 1px solid var(--line);
+  background: #eef5f4;
+  color: var(--teal-dark);
+  cursor: pointer;
+  font-size: 1.05rem;
+  font-weight: 950;
+  touch-action: manipulation;
+  user-select: none;
+}
+
+.step-button:first-child {
+  border-radius: 8px 0 0 8px;
+}
+
+.step-button:last-child {
+  border-radius: 0 8px 8px 0;
+}
+
+.step-button:hover {
+  background: #dff1ef;
+}
+
+.control-unit {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.gap-placeholder {
+  min-height: 58px;
+  align-content: start;
+}
+
+.placeholder-text {
+  display: grid;
+  min-height: 32px;
+  place-items: center;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  background: #fbfdfd;
+  font-weight: 800;
+}
+
+input {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 11px;
+  color: var(--ink);
+  background: #fbfdfd;
+  min-width: 0;
+}
+
+select {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 34px 9px 11px;
+  color: var(--ink);
+  background: #fbfdfd;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.lens-output {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding: 0 14px 14px;
+}
+
+.metric {
+  min-height: 76px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  background: #fbfdfd;
+  min-width: 0;
+}
+
+.metric-name {
+  display: block;
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 900;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.metric-value {
+  display: block;
+  margin-top: 8px;
+  color: var(--ink);
+  font-size: clamp(1rem, 2.1vw, 1.35rem);
+  font-weight: 900;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.metric-unit {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.warning {
+  margin: 0 14px 14px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: #6f3d00;
+  background: #fff6df;
+  border: 1px solid #f4d28e;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.summary-panel,
+.diagram-panel,
+.ray-trace-panel,
+.ray-trace-3d-panel,
+.st-ray-fan-panel,
+.spot-panel,
+.mtf-panel,
+.transmission-panel,
+.tolerance-panel,
+.optimizer-panel,
+.sagitta-panel,
+.image-circle-panel,
+.ray-image-circle-panel,
+.ray-fan-panel,
+.surface-panel,
+.formula-panel,
+.assumption-panel {
+  padding: 14px;
+  min-width: 0;
+}
+
+.summary-panel {
+  display: grid;
+  gap: 14px;
+  background:
+    linear-gradient(135deg, rgba(8, 127, 140, 0.11), transparent 55%),
+    var(--panel);
+}
+
+.system-result-panel {
+  gap: 10px;
+  padding: 12px;
+  background:
+    linear-gradient(135deg, rgba(121, 187, 217, 0.14), transparent 62%),
+    rgba(10, 53, 86, 0.92);
+}
+
+.system-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: rgba(215, 229, 238, 0.72);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.system-kpi-grid {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.25fr) repeat(2, minmax(120px, 1fr));
+  gap: 8px;
+}
+
+.system-kpi,
+.system-detail-grid .metric {
+  border: 1px solid rgba(215, 229, 238, 0.12);
+  border-radius: 8px;
+  background: rgba(248, 246, 242, 0.045);
+}
+
+.system-kpi {
+  display: grid;
+  gap: 2px;
+  padding: 10px;
+}
+
+.system-kpi.is-primary {
+  background: rgba(121, 187, 217, 0.11);
+  border-color: rgba(121, 187, 217, 0.24);
+}
+
+.system-kpi .metric-name {
+  font-size: 0.64rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.system-kpi .metric-value {
+  color: #f8f6f2;
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.system-kpi.is-primary .metric-value {
+  font-size: 1.8rem;
+}
+
+.system-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.system-detail-grid .metric {
+  min-height: auto;
+  padding: 8px;
+}
+
+.system-detail-grid .metric-value {
+  font-size: 0.9rem;
+}
+
+.panel-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.panel-heading h2,
+.panel-heading h3 {
+  margin: 0;
+  font-size: 1rem;
+  letter-spacing: 0;
+}
+
+.badge {
+  border-radius: 999px;
+  padding: 6px 10px;
+  color: #071f34;
+  background: #d7e5ee;
+  font-size: 0.78rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.system-result-panel .badge,
+.chromatic-readout .badge {
+  color: #071f34;
+  background: #d7e5ee;
+  border: 1px solid rgba(121, 187, 217, 0.35);
+}
+
+.main-result {
+  display: grid;
+  gap: 4px;
+}
+
+.main-label {
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 850;
+}
+
+.main-value {
+  color: var(--teal-dark);
+  font-size: clamp(2rem, 6vw, 3.8rem);
+  font-weight: 950;
+  line-height: 1;
+  overflow-wrap: anywhere;
+}
+
+.secondary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.secondary {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.sagitta-panel {
+  display: grid;
+  grid-column: span 4;
+  gap: 12px;
+}
+
+.sagitta-inputs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.sagitta-results {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.image-circle-panel {
+  display: grid;
+  grid-column: span 3;
+  gap: 12px;
+}
+
+.image-circle-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.72fr) minmax(280px, 1fr);
+  gap: 12px;
+  align-items: stretch;
+}
+
+.image-circle-controls,
+.image-circle-results {
+  display: grid;
+  gap: 10px;
+}
+
+.image-circle-results {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.image-circle-preview {
+  width: 100%;
+  min-height: 230px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdfd;
+}
+
+.preview-bg {
+  fill: #fbfdfd;
+}
+
+.sensor-rect {
+  fill: rgba(8, 127, 140, 0.13);
+  stroke: #087f8c;
+  stroke-width: 2;
+}
+
+.sensor-diagonal-guide {
+  stroke: #48626a;
+  stroke-width: 1.4;
+  stroke-dasharray: 5 5;
+}
+
+.image-circle-shape {
+  fill: rgba(8, 127, 140, 0.08);
+  stroke-width: 2.2;
+}
+
+.image-circle-shape.coverage-good {
+  stroke: #087f8c;
+}
+
+.image-circle-shape.coverage-warning {
+  stroke: #b7791f;
+  fill: rgba(183, 121, 31, 0.1);
+}
+
+.image-circle-shape.coverage-bad {
+  stroke: #c94b58;
+  fill: rgba(201, 75, 88, 0.09);
+}
+
+.preview-label,
+.preview-small {
+  fill: var(--ink);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.preview-small {
+  fill: var(--muted);
+  font-size: 11px;
+}
+
+.coverage-status {
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 10px;
+  font-weight: 900;
+}
+
+.coverage-good {
+  color: #056343;
+  background: #eefaf5;
+  border-color: #a9dfcf;
+}
+
+.coverage-warning {
+  color: #7a4a0b;
+  background: #fff8e8;
+  border-color: #ecd7ae;
+}
+
+.coverage-bad {
+  color: #8d2020;
+  background: #fff1f1;
+  border-color: #f1c8ce;
+}
+
+.ray-image-circle-panel {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 12px;
+}
+
+.ray-circle-controls {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.ray-circle-layout {
+  display: grid;
+  grid-template-columns: minmax(360px, 1.25fr) minmax(260px, 0.75fr);
+  gap: 12px;
+  align-items: stretch;
+}
+
+.vignetting-chart,
+.ray-circle-preview {
+  width: 100%;
+  min-height: 250px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdfd;
+}
+
+.vignetting-curve {
+  fill: none;
+  stroke: #087f8c;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.vignetting-threshold {
+  stroke: #b7791f;
+  stroke-width: 1.1;
+  stroke-dasharray: 6 5;
+}
+
+.full-frame-corner-line {
+  stroke: #c94b58;
+  stroke-width: 1.3;
+  stroke-dasharray: 4 4;
+}
+
+.ray-circle-results {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.format-coverage-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.format-coverage {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 10px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.ray-circle-90 {
+  fill: rgba(8, 127, 140, 0.08);
+  stroke: #087f8c;
+  stroke-width: 2.2;
+}
+
+.ray-circle-50 {
+  fill: rgba(183, 121, 31, 0.07);
+  stroke: #b7791f;
+  stroke-width: 1.8;
+}
+
+.sensor-format-rect {
+  fill: rgba(255, 255, 255, 0.1);
+  stroke-width: 1.7;
+}
+
+.sensor-format-rect.coverage-good {
+  stroke: #087f8c;
+}
+
+.sensor-format-rect.coverage-warning {
+  stroke: #b7791f;
+}
+
+.sensor-format-rect.coverage-bad {
+  stroke: #c94b58;
+}
+
+.ray-fan-panel {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 12px;
+}
+
+.ray-fan-controls {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.ray-fan-toggles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.ray-fan-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.aberration-card {
+  display: grid;
+  gap: 8px;
+}
+
+.aberration-card h4 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 900;
+}
+
+.aberration-chart {
+  width: 100%;
+  min-height: 210px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdfd;
+}
+
+.aberration-curve {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.curve-red {
+  stroke: var(--red-ray);
+}
+
+.curve-green {
+  stroke: var(--green-ray);
+}
+
+.curve-blue {
+  stroke: var(--blue-ray);
+}
+
+.aberration-zero-line {
+  stroke: #9aa9ae;
+  stroke-width: 1.1;
+  stroke-dasharray: 5 5;
+}
+
+.ray-trace-panel {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 12px;
+}
+
+.ray-trace-3d-panel {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 12px;
+}
+
+.st-ray-fan-panel {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 12px;
+}
+
+.check-control {
+  display: flex;
+  grid-template-columns: none;
+  gap: 8px;
+  align-items: center;
+}
+
+.check-control input {
+  width: 18px;
+  min-height: 18px;
+  accent-color: var(--teal);
+}
+
+.ray-trace-inputs,
+.ray-trace-results {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.15fr) repeat(3, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.panel-step-control {
+  min-width: 0;
+  max-width: 178px;
+}
+
+.panel-step-control .stepper {
+  grid-template-columns: 26px minmax(68px, 92px) 26px;
+  justify-content: start;
+}
+
+.panel-step-control .step-button,
+.panel-step-control input {
+  min-height: 29px;
+  font-size: 0.68rem;
+  padding: 3px 5px;
+}
+
+.ray-trace-results {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.ray-3d-controls {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.9fr) repeat(5, minmax(130px, 1fr));
+  gap: 10px;
+  align-items: end;
+}
+
+.ray-3d-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.88fr) minmax(0, 1.12fr);
+  gap: 10px;
+  align-items: stretch;
+}
+
+.spot-3d-diagram {
+  width: 100%;
+  min-height: 260px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdfd;
+}
+
+.ray-3d-results {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.st-ray-fan-controls {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  align-items: end;
+}
+
+.st-ray-fan-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+}
+
+.st-copy-button {
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: 0.78rem;
+}
+
+.copy-status {
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 900;
+}
+
+.csv-export-box {
+  width: 100%;
+  min-height: 92px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  color: var(--ink);
+  background: #fbfdfd;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.st-ray-fan-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.st-ray-fan-diagnostics {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(110px, 0.8fr) minmax(150px, 1fr) minmax(110px, 0.8fr);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdfd;
+  font-size: 0.78rem;
+}
+
+.st-ray-fan-diagnostics span {
+  min-width: 0;
+  padding: 7px 9px;
+  border-bottom: 1px solid var(--line);
+  overflow-wrap: anywhere;
+}
+
+.st-ray-fan-diagnostics span:nth-last-child(-n + 4) {
+  border-bottom: 0;
+}
+
+.st-ray-fan-diagnostics [role="columnheader"] {
+  color: var(--ink);
+  background: #eef5f4;
+  font-weight: 900;
+}
+
+.st-ray-fan-diagnostics [role="rowheader"] {
+  color: var(--muted);
+  font-weight: 850;
+}
+
+.st-ray-fan-results {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.ray-warning {
+  margin: 0;
+}
+
+.compact-rgb-readout {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.field-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.field-chip {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 5px 7px;
+  color: var(--muted);
+  background: #fbfdfd;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.spot-panel {
+  display: grid;
+  grid-column: span 6;
+  gap: 12px;
+}
+
+.spot-field-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.spot-field-card {
+  display: grid;
+  gap: 8px;
+}
+
+.spot-field-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+  color: var(--ink);
+  font-size: 0.84rem;
+  font-weight: 850;
+}
+
+.spot-field-heading span {
+  color: var(--muted);
+}
+
+.spot-diagram {
+  width: 100%;
+  min-height: 160px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdfd;
+}
+
+.spot-bg {
+  fill: #fbfdfd;
+}
+
+.spot-axis {
+  stroke: #b7c5c8;
+  stroke-width: 1;
+  stroke-dasharray: 4 5;
+}
+
+.spot-rms-ring {
+  fill: none;
+  stroke: #087f8c;
+  stroke-width: 1.2;
+  opacity: 0.75;
+}
+
+.spot-max-ring {
+  fill: none;
+  stroke: #c94b58;
+  stroke-width: 1.1;
+  stroke-dasharray: 4 4;
+  opacity: 0.7;
+}
+
+.spot-point {
+  fill: #172126;
+  opacity: 0.74;
+}
+
+.spot-red {
+  fill: var(--red-ray);
+}
+
+.spot-green {
+  fill: var(--green-ray);
+}
+
+.spot-blue {
+  fill: var(--blue-ray);
+}
+
+.spot-chief {
+  opacity: 0.95;
+}
+
+.spot-marginal {
+  opacity: 0.9;
+}
+
+.spot-empty {
+  fill: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.spot-results {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.rgb-overlay-legend {
+  align-items: center;
+}
+
+.rgb-legend-red {
+  color: #8d2020;
+  background: #fff1f1;
+}
+
+.rgb-legend-green {
+  color: #056343;
+  background: #eefaf5;
+}
+
+.rgb-legend-blue {
+  color: #1e4896;
+  background: #eef4ff;
+}
+
+.mtf-panel {
+  display: grid;
+  grid-column: span 6;
+  gap: 12px;
+}
+
+.transmission-panel {
+  display: grid;
+  grid-column: span 6;
+  gap: 12px;
+}
+
+.tolerance-panel {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 12px;
+}
+
+.tolerance-controls,
+.tolerance-criteria {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  gap: 8px;
+  align-items: end;
+}
+
+.criterion-control {
+  display: grid;
+  grid-template-columns: auto minmax(62px, 1fr) minmax(52px, 0.8fr) auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.tolerance-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.tolerance-preview,
+.tolerance-worst-card {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdfd;
+}
+
+.tolerance-change-list {
+  display: grid;
+  grid-template-columns: minmax(90px, 1fr) repeat(3, minmax(70px, 0.8fr));
+  gap: 4px 8px;
+  font-size: 0.76rem;
+  color: var(--muted);
+}
+
+.tolerance-result-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.tolerance-histogram {
+  width: 100%;
+  min-height: 220px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdfd;
+}
+
+.tolerance-bar {
+  fill: rgba(26, 121, 101, 0.72);
+}
+
+.tolerance-readout {
+  overflow-x: auto;
+}
+
+.tolerance-readout .mtf-readout-row {
+  min-width: 650px;
+  grid-template-columns: minmax(140px, 1.2fr) repeat(4, minmax(78px, 0.8fr));
+}
+
+.optimizer-panel {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 12px;
+}
+
+.optimizer-controls {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(120px, 1fr));
+  gap: 8px;
+  align-items: end;
+}
+
+.optimizer-goals {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(130px, 1fr));
+  gap: 8px;
+}
+
+.optimizer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.optimizer-progress-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.optimizer-chart {
+  width: 100%;
+  min-height: 220px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdfd;
+}
+
+.optimizer-score-line {
+  fill: none;
+  stroke: var(--teal);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.optimizer-comparison {
+  overflow-x: auto;
+}
+
+.optimizer-comparison .mtf-readout-row {
+  min-width: 620px;
+  grid-template-columns: minmax(150px, 1.2fr) repeat(3, minmax(92px, 0.8fr));
+}
+
+.transmission-line-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.transmission-line-card {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdfd;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.transmission-line-card strong {
+  color: var(--ink);
+  font-size: 0.84rem;
+}
+
+.st-mtf-panel {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 12px;
+}
+
+.diffraction-hybrid-panel {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 12px;
+}
+
+.wavefront-panel {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 12px;
+}
+
+.wave-optics-panel {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 12px;
+}
+
+.poly-mtf-panel {
+  grid-column: 1 / -1;
+}
+
+.mtf-mode-control {
+  max-width: 260px;
+}
+
+.st-mtf-controls {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.9fr) minmax(180px, 0.9fr) minmax(160px, 0.7fr);
+  gap: 10px;
+  align-items: end;
+}
+
+.st-mtf-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.st-mtf-card {
+  display: grid;
+  gap: 8px;
+}
+
+.st-mtf-chart {
+  min-height: 210px;
+}
+
+.st-mtf-tangential {
+  stroke-width: 1.9;
+  stroke-dasharray: 6 5;
+}
+
+.st-mtf-sagittal {
+  stroke-width: 2.2;
+  stroke-dasharray: none;
+}
+
+.st-mtf-readout-table {
+  overflow-x: auto;
+}
+
+.st-mtf-readout-table .mtf-readout-row {
+  min-width: 620px;
+  grid-template-columns: minmax(170px, 1.35fr) repeat(4, minmax(66px, 0.7fr));
+}
+
+.st-mtf-focus-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.diffraction-hybrid-chart {
+  min-height: 270px;
+}
+
+.diffraction-hybrid-diffraction {
+  stroke-width: 1.8;
+  stroke-dasharray: 2 5;
+}
+
+.diffraction-hybrid-geometric-tangential {
+  stroke-width: 1.9;
+}
+
+.diffraction-hybrid-geometric-sagittal {
+  stroke-width: 1.8;
+  stroke-dasharray: 6 5;
+}
+
+.diffraction-hybrid-hybrid-tangential {
+  stroke-width: 2.5;
+  stroke-dasharray: 10 4;
+}
+
+.diffraction-hybrid-hybrid-sagittal {
+  stroke-width: 2.3;
+  stroke-dasharray: 10 4 2 4;
+}
+
+.diffraction-cutoff-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.diffraction-hybrid-readout {
+  overflow-x: auto;
+}
+
+.diffraction-hybrid-readout .mtf-readout-row {
+  min-width: 620px;
+  grid-template-columns: minmax(170px, 1.35fr) repeat(4, minmax(66px, 0.7fr));
+}
+
+.wavefront-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.wavefront-card {
+  display: grid;
+  gap: 8px;
+}
+
+.wavefront-map {
+  width: 100%;
+  min-height: 220px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdfd;
+}
+
+.wavefront-pupil {
+  fill: #f7fbfb;
+  stroke: #b7c5c8;
+  stroke-width: 1.2;
+}
+
+.wavefront-sample {
+  stroke: rgba(255, 255, 255, 0.84);
+  stroke-width: 1;
+}
+
+.wavefront-card-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.wavefront-readout {
+  overflow-x: auto;
+}
+
+.wavefront-readout .mtf-readout-row {
+  min-width: 760px;
+  grid-template-columns: minmax(112px, 0.9fr) repeat(5, minmax(82px, 0.75fr)) minmax(70px, 0.6fr);
+}
+
+.wave-optics-controls {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(160px, 1fr));
+  gap: 10px;
+  align-items: end;
+}
+
+.wave-optics-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.72fr) minmax(220px, 0.72fr) minmax(320px, 1fr);
+  gap: 10px;
+  align-items: stretch;
+}
+
+.wave-optics-card {
+  display: grid;
+  gap: 8px;
+}
+
+.wave-optics-map {
+  width: 100%;
+  min-height: 238px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdfd;
+}
+
+.wave-optics-frame {
+  fill: none;
+  stroke: #66727a;
+  stroke-width: 1;
+}
+
+.wave-optics-cut-chart {
+  min-height: 238px;
+}
+
+.wave-optics-tangential {
+  stroke: var(--teal);
+  stroke-width: 2.2;
+}
+
+.wave-optics-sagittal {
+  stroke: var(--coral);
+  stroke-width: 2;
+  stroke-dasharray: 6 5;
+}
+
+.wave-optics-readout {
+  overflow-x: auto;
+}
+
+.wave-optics-readout .mtf-readout-row {
+  min-width: 560px;
+  grid-template-columns: minmax(120px, 1fr) repeat(4, minmax(70px, 0.7fr));
+}
+
+.poly-mtf-controls {
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+}
+
+.poly-weight-controls {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(120px, 1fr));
+  gap: 8px;
+  margin-top: -2px;
+}
+
+.poly-mtf-main {
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) minmax(220px, 0.42fr);
+  gap: 10px;
+  align-items: stretch;
+}
+
+.poly-mtf-chart {
+  min-height: 250px;
+}
+
+.poly-mtf-tangential {
+  stroke: var(--teal);
+  stroke-width: 2.5;
+}
+
+.poly-mtf-sagittal {
+  stroke: var(--coral);
+  stroke-width: 2.25;
+  stroke-dasharray: 6 5;
+}
+
+.poly-mtf-line {
+  stroke-width: 1.35;
+  opacity: 0.72;
+}
+
+.poly-mtf-red {
+  stroke: #c93d45;
+}
+
+.poly-mtf-green {
+  stroke: #15815f;
+}
+
+.poly-mtf-blue {
+  stroke: #2f5da8;
+}
+
+.poly-mtf-dashed {
+  stroke-dasharray: 4 4;
+}
+
+.poly-focus-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.poly-mtf-readout {
+  overflow-x: auto;
+}
+
+.poly-mtf-readout .mtf-readout-row {
+  min-width: 620px;
+  grid-template-columns: minmax(132px, 1.05fr) repeat(4, minmax(70px, 0.7fr));
+}
+
+.mtf-chart {
+  width: 100%;
+  min-height: 260px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdfd;
+}
+
+.mtf-bg {
+  fill: #fbfdfd;
+}
+
+.mtf-axis {
+  stroke: #66727a;
+  stroke-width: 1.4;
+}
+
+.mtf-grid {
+  stroke: #dbe5e6;
+  stroke-width: 1;
+}
+
+.mtf-tick,
+.mtf-label,
+.mtf-empty {
+  fill: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.mtf-empty {
+  font-size: 14px;
+}
+
+.mtf-curve {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.mtf-center {
+  stroke: #087f8c;
+}
+
+.mtf-mid {
+  stroke: #2d5f9a;
+}
+
+.mtf-corner {
+  stroke: #c94b58;
+}
+
+.mtf-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mtf-legend-item {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.mtf-legend-item::before {
+  content: "";
+  width: 18px;
+  height: 3px;
+  border-radius: 999px;
+  background: #172126;
+}
+
+.mtf-legend-center::before {
+  background: #087f8c;
+}
+
+.mtf-legend-mid::before {
+  background: #2d5f9a;
+}
+
+.mtf-legend-corner::before {
+  background: #c94b58;
+}
+
+.mtf-readout-table {
+  display: grid;
+  gap: 4px;
+  padding-bottom: 2px;
+}
+
+.mtf-readout-row {
+  display: grid;
+  grid-template-columns: minmax(92px, 1fr) minmax(86px, 0.86fr) repeat(4, minmax(48px, 0.58fr)) minmax(60px, 0.7fr);
+  gap: 4px;
+  align-items: stretch;
+}
+
+.mtf-readout-table-compact .mtf-readout-row {
+  grid-template-columns: minmax(120px, 1.2fr) repeat(4, minmax(62px, 0.7fr));
+}
+
+.mtf-comparison-table {
+  overflow-x: auto;
+}
+
+.mtf-comparison-table .mtf-readout-row {
+  min-width: 680px;
+  grid-template-columns: minmax(106px, 1fr) minmax(62px, 0.65fr) repeat(4, minmax(56px, 0.62fr)) minmax(58px, 0.58fr) minmax(70px, 0.7fr);
+}
+
+.mtf-readout-row span {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 7px;
+  background: #fbfdfd;
+  color: var(--ink);
+  font-size: 0.68rem;
+  font-weight: 850;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.mtf-readout-head span {
+  color: var(--muted);
+  background: #f3f7f6;
+  font-size: 0.62rem;
+  text-transform: uppercase;
+}
+
+.mtf-focus-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mtf-focus-card {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px;
+  background: #fbfdfd;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.mtf-focus-card strong {
+  color: var(--ink);
+}
+
+.surface-panel {
+  margin: 0 0 18px;
+}
+
+.surface-panel summary {
+  cursor: pointer;
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.surface-table-wrap {
+  overflow-x: auto;
+  margin-top: 12px;
+}
+
+.surface-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 1360px;
+  font-size: 0.78rem;
+}
+
+.surface-table th,
+.surface-table td {
+  border-bottom: 1px solid var(--line);
+  padding: 8px 7px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.surface-table th {
+  color: var(--muted);
+  font-weight: 900;
+  background: #f7faf9;
+}
+
+.patent-prescription-block {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0 16px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfdfd;
+}
+
+.patent-prescription-heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  align-items: baseline;
+}
+
+.patent-prescription-heading span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.warning-box,
+.empty-analysis-note {
+  display: grid;
+  gap: 5px;
+  padding: 9px 10px;
+  border: 1px solid rgba(190, 128, 36, 0.28);
+  border-radius: 8px;
+  background: #fff8ea;
+  color: #704810;
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.empty-analysis-note {
+  border-color: rgba(8, 127, 140, 0.2);
+  background: #eef8f6;
+  color: var(--teal-dark);
+}
+
+.diagram-panel {
+  display: grid;
+  gap: 6px;
+}
+
+.diagram-panel.is-expanded {
+  position: fixed;
+  inset: 18px;
+  z-index: 30;
+  overflow: auto;
+  padding: 18px;
+  background: var(--panel);
+  box-shadow: 0 28px 90px rgba(23, 33, 38, 0.28);
+}
+
+.diagram-panel.is-expanded .ray-diagram {
+  min-height: min(72vh, 760px);
+}
+
+.diagram-actions {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.diagram-toggle {
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 10px;
+  color: var(--teal-dark);
+  background: #eef5f4;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 850;
+}
+
+.diagram-icon-toggle,
+.diagram-source-badge {
+  min-height: 34px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 9px;
+  color: var(--teal-dark);
+  background: #eef5f4;
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.diagram-source-badge {
+  cursor: default;
+}
+
+.diagram-icon-toggle.is-active {
+  color: #001f54;
+  background: #ffb703;
+  border-color: rgba(255, 183, 3, 0.45);
+}
+
+.zoom-badge {
+  min-height: 34px;
+  display: inline-grid;
+  place-items: center;
+  border: 1px solid #cfe1e1;
+  border-radius: 8px;
+  padding: 0 10px;
+  color: var(--teal-dark);
+  background: #f7fbfb;
+  font-size: 0.8rem;
+  font-weight: 850;
+}
+
+.diagram-toggle:hover {
+  background: #dff1ef;
+}
+
+.ray-diagram {
+  display: block;
+  width: 100%;
+  aspect-ratio: 47 / 24;
+  min-height: 300px;
+  border: 0;
+  border-radius: 7px;
+  background: #f8fbfb;
+  cursor: zoom-in;
+}
+
+.diagram-bg {
+  fill: #f8fbfb;
+}
+
+.axis-line {
+  stroke: #82939a;
+  stroke-width: 1.4;
+  stroke-dasharray: 7 7;
+}
+
+.sensor-line {
+  stroke: url("#sensorGradient");
+  stroke-width: 8;
+  stroke-linecap: round;
+}
+
+.sensor-diagonal {
+  stroke: #87969c;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 4 5;
+}
+
+.principal-plane {
+  stroke: #172126;
+  stroke-width: 1.4;
+  stroke-dasharray: 5 5;
+}
+
+.sony-flange-line {
+  stroke: #b7791f;
+  stroke-width: 1.15;
+  stroke-dasharray: 6 4;
+  opacity: 0.72;
+  vector-effect: non-scaling-stroke;
+}
+
+.bfd-guide-line {
+  stroke: #82939a;
+  stroke-width: 1;
+  stroke-dasharray: 4 5;
+  opacity: 0.42;
+  vector-effect: non-scaling-stroke;
+}
+
+.aperture-stop-marker line {
+  stroke: #111827;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.aperture-stop-marker .aperture-stop-cap {
+  stroke-width: 1.35;
+  opacity: 0.86;
+}
+
+.aperture-stop-marker text {
+  fill: #111827;
+  font-size: 12px;
+  font-weight: 950;
+  paint-order: stroke;
+  stroke: #f8fbfb;
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+
+.lens-shape .glass-fill {
+  fill: rgba(81, 156, 169, 0.16);
+  stroke: none;
+}
+
+.optical-fill-fallback {
+  fill: rgba(121, 187, 217, 0.14);
+  stroke: none;
+  pointer-events: none;
+}
+
+.optical-fill-fallback.glass-tone-1 {
+  fill: rgba(74, 139, 169, 0.12);
+}
+
+.optical-fill-fallback.glass-tone-2 {
+  fill: rgba(91, 168, 151, 0.12);
+}
+
+.lens-shape .glass-fill.glass-tone-1 {
+  fill: rgba(74, 139, 169, 0.14);
+}
+
+.lens-shape .glass-fill.glass-tone-2 {
+  fill: rgba(91, 168, 151, 0.14);
+}
+
+.lens-shape.is-clean-optical-layout .glass-fill {
+  fill: rgba(81, 156, 169, 0.16);
+}
+
+.lens-shape.is-clean-optical-layout .surface-outline,
+.lens-shape.is-clean-optical-layout .mechanical-edge {
+  stroke: #356874;
+  stroke-dasharray: none;
+}
+
+.cemented-group .glass-fill {
+  stroke: none;
+}
+
+.cemented-group .glass-fill.glass-tone-0 {
+  fill: rgba(81, 156, 169, 0.16);
+}
+
+.cemented-group .glass-fill.glass-tone-1 {
+  fill: rgba(74, 139, 169, 0.14);
+}
+
+.cemented-group .glass-fill.glass-tone-2 {
+  fill: rgba(91, 168, 151, 0.14);
+}
+
+.cemented-group.is-air-gap-constrained .glass-fill {
+  fill: rgba(195, 104, 86, 0.11);
+}
+
+.lens-shape.is-air-gap-constrained .glass-fill {
+  fill: rgba(195, 104, 86, 0.11);
+}
+
+.cemented-group.is-air-gap-constrained .cemented-group-outer-outline,
+.cemented-group.is-air-gap-constrained .mechanical-edge,
+.cemented-group.is-air-gap-constrained .bevel-edge,
+.lens-shape.is-air-gap-constrained .surface-outline,
+.lens-shape.is-air-gap-constrained .mechanical-edge,
+.lens-shape.is-air-gap-constrained .bevel-edge {
+  stroke: #b54a43;
+  stroke-dasharray: 5 3;
+}
+
+.cemented-group.is-optical-estimate .cemented-group-outer-outline,
+.cemented-group.is-optical-estimate .mechanical-edge,
+.cemented-group.is-optical-estimate .bevel-edge,
+.lens-shape.is-optical-estimate .surface-outline,
+.lens-shape.is-optical-estimate .mechanical-edge,
+.lens-shape.is-optical-estimate .bevel-edge {
+  stroke: #356874;
+  stroke-dasharray: none;
+}
+
+.cemented-group.is-optical-estimate .glass-fill,
+.lens-shape.is-optical-estimate .glass-fill {
+  opacity: 1;
+}
+
+.cemented-group.is-mechanically-constrained .cemented-group-outer-outline,
+.cemented-group.is-mechanically-constrained .mechanical-edge,
+.cemented-group.is-mechanically-constrained .bevel-edge,
+.lens-shape.is-mechanically-constrained .surface-outline,
+.lens-shape.is-mechanically-constrained .mechanical-edge,
+.lens-shape.is-mechanically-constrained .bevel-edge {
+  stroke: #b7791f;
+  stroke-dasharray: 5 3;
+}
+
+.cemented-group.is-mechanically-constrained .glass-fill,
+.lens-shape.is-mechanically-constrained .glass-fill {
+  opacity: 1;
+}
+
+.lens-shape .surface-outline,
+.lens-shape .mechanical-edge,
+.lens-shape .bevel-edge,
+.cemented-group .surface-outline,
+.cemented-group .mechanical-edge,
+.cemented-group .bevel-edge,
+.cemented-group-outer-outline {
+  fill: none;
+  stroke: #356874;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.lens-shape .mechanical-edge {
+  stroke-width: 1.6;
+}
+
+.lens-shape .bevel-edge {
+  stroke-width: 1.45;
+}
+
+.cemented-group-outer-outline {
+  stroke: #1f2a30;
+  stroke-width: 2;
+}
+
+.cemented-group .mechanical-edge {
+  stroke: #1f2a30;
+  stroke-width: 1.6;
+}
+
+.cemented-group .bevel-edge {
+  stroke: #1f2a30;
+  stroke-width: 1.45;
+}
+
+.cemented-shared-interface {
+  stroke: #486f79;
+  stroke-width: 1.45;
+}
+
+.cemented-group-label,
+.individual-lens-label {
+  font-weight: 800;
+}
+
+.layer-annotations text,
+.layer-stop text {
+  paint-order: stroke;
+  stroke: #f8fbfb;
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.ray-diagram text {
+  font-size: 9px;
+}
+
+.ray-diagram .cemented-group-label,
+.ray-diagram .individual-lens-label,
+.ray-diagram .lens-label {
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.ray-diagram .diagram-label,
+.ray-diagram .annotation-label,
+.ray-diagram .sensor-label,
+.ray-diagram .flange-label,
+.ray-diagram .diagram-dimension-label,
+.ray-diagram .gap-guide text,
+.ray-diagram .group-length-guide text,
+.ray-diagram .stop-diameter-label {
+  font-size: 8px;
+}
+
+.diagram-label,
+.diagram-dimension-label,
+.cemented-group-label,
+.individual-lens-label,
+.gap-guide text,
+.group-length-guide text,
+.stop-diameter-label {
+  paint-order: stroke;
+  stroke: #f8fbfb;
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+
+.air-gap-mechanical-marker {
+  stroke: #b7791f;
+  stroke-width: 1.5;
+  stroke-dasharray: 5 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.air-gap-debug-construction {
+  fill: none;
+  stroke: #b54a43;
+  stroke-width: 1.2;
+  stroke-dasharray: 5 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.air-gap-clearance-marker {
+  stroke: #c76a59;
+  stroke-width: 1.4;
+  stroke-dasharray: 2 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.air-gap-warning-marker {
+  fill: #a7343e;
+  font-size: 10px;
+  font-weight: 900;
+  paint-order: stroke;
+  stroke: #f8fbfb;
+  stroke-width: 3px;
+}
+
+.cement-edge-relief path {
+  fill: rgba(111, 153, 159, 0.2);
+  stroke: #63858b;
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.lens-shape.is-patent-derived .glass-fill {
+  fill: rgba(86, 139, 151, 0.12);
+}
+
+.lens-shape.is-patent-derived .surface-outline,
+.lens-shape.is-patent-derived .mechanical-edge,
+.lens-shape.is-patent-derived .bevel-edge {
+  stroke: #1f2a30;
+}
+
+.lens-shape.is-edge-clipped .mechanical-edge {
+  stroke-dasharray: 3 2;
+}
+
+.lens-shape.is-not-manufacturable .surface-outline {
+  stroke: #b34750;
+  stroke-dasharray: 5 3;
+}
+
+.geometry-warning-marker {
+  fill: #a7343e;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.cemented-display-control {
+  margin: 10px 0 0;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(251, 253, 253, 0.94);
+}
+
+.mechanical-diagnostics {
+  background: #fbfdfd;
+}
+
+.diagram-view-mode-control {
+  display: inline-grid;
+  grid-template-columns: auto minmax(94px, 1fr);
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.diagram-view-mode-control select {
+  min-width: 104px;
+  padding: 7px 28px 7px 9px;
+}
+
+.production-source-control select {
+  min-width: 154px;
+}
+
+.cemented-display-control summary {
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.cemented-display-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.cemented-display-grid label {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px;
+  align-items: center;
+  min-width: 0;
+  font-size: 0.74rem;
+}
+
+.cemented-display-grid label select,
+.cemented-display-grid label input {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.cemented-group-diagnostic {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px 10px;
+  margin-top: 8px;
+  padding: 7px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.cemented-group-diagnostic strong {
+  color: var(--ink);
+}
+
+.air-gap-diagnostic-heading {
+  margin: 10px 0 0;
+  font-size: 0.78rem;
+}
+
+.air-gap-diagnostic {
+  border-left: 3px solid #c76a59;
+}
+
+.status-good {
+  color: #17664b;
+  font-weight: 800;
+}
+
+.status-bad {
+  color: #a7343e;
+  font-weight: 800;
+}
+
+.diagram-geometry-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.diagram-geometry-legend span::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 5px;
+  border: 1px solid var(--accent);
+  background: rgba(81, 156, 169, 0.14);
+}
+
+.lens-shape text,
+.diagram-label {
+  fill: #243036;
+  font-size: 14px;
+  font-weight: 850;
+  paint-order: stroke;
+  stroke: #f8fbfb;
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+
+.lens-shape.is-patent-derived text {
+  fill: #1f2a30;
+}
+
+.lens-shape .asphere-label {
+  fill: #7a3f00;
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.surface-row-stop {
+  background: rgba(17, 24, 39, 0.06);
+  font-weight: 850;
+}
+
+.diagram-small {
+  fill: #66727a;
+  font-size: 12px;
+  font-weight: 750;
+  paint-order: stroke;
+  stroke: #f8fbfb;
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.ray {
+  fill: none;
+  stroke-width: 1.05;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.7;
+}
+
+.ray-red {
+  stroke: var(--red-ray);
+}
+
+.ray-green {
+  stroke: var(--green-ray);
+}
+
+.ray-blue {
+  stroke: var(--blue-ray);
+}
+
+.real-ray {
+  fill: none;
+  stroke: #111827;
+  stroke-width: 1.1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.62;
+}
+
+.real-ray-center {
+  stroke: #087f8c;
+}
+
+.real-ray-mid {
+  stroke: #2d5f9a;
+}
+
+.real-ray-corner {
+  stroke: #c94b58;
+}
+
+.real-ray-red {
+  stroke: var(--red-ray);
+}
+
+.real-ray-green {
+  stroke: var(--green-ray);
+}
+
+.real-ray-blue {
+  stroke: var(--blue-ray);
+}
+
+.real-ray-chief {
+  stroke-width: 1.7;
+  opacity: 0.9;
+}
+
+.real-ray-marginal {
+  stroke-width: 1.45;
+  opacity: 0.82;
+}
+
+.real-ray-failed {
+  stroke-dasharray: 4 4;
+  opacity: 0.34;
+}
+
+.real-ray-failure-marker {
+  fill: #ffb703;
+  stroke: #0a3556;
+  stroke-width: 1.2;
+  vector-effect: non-scaling-stroke;
+}
+
+.focus-dot {
+  stroke: #fff;
+  stroke-width: 2;
+}
+
+.focus-red {
+  fill: var(--red-ray);
+}
+
+.focus-green {
+  fill: var(--green-ray);
+}
+
+.focus-blue {
+  fill: var(--blue-ray);
+}
+
+.rgb-readout {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mount-readout {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mount-chip {
+  min-height: 36px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #ecd7ae;
+  border-radius: 8px;
+  padding: 7px 8px;
+  color: #6f430c;
+  background: #fff8e8;
+  font-size: 0.8rem;
+  font-weight: 850;
+  text-align: center;
+}
+
+.chromatic-readout {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+
+.chromatic-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.rgb-chip {
+  min-height: 36px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 8px;
+  font-size: 0.78rem;
+  font-weight: 850;
+  text-align: center;
+}
+
+.rgb-red {
+  color: #8d2020;
+  background: #fff1f1;
+}
+
+.rgb-green {
+  color: #056343;
+  background: #eefaf5;
+}
+
+.rgb-blue {
+  color: #1e4896;
+  background: #eef4ff;
+}
+
+.diagram-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.gap-guide line {
+  stroke: #9aa9ae;
+  stroke-width: 1.1;
+  stroke-dasharray: 3 5;
+}
+
+.gap-guide text {
+  fill: #66727a;
+  font-size: 11px;
+  font-weight: 800;
+  paint-order: stroke;
+  stroke: #f8fbfb;
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.group-length-guide line {
+  stroke: #48626a;
+  stroke-width: 1.2;
+}
+
+.group-length-guide text {
+  fill: #243036;
+  font-size: 10px;
+  font-weight: 850;
+  paint-order: stroke;
+  stroke: #f8fbfb;
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.formula-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.formula-row {
+  display: grid;
+  gap: 4px;
+  padding: 10px 0;
+  border-top: 1px solid var(--line);
+}
+
+.formula-row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.formula-row dt {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 850;
+}
+
+.formula-row dd {
+  margin: 0;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.95rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.assumption-panel p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.93rem;
+  line-height: 1.55;
+}
+
+@media (max-width: 1030px) {
+  body {
+    overflow: auto;
+  }
+
+  .app-shell {
+    height: auto;
+    overflow: visible;
+    padding: 18px 0 36px;
+  }
+
+  .app-layout {
+    height: auto;
+    overflow: visible;
+  }
+
+  .app-main {
+    display: block;
+    overflow: visible;
+  }
+
+  .work-layout {
+    grid-template-columns: 1fr;
+    overflow: visible;
+  }
+
+  .center-workspace,
+  .analysis-sidebar {
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  .analysis-sidebar .lens-control-section .lens-card {
+    grid-template-columns: 1fr;
+  }
+
+  .analysis-sidebar .lens-control-section .lens-top {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .analysis-sidebar .lens-control-section .lens-output {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1180px) and (min-width: 1031px) {
+  .lens-control-section .input-zone {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .analysis-sidebar .lens-control-section .input-zone {
+    grid-template-columns: 1fr;
+  }
+
+  .analysis-sidebar .lens-control-section .input-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 880px) {
+  .app-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .tool-header,
+  .workspace,
+  .work-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .cemented-display-grid,
+  .cemented-group-diagnostic {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .tool-header {
+    display: grid;
+  }
+
+  .header-control-row {
+    justify-content: start;
+  }
+
+  .preset-select-control,
+  .header-design-name,
+  .saved-design-select {
+    width: min(100%, 320px);
+    min-width: 0;
+  }
+
+  .top-diagram .ray-diagram {
+    min-height: 260px;
+  }
+
+  .toolbar {
+    justify-content: start;
+  }
+
+  .section-heading {
+    display: grid;
+  }
+
+  .section-heading span {
+    text-align: left;
+  }
+
+  .support-grid,
+  .system-bottom .summary-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .spot-panel {
+    grid-column: span 1;
+  }
+
+  .mtf-panel {
+    grid-column: span 1;
+  }
+
+  .transmission-panel {
+    grid-column: span 1;
+  }
+
+  .tolerance-panel {
+    grid-column: span 1;
+  }
+
+  .optimizer-panel {
+    grid-column: span 1;
+  }
+
+  .st-mtf-panel {
+    grid-column: span 1;
+  }
+
+  .diffraction-hybrid-panel {
+    grid-column: span 1;
+  }
+
+  .wavefront-panel {
+    grid-column: span 1;
+  }
+
+  .wave-optics-panel {
+    grid-column: span 1;
+  }
+
+  .poly-mtf-panel {
+    grid-column: span 1;
+  }
+
+  .image-circle-panel {
+    grid-column: span 1;
+  }
+
+  .ray-image-circle-panel {
+    grid-column: span 1;
+  }
+
+  .ray-fan-panel {
+    grid-column: span 1;
+  }
+
+  .ray-trace-3d-panel {
+    grid-column: span 1;
+  }
+
+  .st-ray-fan-panel {
+    grid-column: span 1;
+  }
+
+  .spot-field-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .preset-note {
+    display: grid;
+  }
+
+  .preset-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .save-panel,
+  .save-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .input-grid,
+  .lens-output,
+  .mount-readout,
+  .system-bottom .secondary-grid,
+  .ray-trace-inputs,
+  .ray-trace-results,
+  .image-circle-layout,
+  .image-circle-results,
+  .ray-circle-controls,
+  .ray-circle-layout,
+  .ray-circle-results,
+  .format-coverage-grid,
+  .ray-fan-controls,
+  .ray-fan-toggles,
+  .ray-fan-grid,
+  .ray-3d-controls,
+  .ray-3d-layout,
+  .ray-3d-results,
+  .st-ray-fan-controls,
+  .st-ray-fan-grid,
+  .st-ray-fan-diagnostics,
+  .st-ray-fan-results,
+  .st-mtf-controls,
+  .st-mtf-chart-grid,
+  .st-mtf-focus-grid,
+  .diffraction-cutoff-grid,
+  .wavefront-grid,
+  .wavefront-card-metrics,
+  .wave-optics-controls,
+  .wave-optics-layout,
+  .poly-mtf-controls,
+  .poly-weight-controls,
+  .poly-mtf-main,
+  .poly-focus-grid,
+  .transmission-line-grid,
+  .coating-control,
+  .lens-asphere-control,
+  .lens-tolerance-grid,
+  .asphere-grid,
+  .tolerance-controls,
+  .tolerance-criteria,
+  .optimizer-controls,
+  .optimizer-goals,
+  .optimizer-progress-grid,
+  .lens-optimizer-grid,
+  .tolerance-result-grid,
+  .mtf-focus-grid,
+  .spot-results,
+  .sagitta-inputs,
+  .sagitta-results,
+  .rgb-readout {
+    grid-template-columns: 1fr;
+  }
+
+  .type-control {
+    grid-column: span 1;
+  }
+
+  .lens-control-section .input-zone {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .analysis-sidebar .lens-control-section .input-zone {
+    grid-template-columns: 1fr;
+  }
+
+  .analysis-sidebar .lens-control-section .input-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 520px) {
+  .app-shell {
+    width: min(100% - 20px, 1180px);
+    padding-top: 18px;
+  }
+
+  .top-diagram .ray-diagram {
+    min-height: 220px;
+  }
+
+  .secondary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .lens-control-section .input-zone {
+    grid-template-columns: 1fr;
+  }
+
+  .analysis-sidebar .lens-control-section .lens-output {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Compact inspector pass for non-diagram menus. */
+.analysis-sidebar .stack-panel-body {
+  padding: 6px;
+}
+
+.analysis-sidebar .panel-heading {
+  margin-bottom: 6px;
+  gap: 6px;
+}
+
+.analysis-sidebar .panel-heading h3 {
+  font-size: 0.86rem;
+}
+
+.analysis-sidebar label,
+.analysis-sidebar .control,
+.analysis-sidebar .type-control,
+.analysis-sidebar .glass-control,
+.analysis-sidebar .coating-control,
+.analysis-sidebar .lens-asphere-control,
+.analysis-sidebar .lens-manufacturing-control,
+.analysis-sidebar .lens-tolerance-control,
+.analysis-sidebar .lens-optimizer-control {
+  gap: 4px;
+  font-size: 0.68rem;
+}
+
+.analysis-sidebar .control-label {
+  font-size: 0.64rem;
+}
+
+.analysis-sidebar input,
+.analysis-sidebar select {
+  min-height: 31px;
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 0.72rem;
+  background: #f8fdff;
+}
+
+.analysis-sidebar .stepper {
+  grid-template-columns: 26px minmax(0, 1fr) 26px;
+}
+
+.analysis-sidebar .step-button {
+  min-height: 31px;
+  color: #001f54;
+  background: #dff6ff;
+  border-color: #b9e3f2;
+  font-size: 0.76rem;
+}
+
+.analysis-sidebar .step-button:hover {
+  background: #c9f0ff;
+}
+
+.analysis-sidebar .panel-step-control {
+  max-width: 176px;
+}
+
+.analysis-sidebar .panel-step-control .stepper {
+  grid-template-columns: 25px minmax(68px, 92px) 25px;
+  justify-content: start;
+}
+
+.analysis-sidebar .panel-step-control input,
+.analysis-sidebar .panel-step-control .step-button {
+  min-height: 28px;
+  font-size: 0.66rem;
+}
+
+.analysis-sidebar .aperture-stop-controls,
+.analysis-sidebar .ray-trace-inputs,
+.analysis-sidebar .ray-circle-controls,
+.analysis-sidebar .ray-fan-controls,
+.analysis-sidebar .ray-3d-controls,
+.analysis-sidebar .st-ray-fan-controls,
+.analysis-sidebar .st-mtf-controls,
+.analysis-sidebar .wave-optics-controls,
+.analysis-sidebar .poly-mtf-controls,
+.analysis-sidebar .tolerance-controls,
+.analysis-sidebar .optimizer-controls {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  align-items: end;
+}
+
+.analysis-sidebar .aperture-stop-readout,
+.analysis-sidebar .ray-trace-results,
+.analysis-sidebar .ray-circle-results,
+.analysis-sidebar .format-coverage-grid,
+.analysis-sidebar .ray-3d-results,
+.analysis-sidebar .st-ray-fan-results,
+.analysis-sidebar .st-mtf-focus-grid,
+.analysis-sidebar .diffraction-cutoff-grid,
+.analysis-sidebar .wavefront-grid,
+.analysis-sidebar .wavefront-card-metrics,
+.analysis-sidebar .poly-focus-grid,
+.analysis-sidebar .tolerance-result-grid,
+.analysis-sidebar .optimizer-progress-grid,
+.analysis-sidebar .sagitta-results,
+.analysis-sidebar .spot-results,
+.analysis-sidebar .rgb-readout,
+.analysis-sidebar .mount-readout {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.analysis-sidebar .metric {
+  min-height: 46px;
+  padding: 6px;
+  border-radius: 6px;
+  background: #f8fdff;
+}
+
+.analysis-sidebar .metric-name {
+  font-size: 0.58rem;
+}
+
+.analysis-sidebar .metric-value {
+  margin-top: 3px;
+  font-size: 0.84rem;
+}
+
+.analysis-sidebar .metric-unit {
+  margin-top: 1px;
+  font-size: 0.54rem;
+}
+
+.analysis-sidebar .check-control {
+  min-height: 31px;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+}
+
+.analysis-sidebar .check-control input {
+  width: 16px;
+  min-height: 16px;
+  accent-color: #0a6cf1;
+}
+
+.lens-card-body > .warning {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 1320px) {
+  .analysis-sidebar .lens-control-section .input-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .analysis-sidebar .lens-card-body {
+    grid-template-columns: 1fr;
+  }
+
+  .analysis-sidebar .lens-control-section .lens-output {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* Dark compact theme from the supplied palette. */
+:root {
+  color-scheme: dark;
+  --ink: #f8f6f2;
+  --muted: #d7e5ee;
+  --line: rgba(215, 229, 238, 0.16);
+  --panel: #0a3556;
+  --soft: #0f3f61;
+  --teal: #79bbd9;
+  --teal-dark: #d7e5ee;
+  --amber: #0284c9;
+  --blue: #0284c9;
+  --cyan: #79bbd9;
+  --red-ray: #ff8f8f;
+  --green-ray: #86efac;
+  --blue-ray: #79bbd9;
+  --shadow: 0 8px 22px rgba(0, 0, 0, 0.24);
+}
+
+body {
+  background: radial-gradient(circle at top left, rgba(2, 132, 201, 0.18), transparent 34%),
+    linear-gradient(180deg, #061b2d 0%, #082942 46%, #061b2d 100%);
+  color: var(--ink);
+}
+
+.app-shell {
+  color: var(--ink);
+}
+
+.stack-panel,
+.lens-card,
+.summary-panel,
+.diagram-panel,
+.ray-trace-panel,
+.ray-trace-3d-panel,
+.st-ray-fan-panel,
+.spot-panel,
+.mtf-panel,
+.transmission-panel,
+.tolerance-panel,
+.optimizer-panel,
+.sagitta-panel,
+.image-circle-panel,
+.ray-image-circle-panel,
+.ray-fan-panel,
+.surface-panel,
+.formula-panel,
+.assumption-panel {
+  background: rgba(10, 53, 86, 0.92);
+  border-color: rgba(215, 229, 238, 0.12);
+  box-shadow: 0 7px 18px rgba(0, 0, 0, 0.2);
+}
+
+.stack-panel-header,
+.lens-card-summary {
+  background: rgba(10, 53, 86, 0.98);
+  color: var(--ink);
+}
+
+.stack-panel-header:hover,
+.lens-summary-toggle:hover {
+  background: rgba(121, 187, 217, 0.12);
+}
+
+.stack-chevron,
+.lens-card-chevron {
+  color: #79bbd9;
+}
+
+.eyebrow,
+.header-select-control,
+.section-heading span,
+label,
+.control,
+.control-label,
+.metric-name,
+.metric-unit,
+.diagram-design-name,
+.lens-summary-meta {
+  color: rgba(215, 229, 238, 0.78);
+}
+
+input,
+select,
+.analysis-sidebar input,
+.analysis-sidebar select,
+.saved-design-select,
+.header-design-name,
+.header-select-control select {
+  color: var(--ink);
+  background: rgba(248, 246, 242, 0.055);
+  border-color: rgba(215, 229, 238, 0.16);
+}
+
+input:focus-visible,
+select:focus-visible,
+button:focus-visible {
+  outline: 2px solid rgba(121, 187, 217, 0.35);
+  outline-offset: 1px;
+}
+
+.metric,
+.analysis-sidebar .metric,
+.mount-chip,
+.rgb-chip,
+.glass-readout span,
+.rgb-overlay-legend span,
+.catalog-note,
+.empty-analysis-note,
+.warning-box,
+.lens-asphere-control,
+.lens-manufacturing-control,
+.lens-tolerance-control,
+.lens-optimizer-control {
+  background: rgba(248, 246, 242, 0.045);
+  border-color: rgba(215, 229, 238, 0.12);
+}
+
+.metric-value,
+.lens-summary-title,
+.section-heading h2,
+.panel-heading h3,
+h1 {
+  color: #f8f6f2;
+}
+
+.icon-button,
+.action-button,
+.save-button,
+.update-button,
+.compact-save-button,
+.diagram-toggle,
+.zoom-badge,
+.analysis-sidebar .step-button,
+.order-button,
+.flip-button {
+  color: #f8f6f2;
+  background: rgba(2, 132, 201, 0.22);
+  border-color: rgba(121, 187, 217, 0.18);
+  box-shadow: none;
+}
+
+.action-button,
+.save-button {
+  background: #0284c9;
+}
+
+.icon-button:hover,
+.action-button:hover,
+.save-button:hover,
+.update-button:hover,
+.diagram-toggle:hover,
+.analysis-sidebar .step-button:hover,
+.order-button:hover,
+.flip-button:hover {
+  background: rgba(121, 187, 217, 0.24);
+}
+
+.remove-button,
+.compact-delete-button,
+.saved-delete {
+  color: #ffd1d1;
+  background: rgba(255, 143, 143, 0.12);
+  border-color: rgba(255, 143, 143, 0.2);
+}
+
+.analysis-sidebar .aperture-stop-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px;
+}
+
+.analysis-sidebar .aperture-stop-controls > label {
+  flex: 0 1 220px;
+}
+
+.analysis-sidebar .aperture-stop-controls > .panel-step-control {
+  flex: 0 0 176px;
+}
+
+.analysis-sidebar .aperture-stop-controls > .check-control {
+  flex: 1 1 220px;
+}
+
+.analysis-sidebar .aperture-stop-readout {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.diagram-panel {
+  background: rgba(10, 53, 86, 0.75);
+}
+
+.ray-diagram {
+  background: #071f34;
+  border-color: rgba(215, 229, 238, 0.14);
+}
+
+.diagram-bg {
+  fill: #071f34;
+}
+
+.axis-line,
+.sensor-diagonal {
+  stroke: rgba(215, 229, 238, 0.52);
+}
+
+.principal-plane {
+  stroke: #f8f6f2;
+}
+
+.sony-flange-line {
+  stroke: #79bbd9;
+}
+
+.lens-shape .glass-fill,
+.cemented-group .glass-fill,
+.lens-shape.is-clean-optical-layout .glass-fill {
+  fill: rgba(121, 187, 217, 0.2);
+}
+
+.lens-shape .surface-outline,
+.lens-shape .mechanical-edge,
+.lens-shape .bevel-edge,
+.cemented-group .surface-outline,
+.cemented-group .mechanical-edge,
+.cemented-group .bevel-edge,
+.cemented-group-outer-outline,
+.lens-shape.is-clean-optical-layout .surface-outline,
+.lens-shape.is-clean-optical-layout .mechanical-edge {
+  stroke: #d7e5ee;
+}
+
+.cemented-shared-interface {
+  stroke: rgba(248, 246, 242, 0.72);
+}
+
+.layer-annotations text,
+.layer-stop text,
+.diagram-label,
+.diagram-dimension-label,
+.diagram-small,
+.cemented-group-label,
+.individual-lens-label,
+.gap-guide text,
+.group-length-guide text,
+.stop-diameter-label,
+.aperture-stop-marker text {
+  fill: #f8f6f2;
+  stroke: #071f34;
+}
+
+.aperture-stop-marker line {
+  stroke: #f8f6f2;
+}
+
+.diagram-note {
+  color: rgba(215, 229, 238, 0.74);
+}
+
+.warning,
+.warning-box,
+.manufacturing-warning {
+  color: #f8f6f2;
+  background: rgba(2, 132, 201, 0.16);
+  border-color: rgba(121, 187, 217, 0.22);
+}
+
+.surface-table th {
+  background: rgba(248, 246, 242, 0.06);
+}
+
+.surface-table th,
+.surface-table td {
+  border-bottom-color: rgba(215, 229, 238, 0.12);
+}
+
+/* Keep the optical bench drawing readable while the rest of the UI stays dark. */
+.top-diagram .diagram-panel {
+  background: #f8f6f2;
+  border-color: rgba(10, 53, 86, 0.16);
+  color: #0a3556;
+  padding: 10px;
+  gap: 6px;
+}
+
+.top-diagram .diagram-panel > .panel-heading {
+  padding: 0 2px 4px;
+  border-bottom: 0;
+  gap: 8px;
+}
+
+.top-diagram .diagram-panel > .panel-heading h2 {
+  margin: 0;
+}
+
+.top-diagram .diagram-panel > .panel-heading h2.diagram-design-name {
+  max-width: min(62vw, 720px);
+  margin: 0;
+  color: #0a3556;
+  font-size: 0.92rem;
+  font-weight: 950;
+  line-height: 1.15;
+}
+
+.top-diagram .diagram-actions {
+  gap: 5px;
+}
+
+.top-diagram .diagram-view-mode-control {
+  gap: 5px;
+}
+
+.top-diagram .diagram-view-mode-control select {
+  min-height: 30px;
+  padding: 5px 28px 5px 9px;
+}
+
+.top-diagram .diagram-icon-toggle,
+.top-diagram .zoom-badge {
+  min-height: 30px;
+  min-width: 30px;
+  padding: 0 8px;
+}
+
+.top-diagram .panel-heading h2,
+.top-diagram .diagram-design-name,
+.top-diagram .diagram-view-mode-control,
+.top-diagram .diagram-view-mode-control span,
+.top-diagram .badge,
+.top-diagram .diagram-note,
+.top-diagram .cemented-display-control summary,
+.top-diagram .air-gap-diagnostic-heading,
+.top-diagram .cemented-group-diagnostic,
+.top-diagram .status-good,
+.top-diagram .status-bad {
+  color: #0a3556;
+}
+
+.top-diagram .badge,
+.top-diagram .zoom-badge,
+.top-diagram .diagram-toggle,
+.top-diagram .diagram-icon-toggle,
+.top-diagram .diagram-source-badge,
+.top-diagram .diagram-view-mode-control select,
+.top-diagram .cemented-display-control,
+.top-diagram .cemented-group-diagnostic,
+.top-diagram .warning,
+.top-diagram .manufacturing-warning {
+  background: #d7e5ee;
+  border-color: rgba(10, 53, 86, 0.16);
+  color: #0a3556;
+}
+
+.top-diagram .diagram-icon-toggle.is-active {
+  color: #001f54;
+  background: #ffb703;
+  border-color: rgba(10, 53, 86, 0.18);
+}
+
+.top-diagram .mechanical-diagnostics {
+  background: #f8f6f2;
+  border-color: rgba(10, 53, 86, 0.24);
+  color: #0a3556;
+}
+
+.top-diagram .mechanical-diagnostics summary,
+.top-diagram .mechanical-diagnostics label,
+.top-diagram .mechanical-diagnostics span,
+.top-diagram .mechanical-diagnostics strong,
+.top-diagram .mechanical-diagnostics td,
+.top-diagram .mechanical-diagnostics th,
+.top-diagram .mechanical-diagnostics .metric-value,
+.top-diagram .mechanical-diagnostics .metric-name,
+.top-diagram .mechanical-diagnostics .unit,
+.top-diagram .mechanical-diagnostics .diagram-note,
+.top-diagram .mechanical-diagnostics .air-gap-diagnostic-heading,
+.top-diagram .mechanical-diagnostics .cemented-group-diagnostic {
+  color: #0a3556;
+}
+
+.top-diagram .mechanical-diagnostics select,
+.top-diagram .mechanical-diagnostics input {
+  color: #071f34;
+  background: #ffffff;
+  border-color: rgba(10, 53, 86, 0.26);
+}
+
+.top-diagram .mechanical-diagnostics .diagram-note {
+  color: #244b63;
+}
+
+.top-diagram .mechanical-diagnostics .cemented-group-diagnostic {
+  background: rgba(215, 229, 238, 0.62);
+  border-top-color: rgba(10, 53, 86, 0.22);
+}
+
+.top-diagram .mechanical-diagnostics .status-good {
+  color: #0d6b4c;
+}
+
+.top-diagram .mechanical-diagnostics .status-bad {
+  color: #9c2f38;
+}
+
+.top-diagram .mechanical-diagnostics .warning,
+.top-diagram .mechanical-diagnostics .manufacturing-warning {
+  background: rgba(255, 183, 3, 0.16);
+  border-color: rgba(183, 121, 31, 0.34);
+  color: #5d3a05;
+}
+
+.system-bottom .mechanical-diagnostics {
+  background: rgba(248, 246, 242, 0.96);
+  border-color: rgba(10, 53, 86, 0.22);
+  color: #0a3556;
+}
+
+.system-bottom .mechanical-diagnostics summary,
+.system-bottom .mechanical-diagnostics label,
+.system-bottom .mechanical-diagnostics span,
+.system-bottom .mechanical-diagnostics strong,
+.system-bottom .mechanical-diagnostics td,
+.system-bottom .mechanical-diagnostics th,
+.system-bottom .mechanical-diagnostics .metric-value,
+.system-bottom .mechanical-diagnostics .metric-name,
+.system-bottom .mechanical-diagnostics .unit,
+.system-bottom .mechanical-diagnostics .diagram-note,
+.system-bottom .mechanical-diagnostics .air-gap-diagnostic-heading,
+.system-bottom .mechanical-diagnostics .cemented-group-diagnostic {
+  color: #0a3556;
+}
+
+.system-bottom .mechanical-diagnostics select,
+.system-bottom .mechanical-diagnostics input {
+  color: #071f34;
+  background: #ffffff;
+  border-color: rgba(10, 53, 86, 0.28);
+}
+
+.system-bottom .mechanical-diagnostics .diagram-note {
+  color: #244b63;
+}
+
+.system-bottom .mechanical-diagnostics .cemented-group-diagnostic {
+  background: rgba(215, 229, 238, 0.68);
+  border-color: rgba(10, 53, 86, 0.16);
+}
+
+.system-bottom .mechanical-diagnostics .status-good {
+  color: #0d6b4c;
+}
+
+.system-bottom .mechanical-diagnostics .status-bad {
+  color: #9c2f38;
+}
+
+.system-bottom .mechanical-diagnostics .warning,
+.system-bottom .mechanical-diagnostics .manufacturing-warning {
+  background: rgba(255, 183, 3, 0.18);
+  border-color: rgba(183, 121, 31, 0.34);
+  color: #5d3a05;
+}
+
+.top-diagram .diagram-toggle:hover {
+  background: #c9dce8;
+}
+
+.top-diagram .ray-diagram {
+  background: #f8f6f2;
+  border: 0;
+  box-shadow: inset 0 0 0 1px rgba(10, 53, 86, 0.11);
+}
+
+.top-diagram .diagram-bg {
+  fill: #f8f6f2;
+}
+
+.top-diagram .axis-line,
+.top-diagram .sensor-diagonal {
+  stroke: rgba(10, 53, 86, 0.42);
+}
+
+.top-diagram .principal-plane {
+  stroke: #0a3556;
+}
+
+.top-diagram .sony-flange-line {
+  stroke: #0284c9;
+  stroke-width: 1;
+  opacity: 0.66;
+}
+
+.top-diagram .bfd-guide-line {
+  stroke: rgba(10, 53, 86, 0.46);
+}
+
+.top-diagram .lens-shape .glass-fill,
+.top-diagram .cemented-group .glass-fill,
+.top-diagram .lens-shape.is-clean-optical-layout .glass-fill {
+  fill: rgba(121, 187, 217, 0.28);
+}
+
+.top-diagram .optical-fill-fallback {
+  fill: rgba(121, 187, 217, 0.2);
+}
+
+.top-diagram .optical-fill-fallback.glass-tone-1 {
+  fill: rgba(74, 139, 169, 0.18);
+}
+
+.top-diagram .optical-fill-fallback.glass-tone-2 {
+  fill: rgba(91, 168, 151, 0.18);
+}
+
+.top-diagram .lens-shape .surface-outline,
+.top-diagram .lens-shape .mechanical-edge,
+.top-diagram .lens-shape .bevel-edge,
+.top-diagram .cemented-group .surface-outline,
+.top-diagram .cemented-group .mechanical-edge,
+.top-diagram .cemented-group .bevel-edge,
+.top-diagram .cemented-group-outer-outline,
+.top-diagram .lens-shape.is-clean-optical-layout .surface-outline,
+.top-diagram .lens-shape.is-clean-optical-layout .mechanical-edge {
+  stroke: #0a3556;
+}
+
+.top-diagram .cemented-shared-interface {
+  stroke: rgba(10, 53, 86, 0.62);
+}
+
+.top-diagram .layer-annotations text,
+.top-diagram .layer-stop text,
+.top-diagram .diagram-label,
+.top-diagram .diagram-dimension-label,
+.top-diagram .diagram-small,
+.top-diagram .cemented-group-label,
+.top-diagram .individual-lens-label,
+.top-diagram .gap-guide text,
+.top-diagram .group-length-guide text,
+.top-diagram .stop-diameter-label,
+.top-diagram .aperture-stop-marker text {
+  fill: #0a3556;
+  stroke: #f8f6f2;
+}
+
+.top-diagram .aperture-stop-marker line {
+  stroke: #0a3556;
+  stroke-width: 1.55;
+}
+
+.top-diagram .ray {
+  opacity: 0.72;
+}
+
+.top-diagram .ray-diagram.view-optical .layer-optical-surfaces .surface-outline,
+.top-diagram .ray-diagram.view-optical .layer-optical-surfaces .cemented-shared-interface,
+.top-diagram .ray-diagram.view-optical .layer-mechanical-edges {
+  opacity: 0.66;
+}
+
+.top-diagram .ray-diagram.view-optical .layer-optical-surfaces .asphere-surface-outline {
+  opacity: 1;
+}
+
+.top-diagram .ray-diagram.view-patentLine {
+  background: #f8f6f2;
+}
+
+.top-diagram .ray-diagram.view-productionCutaway {
+  background: #ffffff;
+}
+
+.top-diagram .ray-diagram.view-patentLine .diagram-bg {
+  fill: #f8f6f2;
+}
+
+.ray-diagram.view-productionCutaway .diagram-bg {
+  fill: #ffffff;
+}
+
+.ray-diagram.view-productionCutaway .diagram-bg-grid,
+.ray-diagram.view-productionCutaway .layer-rays,
+.ray-diagram.view-productionCutaway .sensor-line,
+.ray-diagram.view-productionCutaway .sensor-diagonal,
+.ray-diagram.view-productionCutaway .sony-flange-line,
+.ray-diagram.view-productionCutaway .principal-plane,
+.ray-diagram.view-productionCutaway .gap-guide,
+.ray-diagram.view-productionCutaway .group-length-guide {
+  display: none;
+}
+
+.top-diagram .ray-diagram.view-patentLine .axis-line,
+.top-diagram .ray-diagram.view-productionCutaway .axis-line {
+  stroke: #0a3556;
+  stroke-width: 1.15;
+  stroke-dasharray: 7 6;
+  opacity: 0.86;
+}
+
+.production-cutaway-lens {
+  fill: #171717;
+  stroke: #171717;
+  stroke-width: 1.2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.production-cutaway-lens.glass-tone-1 {
+  fill: #171717;
+  stroke: #171717;
+}
+
+.production-cutaway-lens.glass-tone-2 {
+  fill: #171717;
+  stroke: #171717;
+}
+
+.production-cement-line {
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.production-stop-marker line {
+  stroke: #171717;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 4 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.production-stop-marker text,
+.production-lens-label,
+.visual-reference-direction {
+  fill: #171717;
+  font-size: 8px;
+  font-weight: 850;
+  paint-order: stroke;
+  stroke: #f8f6f2;
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.visual-reference-note {
+  color: #d7e5ee;
+}
+
+.visual-reference-cutaway {
+  cursor: default;
+}
+
+.svg-production-reference {
+  cursor: default;
+  background: #ffffff;
+}
+
+.svg-production-reference .diagram-bg {
+  fill: #ffffff;
+}
+
+.svg-production-reference .svg-reference-image image {
+  image-rendering: auto;
+}
+
+.svg-optical-overlay {
+  opacity: 0.26;
+  pointer-events: none;
+  mix-blend-mode: multiply;
+}
+
+.svg-reference-label {
+  fill: #171717;
+  font-size: 8px;
+  font-weight: 850;
+  paint-order: stroke;
+  stroke: #ffffff;
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.visual-reference-panel .diagram-actions {
+  justify-content: flex-end;
+}
+
+.visual-reference-note-card {
+  color: #d7e5ee;
+}
+
+.top-diagram .real-ray {
+  opacity: 0.76;
+}
+
+.top-diagram .real-ray-failed {
+  opacity: 0.34;
+}
+
+.analysis-sidebar .aperture-stop-readout {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.analysis-sidebar .aperture-stop-readout .metric {
+  grid-column: auto;
+}
+
+.spot-field-card .spot-results,
+.analysis-sidebar .spot-field-card .spot-results {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 5px;
+}
+
+.spot-field-card .spot-results .metric,
+.analysis-sidebar .spot-field-card .spot-results .metric {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 6px;
+  align-items: baseline;
+  min-height: 0;
+  padding: 6px 8px;
+}
+
+.spot-field-card .spot-results .metric-name,
+.spot-field-card .spot-results .metric-value,
+.spot-field-card .spot-results .metric-unit,
+.analysis-sidebar .spot-field-card .spot-results .metric-name,
+.analysis-sidebar .spot-field-card .spot-results .metric-value,
+.analysis-sidebar .spot-field-card .spot-results .metric-unit {
+  display: inline;
+  margin: 0;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.spot-field-card .spot-results .metric-name,
+.analysis-sidebar .spot-field-card .spot-results .metric-name {
+  font-size: 0.66rem;
+  line-height: 1.2;
+}
+
+.spot-field-card .spot-results .metric-value,
+.analysis-sidebar .spot-field-card .spot-results .metric-value {
+  font-size: 0.82rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.spot-field-card .spot-results .metric-unit,
+.analysis-sidebar .spot-field-card .spot-results .metric-unit {
+  font-size: 0.62rem;
+  white-space: nowrap;
+}
+
+.lens-summary-toggle {
+  grid-template-columns: minmax(42px, auto) minmax(0, 1fr) auto auto;
+}
+
+.lens-summary-meta {
+  font-size: 0.68rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 1280px) {
+  .lens-summary-meta {
+    grid-template-columns:
+      minmax(52px, max-content)
+      minmax(44px, max-content)
+      minmax(60px, max-content)
+      minmax(42px, max-content)
+      minmax(64px, max-content)
+      minmax(48px, max-content)
+      minmax(50px, max-content);
+    column-gap: 8px;
+  }
+}
+
+@media (max-width: 760px) {
+  .lens-summary-meta {
+    grid-template-columns: repeat(3, minmax(58px, max-content));
+    row-gap: 2px;
+  }
+
+  .system-kpi-grid,
+  .system-detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .system-kpi.is-primary {
+    grid-column: 1 / -1;
+  }
+}
+
+.lens-asphere-summary-badge {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #ffb703;
+  color: #0a3556;
+  font-size: 0.68rem;
+  font-weight: 950;
+  line-height: 1;
+  box-shadow: 0 0 0 1px rgba(255, 183, 3, 0.42);
+}
+
+.ray-diagram .asphere-surface-outline,
+.top-diagram .ray-diagram .asphere-surface-outline,
+.top-diagram .cemented-group .asphere-surface-outline,
+.top-diagram .lens-shape .asphere-surface-outline {
+  stroke: #ffb703;
+  stroke-width: 2.2;
+}
+
+.lens-card-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+
+.lens-main-prescription-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(104px, 1fr));
+  gap: 10px;
+  min-width: 0;
+}
+
+.lens-main-prescription-grid .control {
+  gap: 5px;
+  min-width: 0;
+}
+
+.lens-main-prescription-grid .control-label {
+  font-size: 0.7rem;
+  line-height: 1.15;
+}
+
+.lens-main-prescription-grid .stepper {
+  min-height: 32px;
+}
+
+.lens-main-prescription-grid input {
+  min-height: 32px;
+  font-size: 0.78rem;
+  padding-inline: 8px;
+}
+
+.lens-material-grid {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.8fr) minmax(150px, 1fr) minmax(210px, 1.4fr);
+  gap: 10px;
+  align-items: start;
+  min-width: 0;
+}
+
+.lens-material-grid .type-control,
+.lens-material-grid .glass-control,
+.lens-material-grid .coating-control {
+  grid-column: auto;
+  min-width: 0;
+}
+
+.lens-material-grid .coating-control {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.lens-advanced-sections {
+  display: grid;
+  gap: 8px;
+}
+
+.lens-advanced-sections .lens-asphere-control,
+.lens-advanced-sections .lens-manufacturing-control,
+.lens-advanced-sections .lens-tolerance-control,
+.lens-advanced-sections .lens-optimizer-control {
+  grid-column: 1 / -1;
+}
+
+.lens-advanced-sections .lens-optimizer-control,
+.lens-optimizer-control {
+  margin-top: 8px;
+  padding-top: 8px;
+}
+
+.lens-output {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 1200px) {
+  .lens-main-prescription-grid {
+    grid-template-columns: repeat(2, minmax(130px, 1fr));
+  }
+
+  .lens-material-grid {
+    grid-template-columns: repeat(2, minmax(140px, 1fr));
+  }
+
+  .lens-material-grid .coating-control {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 700px) {
+  .lens-main-prescription-grid,
+  .lens-material-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 900px) {
+  .analysis-sidebar .aperture-stop-readout {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

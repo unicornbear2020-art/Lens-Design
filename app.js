@@ -690,6 +690,30 @@ const normalizePatentSurface = (surface = {}, index = 0) => ({
   asphere: normalizePatentAsphere(surface.asphere)
 });
 
+const normalizeApertureStopSpec = (spec = null) => {
+  if (!spec || typeof spec !== "object") return null;
+  const kind = ["surface", "airGap", "axial"].includes(spec.kind) ? spec.kind : null;
+  if (!kind) return null;
+  const surfaceNumber = numericValue(spec.surfaceNumber);
+  const afterSurfaceNumber = numericValue(spec.afterSurfaceNumber);
+  const fraction = numericValue(spec.fraction);
+  const axialOffsetMm = numericValue(spec.axialOffsetMm);
+  const x = numericValue(spec.x);
+  return {
+    kind,
+    surfaceNumber: Number.isFinite(surfaceNumber) ? Math.round(surfaceNumber) : null,
+    afterSurfaceNumber: Number.isFinite(afterSurfaceNumber) ? Math.round(afterSurfaceNumber) : null,
+    fraction: Math.min(1, Math.max(0, Number.isFinite(fraction) ? fraction : 0.5)),
+    axialOffsetMm: Number.isFinite(axialOffsetMm) ? axialOffsetMm : 0,
+    x: Number.isFinite(x) ? x : null,
+    sourceLevel: ["patent", "production", "estimated", "manual"].includes(spec.sourceLevel) ? spec.sourceLevel : "estimated",
+    confidence: ["verified", "probable", "unverified"].includes(spec.confidence) ? spec.confidence : "unverified",
+    sourceLabel: spec.sourceLabel || "",
+    sourceUrl: spec.sourceUrl || "",
+    note: spec.note || ""
+  };
+};
+
 const CANON_DREAM_LENS_NORMALIZED_SURFACES = [
   { no: 1, radius: 1.461, distanceToNext: 0.117, nAfter: 1.79952, vdAfter: 42.3, mediumLabel: "Patent Glass 1" },
   { no: 2, radius: 5.817, distanceToNext: 0.002, spaceLabel: "S1" },
@@ -1133,6 +1157,7 @@ const makePatentPreset = ({
   diameterReference = null,
   diameterNote = "",
   diameterProfile = null,
+  apertureStopSpec = null,
   svgProductionReference = null
 }) => ({
   key,
@@ -1152,6 +1177,7 @@ const makePatentPreset = ({
   diameterReference,
   diameterNote,
   diameterProfile,
+  apertureStopSpec: normalizeApertureStopSpec(apertureStopSpec),
   note: "Patent-based example. Numeric surface table values have not been entered yet, so missing prescription fields are shown as warnings instead of being guessed.",
   analysisDefaults,
   svgProductionReference,
@@ -1159,9 +1185,74 @@ const makePatentPreset = ({
   patentDataStatus: "needsManualVerification"
 });
 
+const PATENT_APERTURE_STOP_SPECS = {
+  gaussF2Us4123144Ex1: {
+    kind: "surface",
+    surfaceNumber: 6,
+    sourceLevel: "patent",
+    confidence: "verified",
+    sourceLabel: "US4123144 Example 1 prescription table marks surface 6 as STOP.",
+    sourceUrl: "https://patents.google.com/patent/US4123144A/en",
+    note: "Stop plane is explicitly represented as surface 6 in the entered patent table."
+  },
+  canonDreamLens50F095JpSho39_10178: {
+    kind: "airGap",
+    afterSurfaceNumber: 7,
+    fraction: 0.5,
+    sourceLevel: "estimated",
+    confidence: "unverified",
+    sourceLabel: "Patent specifies f/0.95; app estimates iris in central S3 region.",
+    sourceUrl: "",
+    note: "The patent does not explicitly give a stop coordinate; midpoint of S3 is used as an editable estimate."
+  },
+  zeissSonnarType50F14Us2600610Ex3: {
+    kind: "airGap",
+    afterSurfaceNumber: 6,
+    fraction: 0.5,
+    sourceLevel: "estimated",
+    confidence: "probable",
+    sourceLabel: "US2600610 Example III layout places the aperture in the air gap between the front and rear components.",
+    sourceUrl: "https://patents.google.com/patent/US2600610A/en",
+    note: "Exact fractional stop coordinate is not stated in the numeric prescription; midpoint of the gap after surface 6 is used."
+  },
+  zeissBiotar50F14Us1786916Ex2: {
+    kind: "airGap",
+    afterSurfaceNumber: 5,
+    fraction: 0.5,
+    sourceLevel: "estimated",
+    confidence: "probable",
+    sourceLabel: "US1786916 Example 2 central air space between the two cemented halves.",
+    sourceUrl: "https://patents.google.com/patent/US1786916A/en",
+    note: "The app uses the midpoint of the 9.45 mm central air gap as an editable estimate."
+  },
+  sonyZeissPlanar50F14Us20140071331Ex4: {
+    kind: "surface",
+    surfaceNumber: 8,
+    sourceLevel: "patent",
+    confidence: "verified",
+    sourceLabel: "US20140071331 Example 4 prescription table includes stop surface 8.",
+    sourceUrl: "https://patents.google.com/patent/US20140071331A1/en",
+    note: "Stop is explicitly entered as surface 8."
+  },
+  sonySonnarFe55F18Us20150092100Ex1: {
+    kind: "surface",
+    surfaceNumber: 7,
+    sourceLevel: "patent",
+    confidence: "verified",
+    sourceLabel: "US20150092100 Numerical Example 1 includes stop surface 7.",
+    sourceUrl: "https://patents.google.com/patent/US20150092100A1/en",
+    note: "Stop is explicitly entered as surface 7."
+  }
+};
+
 const mergePatentSurfacePrescriptionData = (preset) => {
   const prescriptionData = PATENT_SURFACE_PRESCRIPTION_DATA[preset.key];
-  if (!prescriptionData) return preset;
+  const apertureStopSpec = normalizeApertureStopSpec(
+    prescriptionData?.apertureStopSpec
+      || PATENT_APERTURE_STOP_SPECS[preset.key]
+      || preset.apertureStopSpec
+  );
+  if (!prescriptionData) return { ...preset, apertureStopSpec };
   const patentDataStatus = prescriptionData.patentDataStatus || preset.patentDataStatus || "needsManualVerification";
   return {
     ...preset,
@@ -1170,6 +1261,7 @@ const mergePatentSurfacePrescriptionData = (preset) => {
       ? "Surface radii, axial thicknesses, refractive indices, and dispersion values are patent-based. Clear apertures and mechanical diameters are estimated unless explicitly supplied."
       : preset.note),
     surfaces: (prescriptionData.surfaces || preset.surfaces || []).map(normalizePatentSurface),
+    apertureStopSpec,
     patentDataStatus
   };
 };
@@ -1488,9 +1580,6 @@ const PATENT_PRESET_DEFINITIONS = [
     analysisDefaults: {
       ...TELEPHOTO_ANALYSIS_DEFAULTS,
       patentDiameterSource: "patentMechanical",
-      apertureStopMode: "surfaceNumber",
-      apertureStopSurfaceNumber: 7,
-      apertureStopSurfaceOffsetMm: 5.65,
       matchPatentFNumber: true
     }
   }),
@@ -1512,9 +1601,6 @@ const PATENT_PRESET_DEFINITIONS = [
     designType: "Ultra-fast",
     analysisDefaults: {
       ...TELEPHOTO_ANALYSIS_DEFAULTS,
-      apertureStopMode: "surfaceNumber",
-      apertureStopSurfaceNumber: 6,
-      apertureStopSurfaceOffsetMm: 3.575,
       matchPatentFNumber: true
     }
   }),
@@ -1535,9 +1621,6 @@ const PATENT_PRESET_DEFINITIONS = [
     designType: "Ultra-fast",
     analysisDefaults: {
       ...NORMAL_ANALYSIS_DEFAULTS,
-      apertureStopMode: "surfaceNumber",
-      apertureStopSurfaceNumber: 5,
-      apertureStopSurfaceOffsetMm: 4.725,
       productionSilhouetteSource: "svgReference",
       patentDiameterSource: "svgEstimated",
       matchPatentFNumber: true
@@ -1635,6 +1718,7 @@ const normalizePrescription = (prescription = {}) => {
       diameterReference: prescription.diameterReference || null,
       diameterNote: prescription.diameterNote || "",
       diameterProfile: normalizeDiameterProfile(prescription.diameterProfile),
+      apertureStopSpec: normalizeApertureStopSpec(prescription.apertureStopSpec),
       surfaces: (prescription.surfaces || []).map(normalizePatentSurface)
     };
   }
@@ -1712,6 +1796,7 @@ const clonePresetPrescription = (presetKey) => {
       diameterReference: preset.diameterReference || null,
       diameterNote: preset.diameterNote || "",
       diameterProfile: preset.diameterProfile || null,
+      apertureStopSpec: preset.apertureStopSpec || null,
       surfaces: preset.surfaces || []
     });
   }
@@ -3400,6 +3485,153 @@ const patentSurfacePositionMap = (lenses, system, positions = lensPositions(syst
   return map;
 };
 
+const resolvePresetApertureStopSpec = (prescription = state.prescription, preset = PRESETS[state.preset]) => (
+  normalizeApertureStopSpec(prescription?.apertureStopSpec)
+    || normalizeApertureStopSpec(preset?.apertureStopSpec)
+);
+
+const getPatentSurfaceX = (surfaceNumber, patentSurfaceXMap) => {
+  const number = Math.round(toNumber(surfaceNumber));
+  return Number.isFinite(number) ? patentSurfaceXMap?.get(number) : NaN;
+};
+
+const getAirGapStopX = ({ afterSurfaceNumber, fraction = 0.5, patentSurfaceXMap }) => {
+  const surfaceNumber = Math.round(toNumber(afterSurfaceNumber));
+  if (!Number.isFinite(surfaceNumber)) return NaN;
+  const currentSurfaceX = getPatentSurfaceX(surfaceNumber, patentSurfaceXMap);
+  const nextSurfaceX = getPatentSurfaceX(surfaceNumber + 1, patentSurfaceXMap);
+  if (!Number.isFinite(currentSurfaceX) || !Number.isFinite(nextSurfaceX)) return NaN;
+  const safeFraction = clamp(Number.isFinite(toNumber(fraction)) ? toNumber(fraction) : 0.5, 0, 1);
+  return currentSurfaceX + ((nextSurfaceX - currentSurfaceX) * safeFraction);
+};
+
+const apertureStopSourceBadge = (sourceLevel = "estimated", confidence = "unverified") => {
+  if (sourceLevel === "manual") return "Manual";
+  if (confidence === "verified") return sourceLevel === "production" ? "Production" : "Verified";
+  if (sourceLevel === "estimated") return "Estimated";
+  return "Warning";
+};
+
+const stopLabelFromSpec = (spec) => {
+  if (!spec) return "Auto / preset default";
+  const sourcePrefix = spec.sourceLevel === "production"
+    ? "Production-confirmed stop"
+    : spec.sourceLevel === "patent"
+      ? "Patent stop"
+      : "Estimated stop";
+  if (spec.kind === "surface") return `${sourcePrefix}: surface ${spec.surfaceNumber}`;
+  if (spec.kind === "airGap") return `${sourcePrefix}: gap S${spec.afterSurfaceNumber}–S${toNumber(spec.afterSurfaceNumber) + 1}`;
+  return `${sourcePrefix}: axial coordinate`;
+};
+
+const resolveStopSpecPosition = (spec, context = {}) => {
+  const normalized = normalizeApertureStopSpec(spec);
+  if (!normalized) return null;
+  const patentSurfaceXMap = context.patentSurfaceXMap;
+  let x = NaN;
+  let matchingSurface = null;
+  let patentSurfaceNumber = null;
+
+  if (normalized.kind === "surface") {
+    patentSurfaceNumber = normalized.surfaceNumber;
+    x = getPatentSurfaceX(normalized.surfaceNumber, patentSurfaceXMap);
+    matchingSurface = context.sortedSurfaces?.find((surface) => surface.patentSurfaceNumber === normalized.surfaceNumber) || null;
+  } else if (normalized.kind === "airGap") {
+    patentSurfaceNumber = normalized.afterSurfaceNumber;
+    x = getAirGapStopX({
+      afterSurfaceNumber: normalized.afterSurfaceNumber,
+      fraction: normalized.fraction,
+      patentSurfaceXMap
+    });
+  } else if (normalized.kind === "axial") {
+    x = Number.isFinite(normalized.x) ? normalized.x : normalized.axialOffsetMm;
+  }
+
+  if (!Number.isFinite(x)) return null;
+  const warning = normalized.confidence === "unverified"
+    ? "Stop location unverified; verify against the original patent or production service data."
+    : "";
+  return {
+    mode: normalized.sourceLevel === "manual" ? "manualStopSpec" : "metadataStopSpec",
+    x,
+    matchingSurface,
+    label: stopLabelFromSpec(normalized),
+    source: normalized.sourceLabel || stopLabelFromSpec(normalized),
+    warning,
+    sourceLevel: normalized.sourceLevel,
+    confidence: normalized.confidence,
+    sourceBadge: apertureStopSourceBadge(normalized.sourceLevel, normalized.confidence),
+    apertureStopSpec: normalized,
+    patentSurfaceNumber
+  };
+};
+
+const legacyPatentStopResolution = (patentSurfaces = [], patentSurfaceXMap, sortedSurfaces = []) => {
+  const stopSurface = patentSurfaces.find((surface) => surface.isStop);
+  const x = stopSurface ? patentSurfaceXMap?.get(stopSurface.no) : NaN;
+  if (!Number.isFinite(x)) return null;
+  const matchingSurface = sortedSurfaces.find((surface) => surface.patentSurfaceNumber === stopSurface.no) || null;
+  return {
+    mode: "patentStop",
+    x,
+    matchingSurface,
+    label: `Patent stop: surface ${stopSurface.no}`,
+    source: `Legacy patent STOP surface ${stopSurface.no}`,
+    sourceLevel: "patent",
+    confidence: "verified",
+    sourceBadge: "Verified",
+    patentSurfaceNumber: stopSurface.no,
+    warning: ""
+  };
+};
+
+const estimateCentralApertureStop = (patentSurfaces = [], patentSurfaceXMap, sortedSurfaces = []) => {
+  const finiteX = sortedSurfaces.map((surface) => surface.x).filter(Number.isFinite);
+  const opticalCenterX = finiteX.length ? (Math.min(...finiteX) + Math.max(...finiteX)) / 2 : 0;
+  const candidates = patentSurfaces
+    .filter((surface) => (
+      Number.isFinite(surface.distanceToNext)
+      && surface.distanceToNext > 0.000001
+      && !(Number.isFinite(surface.nAfter) && surface.nAfter > 1)
+      && Number.isFinite(getPatentSurfaceX(surface.no, patentSurfaceXMap))
+      && Number.isFinite(getPatentSurfaceX(surface.no + 1, patentSurfaceXMap))
+    ))
+    .map((surface) => {
+      const x = getAirGapStopX({ afterSurfaceNumber: surface.no, fraction: 0.5, patentSurfaceXMap });
+      return { surface, x, distanceFromCenter: Math.abs(x - opticalCenterX) };
+    })
+    .filter((candidate) => Number.isFinite(candidate.x))
+    .sort((left, right) => left.distanceFromCenter - right.distanceFromCenter);
+
+  const selected = candidates[0];
+  if (selected) {
+    return {
+      mode: "estimatedStop",
+      x: selected.x,
+      matchingSurface: null,
+      label: `Estimated central stop: gap S${selected.surface.no}–S${selected.surface.no + 1}`,
+      source: `Estimated central air gap S${selected.surface.no}–S${selected.surface.no + 1}`,
+      sourceLevel: "estimated",
+      confidence: "unverified",
+      sourceBadge: "Estimated",
+      patentSurfaceNumber: selected.surface.no,
+      warning: "Estimated stop position — verify against patent or production data."
+    };
+  }
+
+  return {
+    mode: "estimatedStop",
+    x: opticalCenterX,
+    matchingSurface: null,
+    label: "Estimated central stop",
+    source: "Estimated optical assembly centre",
+    sourceLevel: "estimated",
+    confidence: "unverified",
+    sourceBadge: "Warning",
+    warning: "No documented aperture stop or usable air gap was found; using an unverified central estimate."
+  };
+};
+
 const apertureStopSettingsFrom = (source = state) => ({
   apertureStopMode: source.apertureStopMode || "auto",
   apertureStopIndex: source.apertureStopIndex || "frontGroup",
@@ -3422,13 +3654,16 @@ const resolveApertureStopConfiguration = (
     ...settings,
     apertureDiameter: Math.max(0.1, toNumber(mergedSettings.apertureDiameter) || 0.1),
     prescription,
-    patentSurfaces
+    patentSurfaces,
+    apertureStopSpec: resolvePresetApertureStopSpec(prescription, PRESETS[mergedSettings.preset] || PRESETS[state.preset])
   };
 };
 
 const resolveApertureStopPosition = (settingsSource = state, surfaces = [], context = {}) => {
   const settings = apertureStopSettingsFrom(settingsSource);
   const sortedSurfaces = [...surfaces].sort((left, right) => right.x - left.x);
+  const isSurfacePrescription = (settingsSource.prescription || context.prescription || state.prescription)?.prescriptionType === "surface"
+    || (context.patentSurfaces || []).length > 0;
   const fallbackOption = context.fallbackStopOption
     || selectedApertureStopOption(context.lenses || state.lenses, context.system || calculateSystem(state.lenses), settings.apertureStopIndex);
   const fallback = {
@@ -3444,31 +3679,6 @@ const resolveApertureStopPosition = (settingsSource = state, surfaces = [], cont
 
   if (!sortedSurfaces.length) return fallback;
 
-  if (settings.apertureStopMode === "patentStop") {
-    const patentSurfaces = context.patentSurfaces || (state.prescription?.prescriptionType === "surface"
-      ? state.prescription.surfaces.map(normalizePatentSurface)
-      : []);
-    const stopSurface = patentSurfaces.find((surface) => surface.isStop);
-    const x = stopSurface ? context.patentSurfaceXMap?.get(stopSurface.no) : NaN;
-    if (Number.isFinite(x)) {
-      const matchingSurface = sortedSurfaces.find((surface) => surface.patentSurfaceNumber === stopSurface.no) || null;
-      return {
-        mode: "patentStop",
-        x,
-        matchingSurface,
-        label: `Patent STOP surface ${stopSurface.no}`,
-        source: `Patent STOP surface ${stopSurface.no}`,
-        patentSurfaceNumber: stopSurface.no,
-        warning: ""
-      };
-    }
-    return {
-      ...fallback,
-      mode: "patentStop",
-      warning: "No valid patent STOP surface was found; using the auto aperture stop."
-    };
-  }
-
   if (settings.apertureStopMode === "surfaceNumber") {
     const targetNumber = settings.apertureStopSurfaceNumber;
     const matchingSurface = sortedSurfaces.find((surface) => (
@@ -3482,6 +3692,9 @@ const resolveApertureStopPosition = (settingsSource = state, surfaces = [], cont
         matchingSurface: offset > 0.000001 ? null : matchingSurface,
         label: offset > 0.000001 ? `Surface ${targetNumber} + ${formatNumber(offset)} mm toward sensor` : `Surface ${targetNumber}`,
         source: offset > 0.000001 ? `Surface ${targetNumber} offset` : `Surface ${targetNumber}`,
+        sourceLevel: "manual",
+        confidence: "verified",
+        sourceBadge: "Manual",
         warning: ""
       };
     }
@@ -3499,6 +3712,9 @@ const resolveApertureStopPosition = (settingsSource = state, surfaces = [], cont
       matchingSurface: null,
       label: `${formatNumber(settings.apertureStopDistanceFromSensorMm)} mm from sensor`,
       source: "Distance from sensor plane",
+      sourceLevel: "manual",
+      confidence: "verified",
+      sourceBadge: "Manual",
       warning: ""
     };
   }
@@ -3512,8 +3728,39 @@ const resolveApertureStopPosition = (settingsSource = state, surfaces = [], cont
       matchingSurface: null,
       label: `${formatNumber(settings.apertureStopDistanceFromFrontMm)} mm from front surface`,
       source: "Distance from first/front optical surface",
+      sourceLevel: "manual",
+      confidence: "verified",
+      sourceBadge: "Manual",
       warning: ""
     };
+  }
+
+  const patentSurfaces = context.patentSurfaces || (state.prescription?.prescriptionType === "surface"
+    ? state.prescription.surfaces.map(normalizePatentSurface)
+    : []);
+  const patentSurfaceXMap = context.patentSurfaceXMap;
+  const specResolution = resolveStopSpecPosition(
+    settingsSource.apertureStopSpec || context.apertureStopSpec || resolvePresetApertureStopSpec(settingsSource.prescription || state.prescription),
+    { patentSurfaceXMap, sortedSurfaces }
+  );
+  const legacyResolution = legacyPatentStopResolution(patentSurfaces, patentSurfaceXMap, sortedSurfaces);
+
+  if (settings.apertureStopMode === "patentStop") {
+    if (specResolution && specResolution.sourceLevel !== "estimated") return specResolution;
+    if (legacyResolution) return legacyResolution;
+    if (specResolution) {
+      return {
+        ...specResolution,
+        warning: specResolution.warning || "No verified patent stop exists; using the unverified preset estimate."
+      };
+    }
+    return estimateCentralApertureStop(patentSurfaces, patentSurfaceXMap, sortedSurfaces);
+  }
+
+  if (settings.apertureStopMode === "auto" && isSurfacePrescription) {
+    if (specResolution) return specResolution;
+    if (legacyResolution) return legacyResolution;
+    return estimateCentralApertureStop(patentSurfaces, patentSurfaceXMap, sortedSurfaces);
   }
 
   return fallback;
@@ -3639,7 +3886,9 @@ const buildSurfaceList = (lenses, system, options = {}) => {
     positions,
     fallbackStopOption: stopOption,
     patentSurfaces,
-    patentSurfaceXMap
+    patentSurfaceXMap,
+    apertureStopSpec: stopConfiguration.apertureStopSpec,
+    prescription: stopConfiguration.prescription
   });
   const matchingSurface = stopResolution.matchingSurface;
 
@@ -3650,6 +3899,9 @@ const buildSurfaceList = (lenses, system, options = {}) => {
     matchingSurface.stopSource = stopResolution.source;
     matchingSurface.stopLabel = stopResolution.label;
     matchingSurface.stopWarning = stopResolution.warning;
+    matchingSurface.stopSourceLevel = stopResolution.sourceLevel;
+    matchingSurface.stopConfidence = stopResolution.confidence;
+    matchingSurface.stopSourceBadge = stopResolution.sourceBadge;
   } else {
     surfaces.push({
       x: Number.isFinite(stopResolution.x) ? stopResolution.x : stopOption.x,
@@ -3674,10 +3926,14 @@ const buildSurfaceList = (lenses, system, options = {}) => {
       lensIndex: null,
       surfaceIndex: "stop",
       label: stopResolution.label || "Aperture stop",
+      stopLabel: stopResolution.label || "Aperture stop",
       isStop: true,
       stopSemiDiameter,
       stopSource: stopResolution.source,
       stopWarning: stopResolution.warning,
+      stopSourceLevel: stopResolution.sourceLevel,
+      stopConfidence: stopResolution.confidence,
+      stopSourceBadge: stopResolution.sourceBadge,
       patentSurfaceNumber: stopResolution.patentSurfaceNumber ?? null
     });
   }
@@ -3697,7 +3953,10 @@ const buildSurfaceList = (lenses, system, options = {}) => {
     resolvedX: stopResolution.x,
     source: stopResolution.source,
     label: stopResolution.label,
-    warning: stopResolution.warning
+    warning: stopResolution.warning,
+    sourceLevel: stopResolution.sourceLevel,
+    confidence: stopResolution.confidence,
+    sourceBadge: stopResolution.sourceBadge
   };
 
   return sortedSurfaces;
@@ -10979,6 +11238,8 @@ const renderApertureStopPanel = (system, surfaces = []) => {
   const stopSummary = stopSurface
     ? `${formatNumber(stopSurface.x)} mm from sensor · ${formatNumber((stopSurface.stopSemiDiameter || stopSurface.semiDiameter) * 2)} mm diameter`
     : "Auto fallback";
+  const stopBadge = stopSurface?.stopSourceBadge || (mode === "auto" ? "Auto" : "Manual");
+  const stopSource = stopSurface?.stopSource || "Auto / preset default";
   const entrancePupil = state.entrancePupilResult || calculateEntrancePupil(state.lenses, system, {
     ...rayTraceApertureOptions(state),
     prescription: state.prescription
@@ -10998,7 +11259,7 @@ const renderApertureStopPanel = (system, surfaces = []) => {
           Stop position mode
           <select data-action="update-aperture-stop-mode" aria-label="Aperture stop position mode">
             <option value="auto" ${mode === "auto" ? "selected" : ""}>Auto / preset default</option>
-            <option value="patentStop" ${mode === "patentStop" ? "selected" : ""}>Patent STOP surface if available</option>
+            <option value="patentStop" ${mode === "patentStop" ? "selected" : ""}>Patent / preset stop if available</option>
             <option value="surfaceNumber" ${mode === "surfaceNumber" ? "selected" : ""}>Surface number</option>
             <option value="distanceFromSensor" ${mode === "distanceFromSensor" ? "selected" : ""}>Distance from sensor plane</option>
             <option value="distanceFromFront" ${mode === "distanceFromFront" ? "selected" : ""}>Distance from first/front surface</option>
@@ -11015,6 +11276,7 @@ const renderApertureStopPanel = (system, surfaces = []) => {
       </div>
       <div class="aperture-stop-readout">
         ${metric("Resolved stop", escapeHtml(stopSurface?.stopLabel || stopSurface?.label || "Auto / preset default"), stopSummary)}
+        ${metric("Stop source", escapeHtml(stopBadge), escapeHtml(stopSource))}
         ${metric("Physical stop diameter", formatNumber(state.apertureDiameter, 3), "mm")}
         ${metric("Entrance pupil diameter", formatNumber(entrancePupil.entrancePupilDiameter, 3), "mm apparent from object space")}
         ${metric("Working f-number", `f/${formatNumber(workingFNumber, 3)}`, "EFL / entrance pupil")}
@@ -13439,9 +13701,12 @@ const renderChromaticReadout = (spectralSystems) => {
   `;
 };
 
-const renderSystemSummary = (system, spectralSystems) => {
+const renderSystemSummary = (system, spectralSystems, rayTraceResults = []) => {
   const fNumber = calculateFNumber(system);
   const bfdDelta = system.backFocalLength - SONY_E_FLANGE_DISTANCE;
+  const stopSurface = (Array.isArray(rayTraceResults) ? rayTraceResults : [rayTraceResults])
+    .flatMap((result) => result?.surfaces || [])
+    .find((surface) => surface.isStop);
   return `
     <section class="summary-panel system-result-panel">
       <div class="system-status-row">
@@ -13471,6 +13736,7 @@ const renderSystemSummary = (system, spectralSystems) => {
         ${metric(tx("trackLength"), formatNumber(system.totalTrack), "mm")}
         ${metric(tx("totalPower"), formatNumber(system.totalPower, 6), "1/mm")}
         ${metric(tx("diopters"), formatNumber(system.diopters, 3), "D")}
+        ${metric("Stop source", escapeHtml(stopSurface?.stopSourceBadge || "Auto"), escapeHtml(stopSurface?.stopSource || "Auto / preset default"))}
       </div>
       ${renderChromaticReadout(spectralSystems)}
     </section>
@@ -13832,7 +14098,7 @@ const render = () => {
 
             <div class="center-scroll-stack" aria-label="Lens controls and primary results">
               <div class="system-bottom">
-                ${renderStackedPanel("system", tx("systemResult"), renderSystemSummary(system, spectralSystems))}
+                ${renderStackedPanel("system", tx("systemResult"), renderSystemSummary(system, spectralSystems, diagramRayTraceResults))}
                 ${renderStackedPanel(
                   "mechanicalDiagnostics",
                   "Mechanical diagnostics",
@@ -15821,9 +16087,10 @@ const runOpticsSelfCheck = () => {
       && Math.abs(preset.surfaces[5].distanceToNext - 7.15) < 1e-9
       && Math.abs(preset.surfaces[6].radius + 500) < 1e-9
       && Math.abs(preset.surfaces[7].radius + 41) < 1e-9
-      && defaults.apertureStopMode === "surfaceNumber"
-      && defaults.apertureStopSurfaceNumber === 6
-      && Math.abs(defaults.apertureStopSurfaceOffsetMm - 3.575) < 1e-9
+      && preset.apertureStopSpec?.kind === "airGap"
+      && preset.apertureStopSpec.afterSurfaceNumber === 6
+      && Math.abs(preset.apertureStopSpec.fraction - 0.5) < 1e-9
+      && defaults.apertureStopMode !== "surfaceNumber"
       && lenses.length === 7
       && Math.abs(system.totalTrack - 39.8) < 1e-9;
   });
@@ -17471,7 +17738,8 @@ const runOpticsSelfCheck = () => {
       wavelengthNm: SPECTRAL_LINES.d.wavelengthNm
     });
     const cementedSurfaces = surfaces.filter((surface) => surface.isCementedInterface);
-    return surfaces.length === 10
+    const opticalSurfaces = surfaces.filter((surface) => !surface.isStop);
+    return opticalSurfaces.length === 10
       && cementedSurfaces.length === 2
       && cementedSurfaces.every((surface) => surface.nBefore > 1 && surface.nAfter > 1)
       && !surfaces.some((surface) => surface.lensIndex === 2 && surface.surfaceIndex === 0)
@@ -17513,7 +17781,8 @@ const runOpticsSelfCheck = () => {
     const stop = surfaces.find((surface) => surface.isStop);
     return stop?.patentSurfaceNumber === 6
       && Number.isFinite(stop.x)
-      && String(stop.stopSource || stop.label).includes("Patent STOP surface 6");
+      && stop.stopSourceBadge === "Verified"
+      && String(stop.stopLabel || stop.stopSource || stop.label).includes("surface 6");
   }));
 
   test("invalid aperture stop inputs fall back safely", () => {
@@ -17538,10 +17807,67 @@ const runOpticsSelfCheck = () => {
     const surfaces = buildSurfaceList(state.lenses, system, rayTraceApertureOptions(state));
     const stop = surfaces.find((surface) => surface.isStop);
     const surface5 = surfaces.find((surface) => toNumber(surface.patentSurfaceNumber) === 5);
-    return state.apertureStopMode === "surfaceNumber"
-      && state.apertureStopSurfaceNumber === 5
-      && Math.abs(state.apertureStopSurfaceOffsetMm - 4.725) < 1e-9
-      && Math.abs(stop.x - (surface5.x - 4.725)) < 1e-9;
+    const surface6 = surfaces.find((surface) => toNumber(surface.patentSurfaceNumber) === 6);
+    const midpoint = surface5.x + ((surface6.x - surface5.x) * 0.5);
+    return state.apertureStopMode === "auto"
+      && stop?.stopSourceBadge === "Estimated"
+      && String(stop.stopLabel || "").includes("S5")
+      && Math.abs(stop.x - midpoint) < 1e-9;
+  }));
+
+  test("surface prescription auto aperture stops never fall back to front group", () => withTemporaryState(() => (
+    PATENT_PRESET_KEYS
+      .filter((key) => {
+        const preset = PRESETS[key];
+        return preset?.prescriptionType === "surface"
+          && (preset.surfaces || []).length > 1
+          && presetHasDrawablePrescription(preset);
+      })
+      .every((key) => {
+        loadPresetIntoState(key);
+        ensurePatentOpticalGeometry();
+        const system = calculateSystem(state.lenses);
+        const surfaces = buildSurfaceList(state.lenses, system, {
+          ...rayTraceApertureOptions(state),
+          apertureStopMode: "auto",
+          prescription: state.prescription
+        });
+        const stop = surfaces.find((surface) => surface.isStop);
+        const stopText = `${stop?.stopLabel || ""} ${stop?.stopSource || ""}`;
+        return Number.isFinite(stop?.x)
+          && !stopText.includes("Front of lens group")
+          && ["Verified", "Production", "Estimated", "Warning"].includes(stop?.stopSourceBadge);
+      })
+  )));
+
+  test("air-gap aperture stop metadata resolves to the entered gap midpoint", () => withTemporaryState(() => {
+    const cases = [
+      { key: "canonDreamLens50F095JpSho39_10178", afterSurface: 7 },
+      { key: "zeissSonnarType50F14Us2600610Ex3", afterSurface: 6 },
+      { key: DEFAULT_PRESET_KEY, afterSurface: 5 }
+    ];
+    return cases.every(({ key, afterSurface }) => {
+      loadPresetIntoState(key);
+      ensurePatentOpticalGeometry();
+      const system = calculateSystem(state.lenses);
+      const surfaces = buildSurfaceList(state.lenses, system, {
+        ...rayTraceApertureOptions(state),
+        apertureStopMode: "auto",
+        prescription: state.prescription
+      });
+      const stop = surfaces.find((surface) => surface.isStop);
+      const left = surfaces.find((surface) => toNumber(surface.patentSurfaceNumber) === afterSurface);
+      const right = surfaces.find((surface) => toNumber(surface.patentSurfaceNumber) === afterSurface + 1);
+      const patentSurface = PRESETS[key].surfaces.find((surface) => surface.no === afterSurface);
+      const midpoint = left.x + ((right.x - left.x) * 0.5);
+      return Number.isFinite(stop?.x)
+        && Number.isFinite(left?.x)
+        && Number.isFinite(right?.x)
+        && Number.isFinite(patentSurface?.distanceToNext)
+        && patentSurface.distanceToNext > 0
+        && Math.abs(stop.x - midpoint) < 1e-9
+        && stop.stopSourceBadge === "Estimated";
+    });
   }));
 
   test("2D and 3D ray bundles share the resolved stop configuration", () => withTemporaryState(() => {

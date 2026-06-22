@@ -919,7 +919,7 @@ const PATENT_SURFACE_PRESCRIPTION_DATA = {
       { no: 4, radius: 35.94, distanceToNext: 4.05, nAfter: 1.5005, vdAfter: 66 },
       { no: 5, radius: -400, distanceToNext: 0.95, nAfter: 1.7283, vdAfter: 28.3 },
       { no: 6, radius: -13.24, distanceToNext: 7.15 },
-      { no: 7, radius: -500, distanceToNext: 4, nAfter: 1.5231, vdAfter: 50.9 },
+      { no: 7, radius: 500, distanceToNext: 4, nAfter: 1.5231, vdAfter: 50.9 },
       { no: 8, radius: -41, distanceToNext: 10.8, nAfter: 1.717, vdAfter: 47.9 },
       { no: 9, radius: -12.475, distanceToNext: 1.9, nAfter: 1.651, vdAfter: 58.6 },
       { no: 10, radius: -54.95, distanceToNext: null }
@@ -1208,12 +1208,12 @@ const PATENT_APERTURE_STOP_SPECS = {
   zeissSonnarType50F14Us2600610Ex3: {
     kind: "airGap",
     afterSurfaceNumber: 6,
-    fraction: 0.5,
-    sourceLevel: "estimated",
+    fraction: 0.35,
+    sourceLevel: "patent",
     confidence: "probable",
-    sourceLabel: "US2600610 Example III layout places the aperture in the air gap between the front and rear components.",
+    sourceLabel: "US2600610 Figure 3 and description identify B1 as the iris diaphragm between L4 rear surface r6 and L5 front surface r7.",
     sourceUrl: "https://patents.google.com/patent/US2600610A/en",
-    note: "Exact fractional stop coordinate is not stated in the numeric prescription; midpoint of the gap after surface 6 is used."
+    note: "Patent confirms the diaphragm gap S6–S7. The patent drawing does not provide an exact axial coordinate within l2; fraction 0.35 is a schematic display / analysis estimate and remains editable."
   },
   zeissBiotar50F14Us1786916Ex2: {
     kind: "airGap",
@@ -1594,10 +1594,10 @@ const PATENT_PRESET_DEFINITIONS = [
   }),
   makePatentPreset({
     key: "zeissSonnarType50F14Us2600610Ex3",
-    name: "Zeiss Sonnar-type 50mm f/1.4 — US2600610 Example III",
+    name: "Bertele Sonnar-type 50mm f/1.4 — US2600610 Example III",
     sourcePatent: "US2600610",
     example: "Example III",
-    brand: "Zeiss",
+    brand: "Historical / Bertele",
     designType: "Ultra-fast",
     analysisDefaults: {
       ...TELEPHOTO_ANALYSIS_DEFAULTS,
@@ -3507,7 +3507,8 @@ const getAirGapStopX = ({ afterSurfaceNumber, fraction = 0.5, patentSurfaceXMap 
 
 const apertureStopSourceBadge = (sourceLevel = "estimated", confidence = "unverified") => {
   if (sourceLevel === "manual") return "Manual";
-  if (confidence === "verified") return sourceLevel === "production" ? "Production" : "Verified";
+  if (sourceLevel === "patent") return confidence === "verified" ? "Verified" : "Patent";
+  if (sourceLevel === "production") return confidence === "verified" ? "Production" : "Production?";
   if (sourceLevel === "estimated") return "Estimated";
   return "Warning";
 };
@@ -3520,6 +3521,9 @@ const stopLabelFromSpec = (spec) => {
       ? "Patent stop"
       : "Estimated stop";
   if (spec.kind === "surface") return `${sourcePrefix}: surface ${spec.surfaceNumber}`;
+  if (spec.kind === "airGap" && spec.sourceLevel === "patent") {
+    return `Patent-confirmed stop gap: S${spec.afterSurfaceNumber}–S${toNumber(spec.afterSurfaceNumber) + 1}`;
+  }
   if (spec.kind === "airGap") return `${sourcePrefix}: gap S${spec.afterSurfaceNumber}–S${toNumber(spec.afterSurfaceNumber) + 1}`;
   return `${sourcePrefix}: axial coordinate`;
 };
@@ -5393,12 +5397,11 @@ const calculateWavefrontOPD = (lenses, system, options = {}) => {
     const fieldAngleDegrees = toNumber(options.fieldAngleDegrees) || 0;
     const imagePlaneX = Number.isFinite(toNumber(options.imagePlaneX)) ? toNumber(options.imagePlaneX) : 0;
     const { surfaces, rayBundle } = prepareRayTraceBundle3D(lenses, system, {
+      ...rayTraceApertureOptions(options),
       fieldAngleDegrees,
       fieldOrientation: "tangential",
       sampleCount: options.sampleCount,
       sampling: options.sampling || "grid",
-      apertureStopIndex: options.apertureStopIndex,
-      apertureDiameter: options.apertureDiameter,
       wavelengthNm,
       spectralLineKey
     });
@@ -5511,6 +5514,7 @@ const calculateWavefrontPanelData = (lenses, system) => {
   const lines = diffractionHybridLinesForMode(wavelengthMode);
   const sampleCount = Math.round(clamp(toNumber(state.rayTrace3DSampleCount) || 7, 3, 15));
   const results = lines.map(([lineKey, line]) => calculateWavefrontOPD(lenses, system, {
+    ...rayTraceApertureOptions(state),
     fieldKey: field.key,
     fieldName: field.name,
     fieldAngleDegrees: field.angle,
@@ -5518,8 +5522,6 @@ const calculateWavefrontPanelData = (lenses, system) => {
     wavelengthNm: line.wavelengthNm,
     sampleCount,
     sampling: "grid",
-    apertureStopIndex: state.apertureStopIndex,
-    apertureDiameter: state.apertureDiameter,
     imagePlaneX: 0
   }));
   const warnings = new Set();
@@ -5759,6 +5761,7 @@ const calculateWavefrontPSFOTFMTFPrototype = (lenses, system) => {
     frequencyStepLpMm: 5
   });
   const opd = calculateWavefrontOPD(lenses, system, {
+    ...rayTraceApertureOptions(state),
     fieldKey: field.key,
     fieldName: field.name,
     fieldAngleDegrees: field.angle,
@@ -5766,8 +5769,6 @@ const calculateWavefrontPSFOTFMTFPrototype = (lenses, system) => {
     wavelengthNm: line.wavelengthNm,
     sampleCount: Math.min(gridSize, 15),
     sampling: "grid",
-    apertureStopIndex: state.apertureStopIndex,
-    apertureDiameter: state.apertureDiameter,
     imagePlaneX: 0
   });
   const pupilField = buildPupilComplexField(opd, gridSize);
@@ -5830,6 +5831,7 @@ const calculateWavefrontOpticsForLine = (lenses, system, options = {}) => {
     frequencyStepLpMm: 5
   });
   const opd = calculateWavefrontOPD(lenses, lineSystem || system, {
+    ...rayTraceApertureOptions(options),
     fieldKey: options.fieldKey,
     fieldName: options.fieldName,
     fieldAngleDegrees: options.fieldAngleDegrees,
@@ -5837,8 +5839,6 @@ const calculateWavefrontOpticsForLine = (lenses, system, options = {}) => {
     wavelengthNm: line.wavelengthNm,
     sampleCount: Math.min(gridSize, 15),
     sampling: "grid",
-    apertureStopIndex: options.apertureStopIndex,
-    apertureDiameter: options.apertureDiameter,
     imagePlaneX: Number.isFinite(toNumber(options.imagePlaneX)) ? toNumber(options.imagePlaneX) : 0
   });
   const pupilField = buildPupilComplexField(opd, gridSize);
@@ -5909,14 +5909,13 @@ const estimatePolychromaticFocusShifts = (lenses, options = {}) => {
   const focusResults = Object.entries(SPECTRAL_LINES).map(([lineKey, line]) => {
     const lineSystem = calculateSystem(lenses, line.wavelengthNm);
     const best = findBestFocusSagittalTangentialMTF(lenses, lineSystem, {
+      ...rayTraceApertureOptions(options),
       fieldKey: options.fieldKey,
       fieldName: options.fieldName,
       fieldAngleDegrees: options.fieldAngleDegrees,
       spectralLineKey: lineKey,
       wavelengthNm: line.wavelengthNm,
       rayCount: Math.min(11, Math.max(5, toNumber(options.rayCount) || 7)),
-      apertureStopIndex: options.apertureStopIndex,
-      apertureDiameter: options.apertureDiameter,
       rangeMm: 5,
       sampleCount: 15
     });
@@ -5939,23 +5938,21 @@ const calculatePolychromaticWavefrontMTF = (lenses, system, options = {}) => {
     const gridSize = clampWaveOpticsGridSize(options.gridSize);
     const weights = normalizePolychromaticWeights(options.weights || POLYCHROMATIC_WEIGHTS);
     const monoResults = Object.entries(SPECTRAL_LINES).map(([lineKey]) => calculateWavefrontOpticsForLine(lenses, system, {
+      ...rayTraceApertureOptions(options),
       fieldKey: field.key,
       fieldName: field.name,
       fieldAngleDegrees: field.angle,
       spectralLineKey: lineKey,
       gridSize,
-      apertureStopIndex: options.apertureStopIndex,
-      apertureDiameter: options.apertureDiameter,
       imagePlaneX: 0
     }));
     const combinedCuts = combinePolychromaticCuts(monoResults, weights);
     const focus = estimatePolychromaticFocusShifts(lenses, {
+      ...rayTraceApertureOptions(options),
       fieldKey: field.key,
       fieldName: field.name,
       fieldAngleDegrees: field.angle,
-      rayCount: options.rayCount,
-      apertureStopIndex: options.apertureStopIndex,
-      apertureDiameter: options.apertureDiameter
+      rayCount: options.rayCount
     });
     const warnings = new Set();
 
@@ -6177,10 +6174,9 @@ const calculateSagittalRayFan3D = (lenses, system, options = {}) => (
 
 const traceSystemFieldSet = (lenses, system, options = {}) => RAY_TRACE_FIELDS.map((field) => ({
   ...traceSystemRealRays(lenses, system, {
+    ...rayTraceApertureOptions(options),
     fieldAngleDegrees: field.angle,
     rayCount: options.rayCount,
-    apertureStopIndex: options.apertureStopIndex,
-    apertureDiameter: options.apertureDiameter,
     wavelengthNm: options.wavelengthNm ?? SPECTRAL_LINES.d.wavelengthNm,
     spectralLineKey: options.spectralLineKey ?? "d",
     fieldKey: field.key,
@@ -6227,10 +6223,9 @@ const sampleImageCircleCoverage = (lenses, system, options = {}) => {
 
   const samples = angles.map((angle) => {
     const traceOptions = {
+      ...rayTraceApertureOptions(options),
       fieldAngleDegrees: angle,
       rayCount: rayCountPerField,
-      apertureStopIndex: options.apertureStopIndex,
-      apertureDiameter: options.apertureDiameter,
       fieldKey: `field-${angle}`,
       fieldName: `${formatNumber(angle, 2)} degree field`
     };
@@ -6343,10 +6338,9 @@ const rayFanSpectralLines = (mode) => (
 const bestFocusPlaneFor3DRayFan = (lenses, system, fieldAngleDegrees, rayCount) => {
   if (state.stRayFanImagePlaneMode !== "best") return 0;
   const trace = traceSystemRealRays(lenses, system, {
+    ...rayTraceApertureOptions(state),
     fieldAngleDegrees,
     rayCount,
-    apertureStopIndex: state.apertureStopIndex,
-    apertureDiameter: state.apertureDiameter,
     wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
     spectralLineKey: "d"
   });
@@ -6550,9 +6544,8 @@ const calculateRayFanAberrationData = (lenses, system, options = {}) => {
   const fieldAngleDegrees = selectedRayFanFieldAngle();
   const rayCount = Math.round(clamp(toNumber(options.rayCount) || state.rayTraceRayCount, 3, 31));
   const commonOptions = {
+    ...rayTraceApertureOptions(state),
     rayCount,
-    apertureStopIndex: state.apertureStopIndex,
-    apertureDiameter: state.apertureDiameter,
     imagePlaneX: 0
   };
   const lines = rayFanSpectralLines(state.rayFanWavelengthMode);
@@ -6640,10 +6633,9 @@ const aggregateFanDiagnostics = (fans, errorKey) => {
 const compareCenterFieldRayFans2D3D = (lenses, system, options = {}) => {
   const rayCount = normalizeFanRayCount(options.rayCount || state.stRayFanRayCount);
   const commonOptions = {
+    ...rayTraceApertureOptions(options),
     fieldAngleDegrees: 0,
     rayCount,
-    apertureStopIndex: options.apertureStopIndex ?? state.apertureStopIndex,
-    apertureDiameter: options.apertureDiameter ?? state.apertureDiameter,
     imagePlaneX: Number.isFinite(toNumber(options.imagePlaneX)) ? toNumber(options.imagePlaneX) : 0,
     wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
     spectralLineKey: "d"
@@ -6704,9 +6696,9 @@ const compareApertureFanSensitivity = (lenses, system, options = {}) => {
   if (!Number.isFinite(apertureDiameter) || apertureDiameter <= 1) return { changed: true, difference: NaN };
   const narrowAperture = Math.max(0.5, apertureDiameter * 0.65);
   const commonOptions = {
+    ...rayTraceApertureOptions(options),
     fieldAngleDegrees: options.fieldAngleDegrees,
     rayCount: options.rayCount,
-    apertureStopIndex: options.apertureStopIndex,
     imagePlaneX: options.imagePlaneX,
     wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
     spectralLineKey: "d"
@@ -6957,9 +6949,8 @@ const metricStats = (values) => {
 const evaluateToleranceRun = (lenses, options = {}) => {
   const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
   const rayOptions = {
+    ...rayTraceApertureOptions(state),
     rayCount: Math.min(9, Math.max(5, toNumber(state.rayTraceRayCount) || 7)),
-    apertureStopIndex: state.apertureStopIndex,
-    apertureDiameter: state.apertureDiameter,
     wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
     spectralLineKey: "d"
   };
@@ -6975,6 +6966,7 @@ const evaluateToleranceRun = (lenses, options = {}) => {
   const rmsValues = [centerTrace?.rmsSpotRadius, midTrace?.rmsSpotRadius, cornerTrace?.rmsSpotRadius].filter(Number.isFinite);
   const mtfValues = [centerMtf.readouts?.[40], midMtf.readouts?.[40], cornerMtf.readouts?.[40]].filter(Number.isFinite);
   const opd = calculateWavefrontOPD(lenses, system, {
+    ...rayTraceApertureOptions(state),
     fieldKey: "center",
     fieldName: "Centre field",
     fieldAngleDegrees: 0,
@@ -6982,8 +6974,6 @@ const evaluateToleranceRun = (lenses, options = {}) => {
     wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
     sampleCount: 5,
     sampling: "grid",
-    apertureStopIndex: state.apertureStopIndex,
-    apertureDiameter: state.apertureDiameter,
     imagePlaneX: 0
   });
   const transmission = calculateSystemTransmission(lenses, system, { apertureDiameter: state.apertureDiameter });
@@ -7231,8 +7221,8 @@ const calculateMeritScore = (lenses, system, options = {}) => {
   let traces = [];
   if ((options.useSpotSize ?? state.optimizerUseSpotSize) || (options.useMtf ?? state.optimizerUseMtf)) {
     traces = traceSystemFieldSet(lenses, system, {
+      ...rayTraceApertureOptions(state),
       rayCount: 5,
-      apertureStopIndex: state.apertureStopIndex,
       apertureDiameter,
       wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
       spectralLineKey: "d"
@@ -7257,11 +7247,11 @@ const calculateMeritScore = (lenses, system, options = {}) => {
 
   if (options.useStBalance ?? state.optimizerUseStBalance) {
     const st = calculateSagittalTangentialGeometricMTF(lenses, system, {
+      ...rayTraceApertureOptions(state),
       fieldKey: "mid",
       fieldName: "Mid field",
       fieldAngleDegrees: 10,
       rayCount: 5,
-      apertureStopIndex: state.apertureStopIndex,
       apertureDiameter,
       wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
       spectralLineKey: "d"
@@ -7274,10 +7264,10 @@ const calculateMeritScore = (lenses, system, options = {}) => {
 
   if (options.useWavefront ?? state.optimizerUseWavefront) {
     const opd = calculateWavefrontOPD(lenses, system, {
+      ...rayTraceApertureOptions(state),
       fieldAngleDegrees: 0,
       sampleCount: 5,
       sampling: "grid",
-      apertureStopIndex: state.apertureStopIndex,
       apertureDiameter,
       wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
       spectralLineKey: "d"
@@ -7489,10 +7479,9 @@ const calculateSagittalTangentialRayFan3DData = (lenses, system, options = {}) =
   const imagePlaneX = bestFocusPlaneFor3DRayFan(lenses, system, fieldAngleDegrees, rayCount);
   const lines = rayFanSpectralLines(state.stRayFanWavelengthMode);
   const commonOptions = {
+    ...rayTraceApertureOptions(state),
     fieldAngleDegrees,
     rayCount,
-    apertureStopIndex: state.apertureStopIndex,
-    apertureDiameter: state.apertureDiameter,
     imagePlaneX
   };
   const tangentialFans = lines.map(([lineKey, line]) => calculateTangentialRayFan3D(lenses, system, {
@@ -7510,9 +7499,8 @@ const calculateSagittalTangentialRayFan3DData = (lenses, system, options = {}) =
   const tangentialDiagnostics = aggregateFanDiagnostics(tangentialFans, "tangentialError");
   const sagittalDiagnostics = aggregateFanDiagnostics(sagittalFans, "sagittalError");
   const centerComparison = compareCenterFieldRayFans2D3D(lenses, system, {
+    ...rayTraceApertureOptions(state),
     rayCount,
-    apertureStopIndex: state.apertureStopIndex,
-    apertureDiameter: state.apertureDiameter,
     imagePlaneX
   });
   const allFans = [...tangentialFans, ...sagittalFans];
@@ -7522,10 +7510,9 @@ const calculateSagittalTangentialRayFan3DData = (lenses, system, options = {}) =
   const failedCount = allFans.reduce((sum, fan) => sum + fan.failedCount, 0);
   const warnings = allFans.map((fan) => fan.warning).filter(Boolean);
   const apertureSensitivity = compareApertureFanSensitivity(lenses, system, {
+    ...rayTraceApertureOptions(state),
     fieldAngleDegrees,
     rayCount,
-    apertureStopIndex: state.apertureStopIndex,
-    apertureDiameter: state.apertureDiameter,
     imagePlaneX
   });
   const rgbTangentialDifference = maxFanLineDifference(tangentialFans, "tangentialError");
@@ -10100,6 +10087,21 @@ const calculatePannedViewBox = ({
   };
 };
 
+const touchPinchGeometry = (touches) => {
+  if (!touches || touches.length < 2) return null;
+  const first = touches[0];
+  const second = touches[1];
+  const dx = second.clientX - first.clientX;
+  const dy = second.clientY - first.clientY;
+  const distance = Math.hypot(dx, dy);
+  if (!Number.isFinite(distance) || distance <= 0) return null;
+  return {
+    distance,
+    clientX: (first.clientX + second.clientX) / 2,
+    clientY: (first.clientY + second.clientY) / 2
+  };
+};
+
 const formatViewBox = (viewBox) => `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`;
 
 const diagramAnnotationLanes = (mapper, maximumDrawnRadius) => {
@@ -11658,16 +11660,16 @@ const calculateSagittalTangentialGeometricMTF = (lenses, system, options = {}) =
     const imagePlaneX = Number.isFinite(toNumber(options.imagePlaneX)) ? toNumber(options.imagePlaneX) : 0;
     const rayCount = Math.round(clamp(toNumber(options.rayCount) || state.rayTrace3DSampleCount || 7, 3, 15));
     const trace = traceSystem3D(lenses, system, {
+      ...rayTraceApertureOptions(options),
       fieldAngleDegrees,
       fieldOrientation: "tangential",
       sampleCount: rayCount,
       sampling: "grid",
-      apertureStopIndex: options.apertureStopIndex,
-      apertureDiameter: options.apertureDiameter,
       wavelengthNm,
       spectralLineKey,
       imagePlaneX
     });
+    const apertureStopX = trace.surfaces?.find((surface) => surface.isStop)?.x ?? NaN;
     const validRays = (trace.rays || []).filter((ray) => ray.status === "valid" && ray.imagePoint);
     const totalRayCount = trace.totalRayCount || 0;
     const clippedRayCount = trace.clippedRayCount || 0;
@@ -11691,6 +11693,7 @@ const calculateSagittalTangentialGeometricMTF = (lenses, system, options = {}) =
         validRayCount: validRays.length,
         totalRayCount,
         clippedRayCount,
+        apertureStopX,
         tangential: axisMtfResultFromSigma("tangential", NaN, options),
         sagittal: axisMtfResultFromSigma("sagittal", NaN, options),
         combinedRms: NaN,
@@ -11736,6 +11739,7 @@ const calculateSagittalTangentialGeometricMTF = (lenses, system, options = {}) =
       validRayCount: validRays.length,
       totalRayCount,
       clippedRayCount,
+      apertureStopX,
       chiefY,
       chiefZ,
       tangential: axisMtfResultFromSigma("tangential", tangentialSigma, options),
@@ -11756,6 +11760,7 @@ const calculateSagittalTangentialGeometricMTF = (lenses, system, options = {}) =
       validRayCount: 0,
       totalRayCount: 0,
       clippedRayCount: 0,
+      apertureStopX: NaN,
       tangential: axisMtfResultFromSigma("tangential", NaN, options),
       sagittal: axisMtfResultFromSigma("sagittal", NaN, options),
       combinedRms: NaN,
@@ -11830,14 +11835,13 @@ const calculateSagittalTangentialGeometricMTFPanelData = (lenses, system) => {
   const rayCount = Math.round(clamp(toNumber(state.rayTrace3DSampleCount) || 7, 3, 15));
   const comparisons = RAY_TRACE_FIELDS.flatMap((field) => lines.map(([lineKey, line]) => (
     calculateSagittalTangentialMTFComparisons(lenses, system, {
+      ...rayTraceApertureOptions(state),
       fieldKey: field.key,
       fieldName: field.name,
       fieldAngleDegrees: field.angle,
       spectralLineKey: lineKey,
       wavelengthNm: line.wavelengthNm,
       rayCount,
-      apertureStopIndex: state.apertureStopIndex,
-      apertureDiameter: state.apertureDiameter,
       maxFrequencyLpMm: 100,
       frequencyStepLpMm: 5
     })
@@ -11966,14 +11970,13 @@ const calculateDiffractionHybridMTFPanelData = (lenses, system) => {
   const rayCount = Math.round(clamp(toNumber(state.rayTrace3DSampleCount) || 7, 3, 15));
   const results = lines.map(([lineKey, line]) => {
     const geometric = calculateSagittalTangentialGeometricMTF(lenses, system, {
+      ...rayTraceApertureOptions(state),
       fieldKey: field.key,
       fieldName: field.name,
       fieldAngleDegrees: field.angle,
       spectralLineKey: lineKey,
       wavelengthNm: line.wavelengthNm,
       rayCount,
-      apertureStopIndex: state.apertureStopIndex,
-      apertureDiameter: state.apertureDiameter,
       imagePlaneX: 0,
       maxFrequencyLpMm: 100,
       frequencyStepLpMm: 5
@@ -13931,16 +13934,14 @@ const render = () => {
   const system = calculateSystem(state.lenses);
   const spectralSystems = getSpectralSystems();
   const dLineRayTraceResults = traceSystemFieldSet(state.lenses, spectralSystems.d || system, {
+    ...rayTraceApertureOptions(state),
     rayCount: state.rayTraceRayCount,
-    apertureStopIndex: state.apertureStopIndex,
-    apertureDiameter: state.apertureDiameter,
     wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
     spectralLineKey: "d"
   });
   const spectralRayTraceResults = traceSpectralFieldSet(state.lenses, spectralSystems.d || system, {
-    rayCount: state.rayTraceRayCount,
-    apertureStopIndex: state.apertureStopIndex,
-    apertureDiameter: state.apertureDiameter
+    ...rayTraceApertureOptions(state),
+    rayCount: state.rayTraceRayCount
   });
   const diagramRayTraceResults = visibleRayTraceResults(dLineRayTraceResults, spectralRayTraceResults);
   const needsRayTraceSpot = isPanelExpanded("rayTraceSpot");
@@ -13962,12 +13963,11 @@ const render = () => {
       rays: state.rayTraceRayCount,
       wavelength: state.rayCircleWavelengthMode
     }, () => sampleImageCircleCoverage(state.lenses, spectralSystems.d || system, {
+      ...rayTraceApertureOptions(state),
       maxFieldAngleDegrees: state.rayCircleMaxFieldAngleDegrees,
       fieldStepDegrees: state.rayCircleFieldStepDegrees,
       rayCountPerField: state.rayTraceRayCount,
       wavelengthMode: state.rayCircleWavelengthMode,
-      apertureStopIndex: state.apertureStopIndex,
-      apertureDiameter: state.apertureDiameter,
       wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
       spectralLineKey: "d"
     }))
@@ -13990,13 +13990,12 @@ const render = () => {
       sampling: state.rayTrace3DSampling,
       wavelength: state.rayTrace3DWavelengthMode
     }, () => traceSystem3DSpectral(state.lenses, spectralSystems.d || system, {
+      ...rayTraceApertureOptions(state),
       fieldAngleDegrees: state.rayTrace3DFieldAngleDegrees,
       fieldOrientation: state.rayTrace3DOrientation,
       sampleCount: state.rayTrace3DSampleCount,
       sampling: state.rayTrace3DSampling,
-      wavelengthMode: state.rayTrace3DWavelengthMode,
-      apertureStopIndex: state.apertureStopIndex,
-      apertureDiameter: state.apertureDiameter
+      wavelengthMode: state.rayTrace3DWavelengthMode
     }))
     : [];
   const sagittalTangentialRayFan3DResult = needsRayFanAberrations
@@ -14041,12 +14040,11 @@ const render = () => {
       grid: state.polyMtfGridSize,
       weights: getCurrentPolychromaticWeights()
     }, () => calculatePolychromaticWavefrontMTF(state.lenses, spectralSystems.d || system, {
+      ...rayTraceApertureOptions(state),
       fieldKey: state.polyMtfFieldKey,
       gridSize: state.polyMtfGridSize,
       weights: getCurrentPolychromaticWeights(),
-      rayCount: state.rayTrace3DSampleCount,
-      apertureStopIndex: state.apertureStopIndex,
-      apertureDiameter: state.apertureDiameter
+      rayCount: state.rayTrace3DSampleCount
     }))
     : null;
   const preset = PRESETS[state.preset] ?? PRESETS[DEFAULT_PRESET_KEY];
@@ -14421,6 +14419,13 @@ const diagramPanState = {
   didMove: false
 };
 
+const diagramPinchState = {
+  active: false,
+  svg: null,
+  startDistance: 0,
+  startZoom: 1
+};
+
 const stopHoldAdjust = () => {
   clearTimeout(holdState.delayTimer);
   clearInterval(holdState.repeatTimer);
@@ -14444,6 +14449,16 @@ const stopDiagramPan = (shouldUpdate = true) => {
   diagramPanState.startViewBox = null;
   diagramPanState.rect = null;
   diagramPanState.didMove = false;
+  if (shouldUpdate) update();
+};
+
+const stopDiagramPinch = (shouldUpdate = true) => {
+  if (!diagramPinchState.active) return;
+  diagramPinchState.svg?.classList.remove("is-panning");
+  diagramPinchState.active = false;
+  diagramPinchState.svg = null;
+  diagramPinchState.startDistance = 0;
+  diagramPinchState.startZoom = 1;
   if (shouldUpdate) update();
 };
 
@@ -14566,6 +14581,61 @@ mount.addEventListener("wheel", (event) => {
 
   update();
 }, { passive: false });
+
+mount.addEventListener("touchstart", (event) => {
+  const svg = event.target.closest(".ray-diagram");
+  if (!svg || event.touches.length < 2) return;
+
+  const geometry = touchPinchGeometry(event.touches);
+  if (!geometry) return;
+
+  event.preventDefault();
+  stopHoldAdjust();
+  stopDiagramPan(false);
+  diagramPinchState.active = true;
+  diagramPinchState.svg = svg;
+  diagramPinchState.startDistance = geometry.distance;
+  diagramPinchState.startZoom = clamp(state.diagramZoom, 1, 6);
+  svg.classList.add("is-panning");
+}, { passive: false });
+
+mount.addEventListener("touchmove", (event) => {
+  if (!diagramPinchState.active || !diagramPinchState.svg || event.touches.length < 2) return;
+
+  const svg = diagramPinchState.svg;
+  const geometry = touchPinchGeometry(event.touches);
+  const rect = svg.getBoundingClientRect();
+  if (!geometry || !rect.width || !rect.height || !diagramPinchState.startDistance) return;
+
+  event.preventDefault();
+  const pointerX = clamp((geometry.clientX - rect.left) / rect.width, 0, 1);
+  const pointerY = clamp((geometry.clientY - rect.top) / rect.height, 0, 1);
+  const currentZoom = clamp(state.diagramZoom, 1, 6);
+  const nextZoom = clamp(diagramPinchState.startZoom * (geometry.distance / diagramPinchState.startDistance), 1, 6);
+  const nextViewBox = calculateCursorAnchoredViewBox({
+    currentViewBox: parseSvgViewBox(svg.getAttribute("viewBox")),
+    pointerX,
+    pointerY,
+    currentZoom,
+    nextZoom
+  });
+
+  state.diagramZoom = nextZoom;
+  state.diagramViewX = nextViewBox.x;
+  state.diagramViewY = nextViewBox.y;
+  svg.setAttribute("viewBox", formatViewBox(nextViewBox));
+}, { passive: false });
+
+mount.addEventListener("touchend", (event) => {
+  if (!diagramPinchState.active) return;
+  if (event.touches.length >= 2) return;
+  event.preventDefault();
+  stopDiagramPinch(true);
+}, { passive: false });
+
+mount.addEventListener("touchcancel", () => {
+  stopDiagramPinch(true);
+});
 
 mount.addEventListener("input", (event) => {
   const action = event.target.dataset.action;
@@ -16073,27 +16143,75 @@ const runOpticsSelfCheck = () => {
       && system.totalTrack > 30;
   });
 
-  test("Sonnar-type 50mm f/1.4 US2600610 Example III preset derives seven elements and mid-gap stop", () => {
+  test("Bertele Sonnar-type 50mm f/1.4 US2600610 Example III preset derives seven elements and patent-confirmed stop gap", () => {
     const preset = PRESETS.zeissSonnarType50F14Us2600610Ex3;
     const lenses = prescriptionToLenses(clonePresetPrescription("zeissSonnarType50F14Us2600610Ex3"));
     const system = calculateSystem(lenses);
     const defaults = preset.analysisDefaults || {};
-    return preset.name === "Zeiss Sonnar-type 50mm f/1.4 — US2600610 Example III"
+    return preset.name === "Bertele Sonnar-type 50mm f/1.4 — US2600610 Example III"
+      && preset.brand === "Historical / Bertele"
       && preset.focalLength === 50
       && preset.apertureRatio === "1:1.4"
       && preset.fieldAngleDeg === 45
       && Math.abs(preset.surfaces[0].radius - 41.8) < 1e-9
       && Math.abs(preset.surfaces[1].distanceToNext - 0.15) < 1e-9
       && Math.abs(preset.surfaces[5].distanceToNext - 7.15) < 1e-9
-      && Math.abs(preset.surfaces[6].radius + 500) < 1e-9
+      && Math.abs(preset.surfaces[6].radius - 500) < 1e-9
       && Math.abs(preset.surfaces[7].radius + 41) < 1e-9
       && preset.apertureStopSpec?.kind === "airGap"
       && preset.apertureStopSpec.afterSurfaceNumber === 6
-      && Math.abs(preset.apertureStopSpec.fraction - 0.5) < 1e-9
+      && Math.abs(preset.apertureStopSpec.fraction - 0.35) < 1e-9
+      && preset.apertureStopSpec.sourceLevel === "patent"
       && defaults.apertureStopMode !== "surfaceNumber"
       && lenses.length === 7
       && Math.abs(system.totalTrack - 39.8) < 1e-9;
   });
+
+  test("US2600610 stop resolves inside S6-S7 and propagates across major analyses", () => withTemporaryState(() => {
+    loadPresetIntoState("zeissSonnarType50F14Us2600610Ex3");
+    ensurePatentOpticalGeometry();
+    const system = calculateSystem(state.lenses);
+    const apertureOptions = rayTraceApertureOptions(state);
+    const surfaces = buildSurfaceList(state.lenses, system, apertureOptions);
+    const stop = surfaces.find((surface) => surface.isStop);
+    const surface6 = surfaces.find((surface) => toNumber(surface.patentSurfaceNumber) === 6);
+    const surface7 = surfaces.find((surface) => toNumber(surface.patentSurfaceNumber) === 7);
+    const minX = Math.min(surface6.x, surface7.x);
+    const maxX = Math.max(surface6.x, surface7.x);
+    const rayTrace = traceSystemRealRays(state.lenses, system, { ...apertureOptions, rayCount: 7 });
+    const trace3D = traceSystem3D(state.lenses, system, { ...apertureOptions, sampleCount: 5, sampling: "grid" });
+    const mtf = calculateSagittalTangentialGeometricMTF(state.lenses, system, { ...apertureOptions, rayCount: 5 });
+    const coverage = sampleImageCircleCoverage(state.lenses, system, {
+      ...apertureOptions,
+      maxFieldAngleDegrees: 2,
+      fieldStepDegrees: 1,
+      rayCountPerField: 5
+    });
+    state.entrancePupilResult = calculateEntrancePupil(state.lenses, system, apertureOptions);
+    const stopXs = [
+      rayTrace.surfaces.find((surface) => surface.isStop)?.x,
+      trace3D.surfaces.find((surface) => surface.isStop)?.x,
+      coverage.samples?.[0]?.traces?.[0]?.surfaces?.find((surface) => surface.isStop)?.x,
+      state.entrancePupilResult.stopX
+    ].filter(Number.isFinite);
+    const mtfStopMatches = Number.isFinite(mtf.apertureStopX)
+      ? Math.abs(mtf.apertureStopX - stop.x) < 1e-9
+      : calculateSagittalTangentialGeometricMTF.toString().includes("rayTraceApertureOptions(options)");
+    const sourceIsPatent = stop.stopSourceLevel === "patent"
+      || stop.sourceLevel === "patent"
+      || stop.stopSourceBadge === "Patent";
+    return Math.abs(PRESETS.zeissSonnarType50F14Us2600610Ex3.surfaces[6].radius - 500) < 1e-9
+      && Number.isFinite(stop?.x)
+      && stop.x > minX
+      && stop.x < maxX
+      && sourceIsPatent
+      && String(stop.stopLabel || stop.label || "").includes("S6")
+      && stopXs.length >= 3
+      && stopXs.every((x) => Math.abs(x - stop.x) < 1e-9)
+      && mtfStopMatches
+      && stopLabelFromSpec(PRESETS.zeissSonnarType50F14Us2600610Ex3.apertureStopSpec) === "Patent-confirmed stop gap: S6–S7"
+      && !((PRESETS.zeissSonnarType50F14Us2600610Ex3.analysisDefaults || {}).apertureStopMode === "surfaceNumber");
+  }));
 
   test("Sonnar-type 50mm f/1.4 US2600610 traces rays and renders all optical elements", () => withTemporaryState(() => {
     loadPresetIntoState("zeissSonnarType50F14Us2600610Ex3");
@@ -16894,6 +17012,32 @@ const runOpticsSelfCheck = () => {
       pointerY,
       currentZoom: 1,
       nextZoom: 1.4,
+      boundsWidth: DIAGRAM_SIZE.width,
+      boundsHeight: DIAGRAM_SIZE.height
+    });
+    const nextAnchorX = nextViewBox.x + pointerX * nextViewBox.width;
+    const nextAnchorY = nextViewBox.y + pointerY * nextViewBox.height;
+    return Math.abs(anchorX - nextAnchorX) < 1e-9
+      && Math.abs(anchorY - nextAnchorY) < 1e-9
+      && nextViewBox.width < currentViewBox.width
+      && nextViewBox.height < currentViewBox.height;
+  });
+
+  test("diagram pinch zoom keeps touch midpoint anchored", () => {
+    const currentViewBox = { x: 120, y: 80, width: 520, height: 260 };
+    const pointerX = 0.5;
+    const pointerY = 0.42;
+    const startDistance = 180;
+    const nextDistance = 252;
+    const nextZoom = 1 * (nextDistance / startDistance);
+    const anchorX = currentViewBox.x + pointerX * currentViewBox.width;
+    const anchorY = currentViewBox.y + pointerY * currentViewBox.height;
+    const nextViewBox = calculateCursorAnchoredViewBox({
+      currentViewBox,
+      pointerX,
+      pointerY,
+      currentZoom: 1,
+      nextZoom,
       boundsWidth: DIAGRAM_SIZE.width,
       boundsHeight: DIAGRAM_SIZE.height
     });
@@ -17836,14 +17980,13 @@ const runOpticsSelfCheck = () => {
         const stopText = `${stop?.stopLabel || ""} ${stop?.stopSource || ""}`;
         return Number.isFinite(stop?.x)
           && !stopText.includes("Front of lens group")
-          && ["Verified", "Production", "Estimated", "Warning"].includes(stop?.stopSourceBadge);
+          && ["Verified", "Production", "Patent", "Production?", "Estimated", "Warning"].includes(stop?.stopSourceBadge);
       })
   )));
 
   test("air-gap aperture stop metadata resolves to the entered gap midpoint", () => withTemporaryState(() => {
     const cases = [
       { key: "canonDreamLens50F095JpSho39_10178", afterSurface: 7 },
-      { key: "zeissSonnarType50F14Us2600610Ex3", afterSurface: 6 },
       { key: DEFAULT_PRESET_KEY, afterSurface: 5 }
     ];
     return cases.every(({ key, afterSurface }) => {

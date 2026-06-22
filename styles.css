@@ -5232,9 +5232,38 @@ h1 {
 }
 
 @media (max-width: 760px) {
+  .lens-summary-toggle {
+    grid-template-columns: minmax(34px, auto) minmax(0, 1fr) auto;
+    gap: 6px 8px;
+    align-items: start;
+    padding: 6px;
+  }
+
   .lens-summary-meta {
-    grid-template-columns: repeat(3, minmax(58px, max-content));
-    row-gap: 2px;
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    column-gap: 7px;
+    row-gap: 4px;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    font-size: 0.62rem;
+  }
+
+  .lens-summary-item {
+    min-width: 0;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 4px;
+  }
+
+  .lens-summary-value {
+    overflow: visible;
+    text-overflow: clip;
+  }
+
+  .lens-asphere-summary-badge {
+    grid-column: 2;
+    justify-self: end;
   }
 
   .system-kpi-grid,
@@ -5244,6 +5273,17 @@ h1 {
 
   .system-kpi.is-primary {
     grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 520px) {
+  .lens-summary-meta {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 8px;
+  }
+
+  .lens-summary-title {
+    font-size: 0.7rem;
   }
 }
 

@@ -145,6 +145,64 @@ select {
   }
 }
 
+@media (max-width: 1400px) and (orientation: landscape) {
+  .app-shell {
+    width: calc(100% - 12px);
+    padding-block: 6px;
+  }
+
+  .work-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(410px, 460px);
+    gap: 8px;
+  }
+
+  .tool-header {
+    gap: 10px;
+    margin-bottom: 6px;
+  }
+
+  .tool-header h1 {
+    font-size: clamp(2.1rem, 4vw, 3.2rem);
+  }
+
+  .header-control-row {
+    gap: 8px;
+  }
+
+  .preset-select-control {
+    min-width: min(320px, 42vw);
+  }
+
+  .top-diagram .diagram-panel {
+    padding: 8px;
+  }
+
+  .top-diagram .ray-diagram {
+    min-height: 250px;
+  }
+
+  .analysis-sidebar {
+    padding-right: 4px;
+  }
+
+  .stack-panel-header {
+    min-height: 28px;
+    padding: 4px 8px;
+  }
+
+  .analysis-sidebar .lens-summary-toggle {
+    grid-template-columns: minmax(34px, auto) minmax(0, 1fr) auto auto;
+    gap: 7px;
+  }
+
+  .analysis-sidebar .lens-summary-meta {
+    grid-template-columns: repeat(4, minmax(48px, max-content));
+    row-gap: 2px;
+    column-gap: 8px;
+    white-space: normal;
+  }
+}
+
 .tool-header {
   display: flex;
   gap: 14px;
@@ -5636,4 +5694,34 @@ textarea,
 .analysis-sidebar .aperture-stop-panel .metric-unit,
 .analysis-sidebar .aperture-stop-panel .unit {
   color: rgba(215, 229, 238, 0.78);
+}
+
+.tool-header .header-select-control,
+.tool-header .header-select-control span {
+  color: rgba(215, 229, 238, 0.9);
+}
+
+.tool-header .header-select-control select,
+.tool-header .preset-select-control select,
+.tool-header .saved-design-select,
+.tool-header .header-design-name {
+  color: #001f54;
+  background: #d7e5ee;
+  border-color: rgba(248, 246, 242, 0.72);
+}
+
+.tool-header .header-select-control select option,
+.tool-header .preset-select-control select option,
+.tool-header .saved-design-select option {
+  color: #001f54;
+  background: #f8f6f2;
+}
+
+.tool-header .header-select-control select:focus,
+.tool-header .preset-select-control select:focus,
+.tool-header .saved-design-select:focus,
+.tool-header .header-design-name:focus {
+  color: #001f54;
+  background: #f8f6f2;
+  border-color: #79bbd9;
 }

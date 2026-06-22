@@ -1537,6 +1537,31 @@ const surfacePrescriptionToDerivedLenses = (prescription = {}) => {
   return lenses;
 };
 
+const lensesMatchSurfacePrescription = (lenses = [], prescription = {}) => {
+  if (prescription?.prescriptionType !== "surface") return false;
+  const derived = surfacePrescriptionToDerivedLenses(prescription);
+  if (!Array.isArray(lenses) || lenses.length !== derived.length) return false;
+  const close = (a, b, tolerance = 1e-7) => {
+    const left = numericValue(a);
+    const right = numericValue(b);
+    if (!Number.isFinite(left) && !Number.isFinite(right)) return true;
+    return Number.isFinite(left) && Number.isFinite(right) && Math.abs(left - right) <= tolerance;
+  };
+  const nd = (lens) => numericValue(lens?.customNd ?? lens?.refractiveIndex);
+  const vd = (lens) => numericValue(lens?.customVd);
+  return lenses.every((lens, index) => {
+    const reference = derived[index];
+    return Number(lens?.patentSurfaceStart) === Number(reference?.patentSurfaceStart)
+      && Number(lens?.patentSurfaceEnd) === Number(reference?.patentSurfaceEnd)
+      && close(lens?.r1, reference?.r1)
+      && close(lens?.r2, reference?.r2)
+      && close(lens?.thickness, reference?.thickness)
+      && close(lens?.gapAfter, reference?.gapAfter)
+      && close(nd(lens), nd(reference), 1e-6)
+      && close(vd(lens), vd(reference), 1e-5);
+  });
+};
+
 const PATENT_PRESET_DEFINITIONS = [
   makePatentPreset({
     key: "zunow50F11Us2715354",
@@ -2317,7 +2342,11 @@ const formatNumber = (value, digits = 3) => {
 };
 
 const toNumber = (value) => Number.parseFloat(value);
-const surfacePower = (radius) => Math.abs(radius) < 0.000001 ? 0 : 1 / radius;
+const surfacePower = (radius) => isPlanoRadius(radius) ? 0 : 1 / radius;
+const isPlanoRadius = (radius) => {
+  const value = toNumber(radius);
+  return !Number.isFinite(value) || Math.abs(value) < 0.000001;
+};
 
 const getLensGlass = (lens) => {
   const normalized = normalizeLens(lens);
@@ -3341,7 +3370,7 @@ const createAsphereDescriptor = (lens, side, radius) => {
 };
 
 const asphereSurfaceType = (surface) => {
-  if (Math.abs(surface.radius || 0) < 1e-9) return "Plano";
+  if (isPlanoRadius(surface.radius)) return "Plano";
   return isSurfaceAsphereActive(surface) ? "Aspherical" : "Spherical";
 };
 
@@ -3407,7 +3436,7 @@ const evaluateAsphereSag = (radius, asphere, radialHeight) => {
 
 const surfaceProfileXAtRadialHeight = (surface, radialHeight) => {
   const radius = toNumber(surface.radius) || 0;
-  if (Math.abs(radius) < 1e-9) return surface.x;
+  if (isPlanoRadius(surface.radius)) return surface.x;
   if (isSurfaceAsphereActive(surface)) {
     const sag = evaluateAsphereSag(radius, surface.asphere, radialHeight);
     return sag.valid ? surface.x - sag.sag : NaN;
@@ -3458,6 +3487,32 @@ const selectedApertureStopOption = (lenses, system, apertureStopIndex = state.ap
   return options.find((option) => option.value === apertureStopIndex) || options[0];
 };
 
+const finalizeTraceSurfaceList = (surfaces, stopConfiguration, stopResolution) => {
+  if (!surfaces.length) return surfaces;
+  const sortedSurfaces = surfaces.sort((left, right) => right.x - left.x);
+  const limitingSemiDiameter = Math.min(...sortedSurfaces.map((surface) => surface.semiDiameter));
+  sortedSurfaces.forEach((surface, index) => {
+    const reflection = calculateSurfaceReflectance(surface, surface.spectralLineKey || "d");
+    surface.surfaceNumber = index + 1;
+    surface.isApertureLimiting = Math.abs(surface.semiDiameter - limitingSemiDiameter) < 0.000001;
+    surface.reflectance = reflection.reflectance;
+    surface.surfaceTransmission = reflection.transmission;
+    surface.reflectanceSpectralLineKey = reflection.spectralLineKey;
+  });
+  sortedSurfaces.stopConfiguration = stopConfiguration ? {
+    ...stopConfiguration,
+    resolvedX: stopResolution?.x,
+    source: stopResolution?.source,
+    label: stopResolution?.label,
+    warning: stopResolution?.warning,
+    sourceLevel: stopResolution?.sourceLevel,
+    confidence: stopResolution?.confidence,
+    sourceBadge: stopResolution?.sourceBadge
+  } : null;
+
+  return sortedSurfaces;
+};
+
 const patentSurfacePositionMap = (lenses, system, positions = lensPositions(system, lenses), prescription = state.prescription) => {
   const map = new Map();
   lenses.forEach((lens, index) => {
@@ -3483,6 +3538,229 @@ const patentSurfacePositionMap = (lenses, system, positions = lensPositions(syst
   });
 
   return map;
+};
+
+const isPatentImagePlaneSurface = (surface, index, surfaces) => (
+  index === surfaces.length - 1
+  && surface?.isStop !== true
+  && isPlanoRadius(surface?.radius)
+  && !Number.isFinite(toNumber(surface?.nAfter))
+  && Number.isFinite(toNumber(surfaces[index - 1]?.distanceToNext))
+);
+
+const patentSurfaceIndexAtWavelength = (surface, wavelengthNm) => {
+  const nd = toNumber(surface?.nAfter);
+  if (!(nd > 1)) return 1;
+  const vd = toNumber(surface?.vdAfter);
+  return cauchyIndexForGlass({
+    nd,
+    vd: Number.isFinite(vd) && vd > 0 ? vd : defaultVdForIndex(nd)
+  }, wavelengthNm);
+};
+
+const sequentialPatentSurfaceCoordinates = (prescription, system = null) => {
+  const surfaces = prescription?.prescriptionType === "surface"
+    ? prescription.surfaces.map(normalizePatentSurface)
+    : [];
+  if (!surfaces.length) return { surfaces, xMap: new Map(), hasExplicitImagePlane: false };
+
+  const hasExplicitImagePlane = surfaces.some((surface, index) => isPatentImagePlaneSurface(surface, index, surfaces));
+  const xValues = new Array(surfaces.length).fill(0);
+  xValues[surfaces.length - 1] = hasExplicitImagePlane
+    ? 0
+    : Number.isFinite(system?.backFocalLength) ? Math.max(0, system.backFocalLength) : 0;
+
+  for (let index = surfaces.length - 2; index >= 0; index -= 1) {
+    const distance = toNumber(surfaces[index].distanceToNext);
+    xValues[index] = xValues[index + 1] + (Number.isFinite(distance) ? Math.max(0, distance) : 0);
+  }
+
+  return {
+    surfaces,
+    xMap: new Map(surfaces.map((surface, index) => [surface.no, xValues[index]])),
+    hasExplicitImagePlane
+  };
+};
+
+const sequentialPatentTraceSemiDiameter = (surface, stopSemiDiameter, prescription, options = {}) => {
+  if (surface.isStop) return stopSemiDiameter;
+  const clearAperture = toNumber(surface.clearAperture);
+  if (clearAperture > 0 && surface.apertureEstimated === false) return clearAperture / 2;
+  const focalLength = toNumber(prescription?.focalLength);
+  const apertureDiameter = toNumber(options.apertureDiameter);
+  return Math.max(
+    30,
+    Number.isFinite(apertureDiameter) && apertureDiameter > 0 ? apertureDiameter * 2 : 0,
+    Number.isFinite(focalLength) && focalLength > 0 ? focalLength * 0.9 : 0
+  );
+};
+
+const buildSequentialPatentTraceSurfaces = (prescription, options = {}) => {
+  const normalizedPrescription = normalizePrescription(prescription);
+  if (normalizedPrescription.prescriptionType !== "surface") return [];
+
+  const system = options.system || null;
+  const stopConfiguration = resolveApertureStopConfiguration(options, normalizedPrescription);
+  const apertureDiameter = stopConfiguration.apertureDiameter;
+  const stopSemiDiameter = Math.max(0.025, apertureDiameter / 2);
+  const wavelengthNm = toNumber(options.wavelengthNm) || SPECTRAL_LINES.d.wavelengthNm;
+  const spectralLineKey = options.spectralLineKey || "d";
+  const { surfaces: patentSurfaces, xMap } = sequentialPatentSurfaceCoordinates(normalizedPrescription, system);
+  if (!patentSurfaces.length) return [];
+
+  const duplicateSharedSurfaceByNo = new Map();
+  const skippedDuplicateSurfaceNos = new Set();
+  patentSurfaces.forEach((surface, index) => {
+    const next = patentSurfaces[index + 1];
+    if (!next) return;
+    const currentRadius = normalizePatentSurfaceValue(surface.radius);
+    const nextRadius = normalizePatentSurfaceValue(next.radius);
+    const sameRadius = currentRadius === Infinity && nextRadius === Infinity
+      ? true
+      : Math.abs((currentRadius || 0) - (nextRadius || 0)) < 1e-9;
+    const zeroDistance = Math.abs(toNumber(surface.distanceToNext) || 0) < 1e-9;
+    if (zeroDistance && sameRadius && toNumber(next.nAfter) > 1) {
+      duplicateSharedSurfaceByNo.set(surface.no, {
+        nextSurfaceNo: next.no,
+        nAfter: next.nAfter,
+        vdAfter: next.vdAfter,
+        mediumLabel: next.mediumLabel
+      });
+      skippedDuplicateSurfaceNos.add(next.no);
+    }
+  });
+
+  let previousNAfter = 1;
+  const traceSurfaces = patentSurfaces.filter((surface) => !skippedDuplicateSurfaceNos.has(surface.no)).map((surface, index) => {
+    const originalIndex = patentSurfaces.findIndex((item) => item.no === surface.no);
+    const isImagePlane = isPatentImagePlaneSurface(surface, originalIndex, patentSurfaces);
+    const isStop = surface.isStop === true;
+    const duplicateShared = duplicateSharedSurfaceByNo.get(surface.no) || null;
+    const nBefore = previousNAfter;
+    const effectiveSurface = duplicateShared
+      ? { ...surface, nAfter: duplicateShared.nAfter, vdAfter: duplicateShared.vdAfter, mediumLabel: duplicateShared.mediumLabel || surface.mediumLabel }
+      : surface;
+    const rawNAfter = patentSurfaceIndexAtWavelength(effectiveSurface, wavelengthNm);
+    const nAfter = isStop || isImagePlane
+      ? nBefore
+      : rawNAfter > 1 ? rawNAfter : 1;
+    const ndAfter = toNumber(effectiveSurface.nAfter);
+    const vdAfter = toNumber(effectiveSurface.vdAfter);
+    const semiDiameter = sequentialPatentTraceSemiDiameter(surface, stopSemiDiameter, normalizedPrescription, options);
+    const traceSurface = {
+      x: xMap.get(surface.no),
+      radius: isPlanoRadius(surface.radius) ? 0 : surface.radius,
+      patentRadius: surface.radius,
+      asphere: normalizePatentAsphere(surface.asphere),
+      semiDiameter,
+      clearApertureDiameter: semiDiameter * 2,
+      mechanicalDiameter: semiDiameter * 2,
+      visualDiameter: semiDiameter * 2,
+      apertureSource: surface.apertureEstimated === false ? "patent" : isStop ? "manual" : "estimated",
+      diameterSource: surface.apertureEstimated === false ? "patent" : isStop ? "manual" : "estimated",
+      nBefore,
+      nAfter,
+      glassName: ndAfter > 1 ? effectiveSurface.mediumLabel || `Patent glass after S${surface.no}` : "--",
+      glassFamily: ndAfter > 1 ? "Patent nd/Vd" : "Air",
+      coatingKey: duplicateShared ? "cemented" : isStop || isImagePlane ? "--" : "multiCoated",
+      coatingName: duplicateShared ? "Cemented glass interface" : isStop ? "Aperture stop" : isImagePlane ? "Image plane" : "Multi-coated",
+      decenterY: 0,
+      decenterZ: 0,
+      tiltY: 0,
+      tiltZ: 0,
+      wavelengthNm,
+      spectralLineKey,
+      nC: ndAfter > 1 ? cauchyIndexForGlass({ nd: ndAfter, vd: vdAfter > 0 ? vdAfter : defaultVdForIndex(ndAfter) }, SPECTRAL_LINES.C.wavelengthNm) : nAfter,
+      nd: ndAfter > 1 ? ndAfter : nAfter,
+      nF: ndAfter > 1 ? cauchyIndexForGlass({ nd: ndAfter, vd: vdAfter > 0 ? vdAfter : defaultVdForIndex(ndAfter) }, SPECTRAL_LINES.F.wavelengthNm) : nAfter,
+      lensIndex: null,
+      surfaceIndex: originalIndex >= 0 ? originalIndex : index,
+      patentSurfaceNumber: surface.no,
+      patentDuplicateSharedSurfaceNumber: duplicateShared?.nextSurfaceNo || null,
+      label: isStop ? `STOP S${surface.no}` : isImagePlane ? `Patent image plane S${surface.no}` : duplicateShared ? `Patent cemented surface S${surface.no}/S${duplicateShared.nextSurfaceNo}` : `Patent surface S${surface.no}`,
+      isStop,
+      isImagePlane,
+      isCementedInterface: Boolean(duplicateShared || (nBefore > 1 && nAfter > 1 && Math.abs(nAfter - nBefore) > 1e-9)),
+      isRefracting: !isStop && !isImagePlane && Math.abs(nAfter - nBefore) > 1e-9
+    };
+    if (isStop) {
+      traceSurface.stopSemiDiameter = stopSemiDiameter;
+      traceSurface.semiDiameter = stopSemiDiameter;
+    }
+    previousNAfter = nAfter;
+    return traceSurface;
+  });
+
+  const specResolution = resolveStopSpecPosition(
+    stopConfiguration.apertureStopSpec || resolvePresetApertureStopSpec(normalizedPrescription),
+    { patentSurfaceXMap: xMap, sortedSurfaces: traceSurfaces }
+  );
+  const stopResolution = resolveApertureStopPosition(stopConfiguration, traceSurfaces, {
+    patentSurfaces,
+    patentSurfaceXMap: xMap,
+    apertureStopSpec: stopConfiguration.apertureStopSpec,
+    prescription: normalizedPrescription
+  });
+  const matchingSurface = stopResolution.matchingSurface || specResolution?.matchingSurface || traceSurfaces.find((surface) => surface.isStop);
+
+  if (matchingSurface) {
+    matchingSurface.isStop = true;
+    matchingSurface.isRefracting = false;
+    matchingSurface.stopSemiDiameter = stopSemiDiameter;
+    matchingSurface.semiDiameter = Math.min(matchingSurface.semiDiameter, stopSemiDiameter);
+    matchingSurface.clearApertureDiameter = matchingSurface.semiDiameter * 2;
+    matchingSurface.stopSource = stopResolution.source || specResolution?.source;
+    matchingSurface.stopLabel = stopResolution.label || specResolution?.label;
+    matchingSurface.stopWarning = stopResolution.warning || specResolution?.warning;
+    matchingSurface.stopSourceLevel = stopResolution.sourceLevel || specResolution?.sourceLevel;
+    matchingSurface.stopConfidence = stopResolution.confidence || specResolution?.confidence;
+    matchingSurface.stopSourceBadge = stopResolution.sourceBadge || specResolution?.sourceBadge;
+    matchingSurface.nAfter = matchingSurface.nBefore;
+  } else if (Number.isFinite(stopResolution.x)) {
+    traceSurfaces.push({
+      x: stopResolution.x,
+      radius: 0,
+      patentRadius: Infinity,
+      asphere: null,
+      semiDiameter: stopSemiDiameter,
+      clearApertureDiameter: stopSemiDiameter * 2,
+      mechanicalDiameter: stopSemiDiameter * 2,
+      visualDiameter: stopSemiDiameter * 2,
+      apertureSource: "manual",
+      diameterSource: "manual",
+      nBefore: 1,
+      nAfter: 1,
+      glassName: "--",
+      glassFamily: "--",
+      coatingKey: "--",
+      coatingName: "Aperture stop",
+      decenterY: 0,
+      decenterZ: 0,
+      tiltY: 0,
+      tiltZ: 0,
+      wavelengthNm,
+      spectralLineKey,
+      lensIndex: null,
+      surfaceIndex: "stop",
+      patentSurfaceNumber: stopResolution.patentSurfaceNumber ?? null,
+      label: stopResolution.label || "Aperture stop",
+      stopLabel: stopResolution.label || "Aperture stop",
+      isStop: true,
+      isRefracting: false,
+      stopSemiDiameter,
+      stopSource: stopResolution.source,
+      stopWarning: stopResolution.warning,
+      stopSourceLevel: stopResolution.sourceLevel,
+      stopConfidence: stopResolution.confidence,
+      stopSourceBadge: stopResolution.sourceBadge
+    });
+  }
+
+  return finalizeTraceSurfaceList(traceSurfaces, {
+    ...stopConfiguration,
+    patentSurfaceXMap: xMap,
+    nativeSequential: true
+  }, stopResolution);
 };
 
 const resolvePresetApertureStopSpec = (prescription = state.prescription, preset = PRESETS[state.preset]) => (
@@ -3772,6 +4050,20 @@ const resolveApertureStopPosition = (settingsSource = state, surfaces = [], cont
 
 const buildSurfaceList = (lenses, system, options = {}) => {
   const stopConfiguration = resolveApertureStopConfiguration(options, options.prescription || state.prescription);
+  const activePrescription = stopConfiguration.prescription || options.prescription || state.prescription;
+  const lensesComeFromSurfacePrescription = lenses.some((lens) => (
+    Number.isFinite(toNumber(lens?.patentSurfaceStart))
+    || Number.isFinite(toNumber(lens?.patentSurfaceEnd))
+  ));
+  const lensGeometryMatchesPrescription = lensesMatchSurfacePrescription(lenses, activePrescription);
+  if (activePrescription?.prescriptionType === "surface" && lensesComeFromSurfacePrescription && lensGeometryMatchesPrescription) {
+    const sequentialSurfaces = buildSequentialPatentTraceSurfaces(activePrescription, {
+      ...options,
+      ...stopConfiguration,
+      system
+    });
+    if (sequentialSurfaces.length) return sequentialSurfaces;
+  }
   const positions = lensPositions(system, lenses);
   const apertureStopIndex = stopConfiguration.apertureStopIndex;
   const apertureDiameter = stopConfiguration.apertureDiameter;
@@ -4068,7 +4360,7 @@ const intersectRayWithSurface = (ray, surface) => {
     return { status: "invalid" };
   }
 
-  if (Math.abs(surface.radius) < 0.000001) {
+  if (isPlanoRadius(surface.radius)) {
     if (Math.abs(ray.dx) < 0.000001) return { status: "invalid" };
     const t = (surface.x - ray.x) / ray.dx;
     if (!(t > 0.000001)) return { status: "invalid" };
@@ -4118,7 +4410,7 @@ const intersectRayWithSurface = (ray, surface) => {
 const surfaceNormal = (ray, surface, hitPoint) => {
   let normal;
 
-  if (Math.abs(surface.radius) < 0.000001) {
+  if (isPlanoRadius(surface.radius)) {
     normal = { x: ray.dx < 0 ? -1 : 1, y: 0 };
   } else if (isSurfaceAsphereActive(surface)) {
     const localY = hitPoint.y - (toNumber(surface.decenterY) || 0);
@@ -4462,7 +4754,7 @@ const calculateEntrancePupil = (lenses, system, options = {}) => {
       const nBefore = toNumber(surface.nBefore);
       const nAfter = toNumber(surface.nAfter);
       if (!(nBefore > 0) || !(nAfter > 0)) return null;
-      if (Math.abs(surface.radius) > 0.000001) {
+  if (!isPlanoRadius(surface.radius)) {
         const reverseRadius = -surface.radius;
         slope = (nBefore / nAfter) * slope
           - y * (nAfter - nBefore) / (nAfter * reverseRadius);
@@ -4760,7 +5052,7 @@ const intersectRayWithSurface3D = (ray, surface) => {
     return { status: "invalid" };
   }
 
-  if (Math.abs(surface.radius) < 0.000001) {
+  if (isPlanoRadius(surface.radius)) {
     if (Math.abs(ray.dx) < 0.000001) return { status: "invalid" };
     const t = (surface.x - ray.x) / ray.dx;
     if (!(t > 0.000001)) return { status: "invalid" };
@@ -4849,7 +5141,7 @@ const rotateSurfaceNormalApprox = (normal, surface) => {
 const surfaceNormal3D = (ray, surface, hitPoint) => {
   let normal;
 
-  if (Math.abs(surface.radius) < 0.000001) {
+  if (isPlanoRadius(surface.radius)) {
     normal = { x: ray.dx < 0 ? -1 : 1, y: 0, z: 0 };
   } else if (isSurfaceAsphereActive(surface)) {
     const localY = hitPoint.y - (toNumber(surface.decenterY) || 0);
@@ -16272,6 +16564,65 @@ const runOpticsSelfCheck = () => {
       && Math.abs(aspheres[0].asphere.A4 - 4.72026e-6) < 1e-14
       && lenses.length >= 7
       && system.totalTrack > 60;
+  });
+
+  test("Sony FE55 native sequential patent trace preserves stop and image-plane spaces", () => {
+    const prescription = clonePresetPrescription("sonySonnarFe55F18Us20150092100Ex1");
+    const lenses = prescriptionToLenses(prescription);
+    const system = calculateSystem(lenses);
+    const surfaces = buildSurfaceList(lenses, system, {
+      prescription,
+      apertureStopMode: "patentStop",
+      apertureDiameter: 28,
+      wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+      spectralLineKey: "d"
+    });
+    const byPatentNo = (number) => surfaces.find((surface) => surface.patentSurfaceNumber === number);
+    const s6 = byPatentNo(6);
+    const s7 = byPatentNo(7);
+    const s8 = byPatentNo(8);
+    const s9 = byPatentNo(9);
+    const s10 = byPatentNo(10);
+    const s15 = byPatentNo(15);
+    const s16 = byPatentNo(16);
+    const close = (actual, expected, tolerance = 1e-9) => Math.abs(actual - expected) < tolerance;
+    return close(s6.x - s7.x, 2.78)
+      && close(s7.x - s8.x, 2.81)
+      && close(s9.x - s10.x, 13.67)
+      && close(s15.x - s16.x, 1)
+      && s7.x !== s8.x
+      && s7.isStop === true
+      && s7.isRefracting === false
+      && s7.nBefore === 1
+      && s7.nAfter === 1
+      && s16.isImagePlane === true
+      && close(s16.x, 0)
+      && surfaces.stopConfiguration?.nativeSequential === true;
+  });
+
+  test("Sony FE55 native sequential patent trace produces on-axis and off-axis rays", () => {
+    const prescription = clonePresetPrescription("sonySonnarFe55F18Us20150092100Ex1");
+    const lenses = prescriptionToLenses(prescription);
+    const system = calculateSystem(lenses);
+    const options = {
+      prescription,
+      apertureStopMode: "patentStop",
+      apertureDiameter: 80,
+      rayCount: 9,
+      wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+      spectralLineKey: "d"
+    };
+    const onAxis = traceSystemRealRays(lenses, system, { ...options, fieldAngleDegrees: 0 });
+    const offAxis = traceSystemRealRays(lenses, system, { ...options, fieldAngleDegrees: 22.15 });
+    const s7 = onAxis.surfaces.find((surface) => surface.patentSurfaceNumber === 7);
+    const s8 = onAxis.surfaces.find((surface) => surface.patentSurfaceNumber === 8);
+    return onAxis.validRayCount > 0
+      && offAxis.totalRayCount === 9
+      && offAxis.validRayCount > 0
+      && offAxis.rays.some((ray) => ray.path?.some((point) => point.x < s7.x))
+      && offAxis.rays.some((ray) => ray.path?.some((point) => point.x < s8.x))
+      && Math.abs(s7.x - s8.x) > 2.8
+      && offAxis.surfaces.some((surface) => surface.isImagePlane && surface.x === 0);
   });
 
   const patentGeometryDiameterSnapshot = (lenses) => lenses.map((lens) => ({

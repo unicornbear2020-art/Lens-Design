@@ -228,7 +228,7 @@ const DEFAULT_BEVEL_ANGLE_DEG = 45;
 const PATENT_CLEAR_APERTURE_NUMERICAL_MARGIN_MM = 0.05;
 const DEFAULT_CEMENTED_INTERFACE_BEVEL_FACE_WIDTH_MM = 0.15;
 const DEFAULT_CEMENTED_INTERFACE_BEVEL_ANGLE_DEG = 45;
-const OPTICAL_SIDE_VIEW_DEFAULT_ZOOM = 1.3;
+const OPTICAL_SIDE_VIEW_DEFAULT_ZOOM = 1.17;
 
 const automaticBevelFaceWidthMm = (diameter) => (
   diameter <= 25.4 ? 0.25 : diameter <= 50 ? 0.3 : 0.4
@@ -9785,6 +9785,64 @@ const diagramViewBox = (mapper, diagramViewMode = state.diagramViewMode) => {
   return `${x} ${y} ${width} ${height}`;
 };
 
+const parseSvgViewBox = (value, fallback = { x: 0, y: 0, width: DIAGRAM_SIZE.width, height: DIAGRAM_SIZE.height }) => {
+  const parts = String(value || "").trim().split(/\s+/).map(Number);
+  if (parts.length !== 4 || parts.some((part) => !Number.isFinite(part))) return fallback;
+  const [x, y, width, height] = parts;
+  if (width <= 0 || height <= 0) return fallback;
+  return { x, y, width, height };
+};
+
+const calculateCursorAnchoredViewBox = ({
+  currentViewBox,
+  pointerX,
+  pointerY,
+  currentZoom,
+  nextZoom,
+  boundsWidth = DIAGRAM_SIZE.width,
+  boundsHeight = DIAGRAM_SIZE.height
+}) => {
+  const safePointerX = clamp(pointerX, 0, 1);
+  const safePointerY = clamp(pointerY, 0, 1);
+  const safeCurrentZoom = Math.max(0.000001, currentZoom);
+  const zoomRatio = Math.max(0.000001, nextZoom / safeCurrentZoom);
+  const nextWidth = clamp(currentViewBox.width / zoomRatio, 1, boundsWidth);
+  const nextHeight = clamp(currentViewBox.height / zoomRatio, 1, boundsHeight);
+  const anchorX = currentViewBox.x + safePointerX * currentViewBox.width;
+  const anchorY = currentViewBox.y + safePointerY * currentViewBox.height;
+  const maxX = Math.max(0, boundsWidth - nextWidth);
+  const maxY = Math.max(0, boundsHeight - nextHeight);
+  return {
+    x: clamp(anchorX - safePointerX * nextWidth, 0, maxX),
+    y: clamp(anchorY - safePointerY * nextHeight, 0, maxY),
+    width: nextWidth,
+    height: nextHeight
+  };
+};
+
+const calculatePannedViewBox = ({
+  currentViewBox,
+  deltaClientX,
+  deltaClientY,
+  rectWidth,
+  rectHeight,
+  boundsWidth = DIAGRAM_SIZE.width,
+  boundsHeight = DIAGRAM_SIZE.height
+}) => {
+  if (!rectWidth || !rectHeight) return currentViewBox;
+  const deltaSvgX = (deltaClientX / rectWidth) * currentViewBox.width;
+  const deltaSvgY = (deltaClientY / rectHeight) * currentViewBox.height;
+  const maxX = Math.max(0, boundsWidth - currentViewBox.width);
+  const maxY = Math.max(0, boundsHeight - currentViewBox.height);
+  return {
+    ...currentViewBox,
+    x: clamp(currentViewBox.x - deltaSvgX, 0, maxX),
+    y: clamp(currentViewBox.y - deltaSvgY, 0, maxY)
+  };
+};
+
+const formatViewBox = (viewBox) => `${viewBox.x} ${viewBox.y} ${viewBox.width} ${viewBox.height}`;
+
 const diagramAnnotationLanes = (mapper, maximumDrawnRadius) => {
   const lensBottomY = mapper.y(-maximumDrawnRadius);
   const lensLabelY = Math.min(mapper.height - 92, lensBottomY + 20);
@@ -14086,11 +14144,41 @@ const holdState = {
   suppressClickUntil: 0
 };
 
+const diagramPanState = {
+  active: false,
+  pointerId: null,
+  svg: null,
+  startClientX: 0,
+  startClientY: 0,
+  startViewBox: null,
+  rect: null,
+  didMove: false
+};
+
 const stopHoldAdjust = () => {
   clearTimeout(holdState.delayTimer);
   clearInterval(holdState.repeatTimer);
   holdState.delayTimer = null;
   holdState.repeatTimer = null;
+};
+
+const stopDiagramPan = (shouldUpdate = true) => {
+  if (!diagramPanState.active) return;
+  diagramPanState.svg?.classList.remove("is-panning");
+  try {
+    if (diagramPanState.svg && diagramPanState.pointerId !== null) {
+      diagramPanState.svg.releasePointerCapture(diagramPanState.pointerId);
+    }
+  } catch {
+    // Pointer capture can already be released when the SVG is replaced.
+  }
+  diagramPanState.active = false;
+  diagramPanState.pointerId = null;
+  diagramPanState.svg = null;
+  diagramPanState.startViewBox = null;
+  diagramPanState.rect = null;
+  diagramPanState.didMove = false;
+  if (shouldUpdate) update();
 };
 
 mount.addEventListener("pointerdown", (event) => {
@@ -14130,8 +14218,58 @@ mount.addEventListener("pointerdown", (event) => {
   }, 360);
 });
 
-document.addEventListener("pointerup", stopHoldAdjust);
-document.addEventListener("pointercancel", stopHoldAdjust);
+mount.addEventListener("pointerdown", (event) => {
+  const svg = event.target.closest(".ray-diagram");
+  if (!svg) return;
+  if (typeof event.button === "number" && event.button !== 0) return;
+  if (event.target.closest("button, input, select, textarea, label, summary")) return;
+
+  const rect = svg.getBoundingClientRect();
+  if (!rect.width || !rect.height) return;
+
+  event.preventDefault();
+  stopHoldAdjust();
+  diagramPanState.active = true;
+  diagramPanState.pointerId = event.pointerId;
+  diagramPanState.svg = svg;
+  diagramPanState.startClientX = event.clientX;
+  diagramPanState.startClientY = event.clientY;
+  diagramPanState.startViewBox = parseSvgViewBox(svg.getAttribute("viewBox"));
+  diagramPanState.rect = rect;
+  diagramPanState.didMove = false;
+  svg.classList.add("is-panning");
+  try {
+    svg.setPointerCapture(event.pointerId);
+  } catch {
+    // Not all SVG environments expose pointer capture consistently.
+  }
+});
+
+document.addEventListener("pointermove", (event) => {
+  if (!diagramPanState.active || !diagramPanState.svg || !diagramPanState.startViewBox || !diagramPanState.rect) return;
+  if (diagramPanState.pointerId !== null && event.pointerId !== diagramPanState.pointerId) return;
+  event.preventDefault();
+  const nextViewBox = calculatePannedViewBox({
+    currentViewBox: diagramPanState.startViewBox,
+    deltaClientX: event.clientX - diagramPanState.startClientX,
+    deltaClientY: event.clientY - diagramPanState.startClientY,
+    rectWidth: diagramPanState.rect.width,
+    rectHeight: diagramPanState.rect.height
+  });
+  diagramPanState.didMove = true;
+  state.diagramViewX = nextViewBox.x;
+  state.diagramViewY = nextViewBox.y;
+  diagramPanState.svg.setAttribute("viewBox", formatViewBox(nextViewBox));
+}, { passive: false });
+
+document.addEventListener("pointerup", () => {
+  stopHoldAdjust();
+  stopDiagramPan(true);
+});
+document.addEventListener("pointercancel", () => {
+  stopHoldAdjust();
+  stopDiagramPan(true);
+});
 document.addEventListener("pointerleave", stopHoldAdjust);
 
 mount.addEventListener("wheel", (event) => {
@@ -14142,27 +14280,23 @@ mount.addEventListener("wheel", (event) => {
   const rect = svg.getBoundingClientRect();
   if (!rect.width || !rect.height) return;
 
-  const currentViewBox = svg.getAttribute("viewBox").split(/\s+/).map(Number);
-  const [viewX, viewY, viewWidth, viewHeight] = currentViewBox.length === 4
-    ? currentViewBox
-    : [0, 0, DIAGRAM_SIZE.width, DIAGRAM_SIZE.height];
+  const currentViewBox = parseSvgViewBox(svg.getAttribute("viewBox"));
   const pointerX = clamp((event.clientX - rect.left) / rect.width, 0, 1);
   const pointerY = clamp((event.clientY - rect.top) / rect.height, 0, 1);
-  const svgX = viewX + pointerX * viewWidth;
-  const svgY = viewY + pointerY * viewHeight;
+  const currentZoom = clamp(state.diagramZoom, 1, 6);
   const zoomFactor = event.deltaY < 0 ? 1.14 : 1 / 1.14;
-  const nextZoom = clamp(state.diagramZoom * zoomFactor, 1, 6);
-  const nextWidth = DIAGRAM_SIZE.width / nextZoom;
-  const nextHeight = DIAGRAM_SIZE.height / nextZoom;
+  const nextZoom = clamp(currentZoom * zoomFactor, 1, 6);
+  const nextViewBox = calculateCursorAnchoredViewBox({
+    currentViewBox,
+    pointerX,
+    pointerY,
+    currentZoom,
+    nextZoom
+  });
 
   state.diagramZoom = nextZoom;
-  state.diagramViewX = clamp(svgX - pointerX * nextWidth, 0, DIAGRAM_SIZE.width - nextWidth);
-  state.diagramViewY = clamp(svgY - pointerY * nextHeight, 0, DIAGRAM_SIZE.height - nextHeight);
-
-  if (nextZoom === 1) {
-    state.diagramViewX = null;
-    state.diagramViewY = null;
-  }
+  state.diagramViewX = nextViewBox.x;
+  state.diagramViewY = nextViewBox.y;
 
   update();
 }, { passive: false });
@@ -15063,19 +15197,10 @@ mount.addEventListener("click", (event) => {
 
   if (action === "toggle-panel") {
     const panelId = button.dataset.panel;
-    const registryPanel = ANALYSIS_PANEL_BY_ID[panelId];
     const isCurrentlyCollapsed = (state.collapsedPanels || {})[panelId] === true;
-    const nextCollapsedPanels = { ...(state.collapsedPanels || {}) };
-    if (registryPanel && isCurrentlyCollapsed) {
-      ANALYSIS_PANEL_REGISTRY
-        .filter((panel) => panel.group === registryPanel.group && panel.id !== panelId)
-        .forEach((panel) => {
-          nextCollapsedPanels[panel.id] = true;
-        });
-    }
-    nextCollapsedPanels[panelId] = !isCurrentlyCollapsed;
     state.collapsedPanels = {
-      ...nextCollapsedPanels
+      ...(state.collapsedPanels || {}),
+      [panelId]: !isCurrentlyCollapsed
     };
     update();
     return;
@@ -16477,21 +16602,58 @@ const runOpticsSelfCheck = () => {
       && !markup.includes("Ray-traced Image Circle / Vignetting");
   }));
 
-  test("workflow panel toggle collapses siblings inside the same group", () => withTemporaryState(() => {
-    state.collapsedPanels = { ...state.collapsedPanels, rayTraceSpot: true, mtfResolution: false };
-    const panelId = "rayTraceSpot";
-    const registryPanel = ANALYSIS_PANEL_BY_ID[panelId];
-    const nextCollapsedPanels = { ...(state.collapsedPanels || {}) };
-    ANALYSIS_PANEL_REGISTRY
-      .filter((panel) => panel.group === registryPanel.group && panel.id !== panelId)
-      .forEach((panel) => {
-        nextCollapsedPanels[panel.id] = true;
-      });
-    nextCollapsedPanels[panelId] = false;
-    return nextCollapsedPanels.rayTraceSpot === false
-      && nextCollapsedPanels.mtfResolution === true
-      && nextCollapsedPanels.rayFanAberrations === true;
+  test("workflow panel toggle preserves other open panels inside the same group", () => withTemporaryState(() => {
+    state.collapsedPanels = { ...state.collapsedPanels, lensData: false, apertureField: true, mtfResolution: false };
+    const panelId = "apertureField";
+    const isCurrentlyCollapsed = (state.collapsedPanels || {})[panelId] === true;
+    const nextCollapsedPanels = {
+      ...(state.collapsedPanels || {}),
+      [panelId]: !isCurrentlyCollapsed
+    };
+    return nextCollapsedPanels.apertureField === false
+      && nextCollapsedPanels.lensData === false
+      && nextCollapsedPanels.mtfResolution === false;
   }));
+
+  test("diagram wheel zoom keeps cursor point anchored", () => {
+    const currentViewBox = { x: 120, y: 80, width: 520, height: 260 };
+    const pointerX = 0.33;
+    const pointerY = 0.71;
+    const anchorX = currentViewBox.x + pointerX * currentViewBox.width;
+    const anchorY = currentViewBox.y + pointerY * currentViewBox.height;
+    const nextViewBox = calculateCursorAnchoredViewBox({
+      currentViewBox,
+      pointerX,
+      pointerY,
+      currentZoom: 1,
+      nextZoom: 1.4,
+      boundsWidth: DIAGRAM_SIZE.width,
+      boundsHeight: DIAGRAM_SIZE.height
+    });
+    const nextAnchorX = nextViewBox.x + pointerX * nextViewBox.width;
+    const nextAnchorY = nextViewBox.y + pointerY * nextViewBox.height;
+    return Math.abs(anchorX - nextAnchorX) < 1e-9
+      && Math.abs(anchorY - nextAnchorY) < 1e-9
+      && nextViewBox.width < currentViewBox.width
+      && nextViewBox.height < currentViewBox.height;
+  });
+
+  test("diagram drag pan moves the viewBox without changing zoom", () => {
+    const currentViewBox = { x: 120, y: 80, width: 520, height: 260 };
+    const nextViewBox = calculatePannedViewBox({
+      currentViewBox,
+      deltaClientX: 100,
+      deltaClientY: -50,
+      rectWidth: 1000,
+      rectHeight: 500,
+      boundsWidth: DIAGRAM_SIZE.width,
+      boundsHeight: DIAGRAM_SIZE.height
+    });
+    return Math.abs(nextViewBox.x - 68) < 1e-9
+      && Math.abs(nextViewBox.y - 106) < 1e-9
+      && nextViewBox.width === currentViewBox.width
+      && nextViewBox.height === currentViewBox.height;
+  });
 
   test("sagittal tangential MTF styling uses sagittal solid and tangential dashed", () => (
     renderSagittalTangentialMTFChart(RAY_TRACE_FIELDS[0], [{

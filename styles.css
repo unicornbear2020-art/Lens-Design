@@ -15,6 +15,13 @@
   --green-ray: #0a8f62;
   --blue-ray: #0a6cf1;
   --shadow: 0 8px 20px rgba(0, 31, 84, 0.08);
+  --light-surface: #fbfdfd;
+  --light-surface-raised: #f3f7f6;
+  --light-surface-ink: #0a3556;
+  --light-surface-muted: #486177;
+  --light-surface-line: #b7c5c8;
+  --light-surface-grid: #dbe5e6;
+  --light-surface-axis: #66727a;
 }
 
 * {
@@ -115,6 +122,27 @@ select {
 
 .analysis-sidebar * {
   min-width: 0;
+}
+
+@media (max-width: 1220px) and (orientation: landscape) {
+  .app-shell {
+    width: min(100% - 12px, 1900px);
+    padding-block: 6px;
+  }
+
+  .work-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(400px, 500px);
+    gap: 8px;
+  }
+
+  .top-diagram .ray-diagram {
+    min-height: 260px;
+  }
+
+  .stack-panel-header {
+    min-height: 28px;
+    padding-block: 4px;
+  }
 }
 
 .tool-header {
@@ -3201,7 +3229,13 @@ select {
   border: 0;
   border-radius: 7px;
   background: #f8fbfb;
-  cursor: zoom-in;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.ray-diagram.is-panning {
+  cursor: grabbing;
 }
 
 .diagram-bg {
@@ -5276,4 +5310,330 @@ h1 {
   .analysis-sidebar .aperture-stop-readout {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
+
+/* Light data surfaces keep dark ink even when the surrounding app uses dark panels. */
+input,
+select,
+textarea,
+.header-select-control select,
+.saved-design-select,
+.header-design-name,
+.saved-load,
+.preset-group,
+.preset-button,
+.lens-asphere-control,
+.lens-manufacturing-control,
+.lens-tolerance-control,
+.lens-optimizer-control,
+.glass-readout span,
+.rgb-overlay-legend span,
+.catalog-note,
+.type-button,
+.placeholder-text,
+.metric,
+.image-circle-preview,
+.vignetting-chart,
+.ray-circle-preview,
+.aberration-chart,
+.spot-diagram,
+.spot-3d-diagram,
+.csv-export-box,
+.st-ray-fan-diagnostics,
+.wavefront-map,
+.wave-optics-map,
+.wave-optics-card,
+.wave-optics-frame,
+.mtf-chart,
+.st-mtf-chart,
+.diffraction-hybrid-chart,
+.poly-mtf-chart,
+.mtf-readout-row span,
+.mtf-focus-card,
+.tolerance-preview,
+.tolerance-worst-card,
+.tolerance-histogram,
+.optimizer-chart,
+.transmission-line-card,
+.surface-table,
+.patent-prescription-block {
+  color: var(--light-surface-ink);
+  border-color: var(--light-surface-line);
+}
+
+input,
+select,
+textarea,
+.saved-load,
+.preset-button,
+.lens-asphere-control,
+.lens-manufacturing-control,
+.lens-tolerance-control,
+.lens-optimizer-control,
+.glass-readout span,
+.rgb-overlay-legend span,
+.catalog-note,
+.type-button,
+.placeholder-text,
+.metric,
+.image-circle-preview,
+.vignetting-chart,
+.ray-circle-preview,
+.aberration-chart,
+.spot-diagram,
+.spot-3d-diagram,
+.csv-export-box,
+.st-ray-fan-diagnostics,
+.wavefront-map,
+.wave-optics-map,
+.mtf-chart,
+.st-mtf-chart,
+.diffraction-hybrid-chart,
+.poly-mtf-chart,
+.mtf-readout-row span,
+.mtf-focus-card,
+.tolerance-preview,
+.tolerance-worst-card,
+.tolerance-histogram,
+.optimizer-chart,
+.transmission-line-card,
+.patent-prescription-block {
+  background: var(--light-surface);
+}
+
+.preset-group,
+.preset-options-nested,
+.mtf-readout-head span,
+.st-ray-fan-diagnostics [role="columnheader"],
+.surface-table th,
+.type-button:hover,
+.saved-load:hover,
+.preset-button:hover {
+  background: var(--light-surface-raised);
+}
+
+.saved-load,
+.preset-group-summary,
+.preset-button,
+.preset-button.is-active,
+.lens-asphere-control summary,
+.lens-manufacturing-control summary,
+.lens-tolerance-control summary,
+.lens-optimizer-control summary,
+.type-button,
+.type-button.is-active,
+.placeholder-text,
+.transmission-line-card strong,
+.mtf-focus-card strong,
+.surface-panel summary,
+.surface-table td,
+.patent-prescription-heading strong,
+.aberration-card h4,
+.spot-field-heading,
+.copy-status,
+.wave-optics-card h4,
+.wavefront-card h4 {
+  color: var(--light-surface-ink);
+}
+
+.preset-heading,
+.preset-group-summary span:last-child,
+.preset-button small,
+.manufacturing-note,
+.asphere-note,
+.glass-readout span,
+.rgb-overlay-legend span,
+.catalog-note,
+.type-control,
+.glass-control,
+.coating-control,
+.lens-tolerance-control,
+.lens-optimizer-control,
+.preview-small,
+.field-chip,
+.spot-field-heading span,
+.st-ray-fan-diagnostics [role="rowheader"],
+.tolerance-change-list,
+.transmission-line-card,
+.mtf-legend-item,
+.mtf-readout-head span,
+.mtf-focus-card,
+.surface-table th,
+.patent-prescription-heading span {
+  color: var(--light-surface-muted);
+}
+
+.preview-bg,
+.spot-bg,
+.mtf-bg {
+  fill: var(--light-surface);
+}
+
+.mtf-grid {
+  stroke: var(--light-surface-grid);
+}
+
+.mtf-axis,
+.wave-optics-frame,
+.sensor-diagonal-guide {
+  stroke: var(--light-surface-axis);
+}
+
+.mtf-tick,
+.mtf-label,
+.mtf-empty,
+.preview-label,
+.preview-small,
+.spot-empty,
+.aberration-chart text,
+.vignetting-chart text,
+.ray-circle-preview text,
+.image-circle-preview text,
+.spot-diagram text,
+.spot-3d-diagram text,
+.wavefront-map text,
+.wave-optics-map text,
+.wave-optics-cut-chart text,
+.tolerance-histogram text,
+.optimizer-chart text,
+.diffraction-hybrid-chart text,
+.poly-mtf-chart text,
+.st-mtf-chart text {
+  fill: var(--light-surface-muted);
+}
+
+.preview-label,
+.spot-field-heading,
+.wavefront-map .metric-value,
+.wave-optics-map .metric-value {
+  fill: var(--light-surface-ink);
+  color: var(--light-surface-ink);
+}
+
+.mtf-readout-row span {
+  background: var(--light-surface);
+  border-color: var(--light-surface-line);
+  color: var(--light-surface-ink);
+}
+
+.mtf-readout-head span {
+  background: var(--light-surface-raised);
+  color: var(--light-surface-muted);
+}
+
+.mtf-focus-card {
+  background: var(--light-surface);
+  border-color: var(--light-surface-line);
+  color: var(--light-surface-muted);
+}
+
+.mtf-focus-card strong {
+  color: var(--light-surface-ink);
+}
+
+.surface-table th,
+.surface-table td,
+.st-ray-fan-diagnostics span,
+.mtf-readout-row span {
+  border-color: var(--light-surface-line);
+}
+
+.st-ray-fan-diagnostics [role="columnheader"] {
+  color: var(--light-surface-ink);
+}
+
+.st-ray-fan-diagnostics [role="rowheader"] {
+  color: var(--light-surface-muted);
+}
+
+.spot-field-heading,
+.aberration-card h4,
+.copy-status,
+.wave-optics-card,
+.wave-optics-card h4,
+.wavefront-card h4 {
+  color: var(--ink);
+}
+
+.spot-field-heading span,
+.wave-optics-card .diagram-note,
+.wavefront-card .diagram-note {
+  color: var(--muted);
+}
+
+/* Dark workflow panels need explicit high-contrast text because light chart/table
+   overrides above are scoped by component rather than by page theme. */
+.analysis-sidebar .stack-panel,
+.analysis-sidebar .stack-panel-body,
+.analysis-sidebar .stack-panel-body label,
+.analysis-sidebar .stack-panel-body .control,
+.analysis-sidebar .stack-panel-body .control-label,
+.analysis-sidebar .stack-panel-body .metric-name,
+.analysis-sidebar .stack-panel-body .metric-unit,
+.analysis-sidebar .stack-panel-body .diagram-note {
+  color: rgba(215, 229, 238, 0.86);
+}
+
+.analysis-sidebar .stack-panel-body .metric-value,
+.analysis-sidebar .stack-panel-body strong,
+.analysis-sidebar .stack-panel-body h3,
+.analysis-sidebar .stack-panel-body h4 {
+  color: #f8f6f2;
+}
+
+.analysis-sidebar .stack-panel-body .control-unit,
+.analysis-sidebar .stack-panel-body .metric-unit,
+.analysis-sidebar .stack-panel-body .unit {
+  color: rgba(215, 229, 238, 0.78);
+}
+
+.analysis-sidebar input,
+.analysis-sidebar select,
+.analysis-sidebar textarea,
+.analysis-sidebar .panel-step-control input {
+  color: #f8f6f2;
+  background: rgba(248, 246, 242, 0.055);
+  border-color: rgba(215, 229, 238, 0.18);
+}
+
+.analysis-sidebar .metric {
+  color: rgba(215, 229, 238, 0.86);
+  background: rgba(248, 246, 242, 0.055);
+  border-color: rgba(215, 229, 238, 0.16);
+}
+
+.system-result-panel,
+.system-result-panel .metric-name,
+.system-result-panel .metric-unit,
+.system-result-panel .system-status-row {
+  color: rgba(215, 229, 238, 0.86);
+}
+
+.system-result-panel .metric-value,
+.system-result-panel .system-kpi .metric-value {
+  color: #f8f6f2;
+}
+
+.system-result-panel .metric,
+.system-result-panel .system-kpi,
+.system-result-panel .system-detail-grid .metric,
+.analysis-sidebar .aperture-stop-panel .metric,
+.analysis-sidebar .aperture-stop-readout .metric {
+  background: rgba(248, 246, 242, 0.055);
+  border-color: rgba(215, 229, 238, 0.16);
+}
+
+.analysis-sidebar .aperture-stop-panel label,
+.analysis-sidebar .aperture-stop-panel .control-label,
+.analysis-sidebar .aperture-stop-panel .metric-name {
+  color: rgba(215, 229, 238, 0.88);
+}
+
+.analysis-sidebar .aperture-stop-panel .metric-value {
+  color: #f8f6f2;
+}
+
+.analysis-sidebar .aperture-stop-panel .metric-unit,
+.analysis-sidebar .aperture-stop-panel .unit {
+  color: rgba(215, 229, 238, 0.78);
 }

@@ -3202,6 +3202,18 @@ select {
   color: var(--light-surface-ink);
 }
 
+.mtf-coverage-marker {
+  fill: #c78300;
+  stroke: #f8f6f2;
+  stroke-width: 1.2;
+}
+
+.mtf-coverage-label {
+  fill: var(--light-surface-muted);
+  font-size: 10px;
+  font-weight: 850;
+}
+
 .mtf-center {
   stroke: #087f8c;
 }

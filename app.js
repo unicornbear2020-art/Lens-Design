@@ -288,6 +288,8 @@ const DEFAULT_ANALYSIS_SETTINGS = {
   mtfThroughFocusAxis: "both",
   mtfThroughFocusApertureKey: "wideOpen",
   mtfThroughFocusWavelengthKey: "d",
+  mtfThroughFocusCenterMode: "current",
+  mtfThroughFocusRangeMm: 2,
   enable3DRayTrace: true,
   rayTrace3DFieldAngleDegrees: 10,
   rayTrace3DOrientation: "tangential",
@@ -12296,14 +12298,15 @@ const calculateMtfApertureSweepPreview = (lenses, system, options = {}) => {
       maxFrequencyLpMm,
       frequencyStepLpMm: 5
     };
-    const commonImagePlaneX = state.mtfApertureSweepFocusPolicy === "refocus"
+    const centreFocusResult = state.mtfApertureSweepFocusPolicy === "refocus"
       ? findBestFocusSagittalTangentialMTF(lenses, system, {
         ...focusOptions,
         fieldKey: "center",
         fieldName: "Centre field",
         fieldAngleDegrees: 0
-      }).imagePlaneX
-      : 0;
+      })
+      : null;
+    const commonImagePlaneX = centreFocusResult?.imagePlaneX ?? 0;
     const imagePlaneX = Number.isFinite(commonImagePlaneX) ? commonImagePlaneX : 0;
     const result = calculateSagittalTangentialGeometricMTF(lenses, system, { ...focusOptions, imagePlaneX });
     const fieldData = manufacturerMtfFieldSamples(lenses, system, {
@@ -12319,6 +12322,8 @@ const calculateMtfApertureSweepPreview = (lenses, system, options = {}) => {
       requestedFNumber,
       physicalStopDiameter: apertureDiameter,
       imagePlaneX,
+      bestFocusStable: centreFocusResult?.bestFocusStable,
+      refocusAtSearchLimit: state.mtfApertureSweepFocusPolicy === "refocus" && centreFocusResult?.bestFocusStable === false,
       focusPolicy: state.mtfApertureSweepFocusPolicy === "refocus" ? "center-refocused" : "fixed",
       fieldData,
       result,
@@ -12354,43 +12359,89 @@ const solveFieldAngleForImageHeight = (lenses, system, targetImageHeight, option
       imageHeight: 0
     };
   }
-  let low = 0;
-  let high = Math.max(1, Math.min(70, toNumber(options.maxFieldAngleDegrees) || 45));
-  let highResult = chiefImageHeightForField(lenses, system, high, options);
-  let expandCount = 0;
-  while ((!(highResult.imageHeight >= targetImageHeight) || !Number.isFinite(highResult.imageHeight)) && high < 70 && expandCount < 6) {
-    high = Math.min(70, high * 1.45 + 1);
-    highResult = chiefImageHeightForField(lenses, system, high, options);
-    expandCount += 1;
+
+  const maxAngle = Math.max(1, Math.min(70, toNumber(options.maxFieldAngleDegrees) || 45));
+  const scanStep = Math.max(0.25, Math.min(2, toNumber(options.fieldSolveStepDegrees) || 1));
+  const scanned = [];
+  let hasInvalidTrace = false;
+  let hasNonMonotonic = false;
+
+  for (let angle = 0; angle <= maxAngle + 0.000001; angle += scanStep) {
+    const roundedAngle = Number(angle.toFixed(6));
+    const sample = chiefImageHeightForField(lenses, system, roundedAngle, options);
+    if (Number.isFinite(sample.imageHeight) && sample.result?.status === "valid") {
+      scanned.push({ angle: roundedAngle, ...sample });
+    } else {
+      hasInvalidTrace = true;
+    }
   }
-  if (!(highResult.imageHeight >= targetImageHeight)) {
-    const focalLength = Math.max(1, Math.abs(toNumber(system.effectiveFocalLength) || 50));
+
+  if (scanned.length < 2) {
     return {
-      fieldAngleDegrees: radiansToDegrees(Math.atan(targetImageHeight / focalLength)),
+      fieldAngleDegrees: NaN,
       solved: false,
-      status: Number.isFinite(highResult.imageHeight) ? "unreachable" : "invalid",
-      residualMm: Number.isFinite(highResult.imageHeight) ? Math.abs(highResult.imageHeight - targetImageHeight) : NaN,
-      imageHeight: highResult.imageHeight
+      status: "invalid",
+      residualMm: NaN,
+      imageHeight: NaN
     };
   }
-  let best = highResult;
+
+  let bracket = null;
+  let largestValidMonotonicHeight = scanned[0].imageHeight;
+
+  for (let index = 1; index < scanned.length; index += 1) {
+    const lower = scanned[index - 1];
+    const upper = scanned[index];
+    if (upper.imageHeight + 0.000001 < lower.imageHeight) {
+      hasNonMonotonic = true;
+      continue;
+    }
+    largestValidMonotonicHeight = Math.max(largestValidMonotonicHeight, upper.imageHeight);
+    if (lower.imageHeight <= targetImageHeight && targetImageHeight <= upper.imageHeight) {
+      bracket = { lower, upper };
+      break;
+    }
+  }
+
+  if (!bracket) {
+    const bestBoundary = scanned.reduce((best, sample) => (
+      Math.abs(sample.imageHeight - targetImageHeight) < Math.abs(best.imageHeight - targetImageHeight) ? sample : best
+    ), scanned[0]);
+    return {
+      fieldAngleDegrees: bestBoundary.angle,
+      solved: false,
+      status: hasNonMonotonic && largestValidMonotonicHeight >= targetImageHeight ? "nonMonotonic" : "unreachable",
+      residualMm: Math.abs(bestBoundary.imageHeight - targetImageHeight),
+      imageHeight: bestBoundary.imageHeight,
+      largestValidImageHeight: largestValidMonotonicHeight,
+      hadInvalidTrace: hasInvalidTrace
+    };
+  }
+
+  let low = bracket.lower.angle;
+  let high = bracket.upper.angle;
   for (let iteration = 0; iteration < 16; iteration += 1) {
     const mid = (low + high) / 2;
     const midResult = chiefImageHeightForField(lenses, system, mid, options);
     if (Number.isFinite(midResult.imageHeight) && midResult.imageHeight >= targetImageHeight) {
       high = mid;
-      best = midResult;
     } else {
       low = mid;
     }
   }
+  const finalResult = chiefImageHeightForField(lenses, system, high, options);
+  const finalImageHeight = Number.isFinite(finalResult.imageHeight) ? finalResult.imageHeight : NaN;
+  const residualMm = Number.isFinite(finalImageHeight) ? Math.abs(finalImageHeight - targetImageHeight) : NaN;
   return {
     fieldAngleDegrees: high,
-    solved: true,
-    status: "solved",
-    result: best.result,
-    imageHeight: best.imageHeight,
-    residualMm: Math.abs(best.imageHeight - targetImageHeight)
+    solved: Number.isFinite(finalImageHeight),
+    status: Number.isFinite(finalImageHeight) ? "solved" : "invalid",
+    result: finalResult.result,
+    imageHeight: finalImageHeight,
+    residualMm,
+    largestValidImageHeight: largestValidMonotonicHeight,
+    hadInvalidTrace: hasInvalidTrace,
+    nonMonotonicDetected: hasNonMonotonic
   };
 };
 
@@ -12419,14 +12470,17 @@ const manufacturerMtfFieldSamples = (lenses, system, options = {}) => {
       fieldKey: `height-${index}`
     });
     const chiefHeight = Math.hypot(result.chiefY || 0, result.chiefZ || 0);
-    const imageHeight = Number.isFinite(chiefHeight) ? chiefHeight : NaN;
+    const imageHeight = Number.isFinite(solved.imageHeight) ? solved.imageHeight : (Number.isFinite(chiefHeight) ? chiefHeight : NaN);
     if (solved.status === "unreachable") {
       warnings.add(`Target image height ${formatNumber(targetImageHeight, 2)} mm is outside the traced image circle.`);
+    } else if (solved.status === "nonMonotonic") {
+      warnings.add(`Chief ray image-height solve became non-monotonic near ${formatNumber(targetImageHeight, 2)} mm.`);
     } else if (solved.status === "invalid") {
       warnings.add(`Chief ray solve failed at target image height ${formatNumber(targetImageHeight, 2)} mm.`);
     } else if (Number.isFinite(solved.residualMm) && solved.residualMm > 0.02) {
       warnings.add(`Chief ray image-height residual ${formatNumber(solved.residualMm, 3)} mm exceeds 0.02 mm.`);
     }
+    const isSolved = solved.status === "solved" && Number.isFinite(imageHeight);
     return {
       targetImageHeight,
       imageHeight,
@@ -12438,8 +12492,8 @@ const manufacturerMtfFieldSamples = (lenses, system, options = {}) => {
       readouts: Object.fromEntries(frequencies.map((frequency) => [
         frequency,
         {
-          sagittal: mtfValueAtFrequency(result.sagittal, frequency),
-          tangential: mtfValueAtFrequency(result.tangential, frequency)
+          sagittal: isSolved ? mtfValueAtFrequency(result.sagittal, frequency) : NaN,
+          tangential: isSolved ? mtfValueAtFrequency(result.tangential, frequency) : NaN
         }
       ]))
     };
@@ -12466,10 +12520,27 @@ const calculateThroughFocusMtf = (lenses, system, options = {}) => {
   const frequencyLpMm = toNumber(options.frequencyLpMm) || 40;
   const apertureDiameter = physicalStopDiameterForRequestedFNumber(lenses, system, aperture.fNumber);
   const rayCount = Math.round(clamp(toNumber(state.rayTrace3DSampleCount) || 7, 3, 15));
-  const spanMm = 2;
+  const spanMm = [1, 2, 5].includes(toNumber(state.mtfThroughFocusRangeMm)) ? toNumber(state.mtfThroughFocusRangeMm) : 2;
   const sampleCount = 21;
+  const centreMode = state.mtfThroughFocusCenterMode === "best" ? "best" : "current";
+  const centreFocus = centreMode === "best"
+    ? findBestFocusSagittalTangentialMTF(lenses, system, {
+      ...rayTraceApertureOptions(state),
+      apertureDiameter,
+      fieldKey: field.key,
+      fieldName: field.name,
+      fieldAngleDegrees: field.angle,
+      rayCount,
+      wavelengthNm: line.wavelengthNm,
+      spectralLineKey: lineKey,
+      maxFrequencyLpMm: options.maxFrequencyLpMm || resolveMtfMaxFrequency(system, line.wavelengthNm),
+      frequencyStepLpMm: 5
+    })
+    : null;
+  const centreImagePlaneX = centreMode === "best" && Number.isFinite(centreFocus?.imagePlaneX) ? centreFocus.imagePlaneX : 0;
   const samples = Array.from({ length: sampleCount }, (_, index) => {
     const shiftMm = -spanMm + (2 * spanMm * index) / (sampleCount - 1);
+    const imagePlaneX = centreImagePlaneX + shiftMm;
     const result = calculateSagittalTangentialGeometricMTF(lenses, system, {
       ...rayTraceApertureOptions(state),
       apertureDiameter,
@@ -12481,16 +12552,33 @@ const calculateThroughFocusMtf = (lenses, system, options = {}) => {
       spectralLineKey: lineKey,
       maxFrequencyLpMm: options.maxFrequencyLpMm || resolveMtfMaxFrequency(system, line.wavelengthNm),
       frequencyStepLpMm: 5,
-      imagePlaneX: shiftMm
+      imagePlaneX
     });
     return {
       shiftMm,
+      imagePlaneX,
       sagittal: mtfValueAtFrequency(result.sagittal, frequencyLpMm),
       tangential: mtfValueAtFrequency(result.tangential, frequencyLpMm),
       status: result.status,
       validRayCount: result.validRayCount
     };
   });
+  const peakIndex = samples.reduce((bestIndex, sample, index) => {
+    const sampleValue = Math.max(
+      Number.isFinite(sample.sagittal) ? sample.sagittal : -Infinity,
+      Number.isFinite(sample.tangential) ? sample.tangential : -Infinity
+    );
+    const best = samples[bestIndex];
+    const bestValue = Math.max(
+      Number.isFinite(best.sagittal) ? best.sagittal : -Infinity,
+      Number.isFinite(best.tangential) ? best.tangential : -Infinity
+    );
+    return sampleValue > bestValue ? index : bestIndex;
+  }, 0);
+  const warnings = [];
+  if (peakIndex === 0 || peakIndex === samples.length - 1) {
+    warnings.push("Focus peak may be outside scan range.");
+  }
   return {
     field,
     aperture,
@@ -12498,7 +12586,12 @@ const calculateThroughFocusMtf = (lenses, system, options = {}) => {
     lineKey,
     line,
     frequencyLpMm,
+    centreMode,
+    centreImagePlaneX,
+    rangeMm: spanMm,
     samples,
+    peakIndex,
+    warnings,
     axis: ["sagittal", "tangential", "both"].includes(state.mtfThroughFocusAxis) ? state.mtfThroughFocusAxis : "both"
   };
 };
@@ -12912,6 +13005,24 @@ const renderSagittalTangentialMTFBestFocusSummary = (comparisons) => {
   `;
 };
 
+const renderMtfPolylineSegments = (points, className, xMapper, yMapper) => {
+  const segments = [];
+  let current = [];
+  points.forEach((point) => {
+    if (Number.isFinite(point[0]) && Number.isFinite(point[1])) {
+      current.push(point);
+    } else if (current.length) {
+      segments.push(current);
+      current = [];
+    }
+  });
+  if (current.length) segments.push(current);
+  return segments
+    .filter((segment) => segment.length >= 2)
+    .map((segment) => `<polyline class="${className}" points="${segment.map((point) => `${xMapper(point[0])},${yMapper(point[1])}`).join(" ")}" />`)
+    .join("");
+};
+
 const renderManufacturerMtfVsFieldChart = (fieldData, options = {}) => {
   const width = options.compact ? 420 : 560;
   const height = options.compact ? 220 : 250;
@@ -12933,6 +13044,8 @@ const renderManufacturerMtfVsFieldChart = (fieldData, options = {}) => {
       points: fieldData.samples.map((sample) => [sample.imageHeight, sample.readouts[frequency]?.tangential])
     }
   ]);
+  const firstUnsolved = fieldData.samples.find((sample) => sample.solveStatus && sample.solveStatus !== "solved");
+  const lastSolved = [...fieldData.samples].reverse().find((sample) => sample.solveStatus === "solved" && Number.isFinite(sample.imageHeight));
 
   return `
     <svg class="mtf-chart manufacturer-mtf-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Manufacturer style MTF versus image height chart">
@@ -12948,9 +13061,16 @@ const renderManufacturerMtfVsFieldChart = (fieldData, options = {}) => {
         <line class="mtf-grid" x1="${x(maxHeight * tick)}" y1="${margin.top}" x2="${x(maxHeight * tick)}" y2="${height - margin.bottom}" />
         <text class="mtf-tick" x="${x(maxHeight * tick)}" y="${height - 18}" text-anchor="middle">${formatNumber(maxHeight * tick, 1)}</text>
       `).join("")}
-      ${curves.map((curve) => `
-        <polyline class="mtf-curve manufacturer-mtf-${curve.frequency} manufacturer-mtf-${curve.axis}" points="${curve.points.filter((point) => Number.isFinite(point[0]) && Number.isFinite(point[1])).map((point) => `${x(point[0])},${y(point[1])}`).join(" ")}" />
-      `).join("")}
+      ${curves.map((curve) => renderMtfPolylineSegments(
+        curve.points,
+        `mtf-curve manufacturer-mtf-${curve.frequency} manufacturer-mtf-${curve.axis}`,
+        x,
+        y
+      )).join("")}
+      ${firstUnsolved && lastSolved ? `
+        <circle class="mtf-coverage-marker" cx="${x(lastSolved.imageHeight)}" cy="${y(0.08)}" r="3.5" />
+        <text class="mtf-coverage-label" x="${Math.min(width - margin.right - 4, x(lastSolved.imageHeight) + 8)}" y="${y(0.08) + 4}">coverage ends</text>
+      ` : ""}
       <text class="mtf-label" x="${width / 2}" y="${height - 4}" text-anchor="middle">Image height (mm)</text>
       <text class="mtf-label" x="15" y="${margin.top + 8}" text-anchor="start">MTF</text>
     </svg>
@@ -13033,6 +13153,7 @@ const renderMtfApertureSweepCharts = (sweepResults, chartMode, maxFrequencyLpMm)
           <article class="mtf-aperture-chart-card">
             ${renderManufacturerMtfVsFieldChart(item.fieldData, { title: item.label, compact: true })}
             <div class="mtf-aperture-meta">Physical stop ${formatNumber(item.physicalStopDiameter, 2)} mm · ${item.focusPolicy === "center-refocused" ? "centre-refocused common plane" : "fixed image plane"}</div>
+            ${item.refocusAtSearchLimit ? `<p class="warning ray-warning">Refocus solution at search limit.</p>` : ""}
           </article>
         `).join("")}
       </div>
@@ -13045,6 +13166,7 @@ const renderMtfApertureSweepCharts = (sweepResults, chartMode, maxFrequencyLpMm)
       ${sweepResults.map((item, index) => `<span class="mtf-aperture-key mtf-aperture-key-${index + 1}">${escapeHtml(item.label)} · ${formatNumber(item.physicalStopDiameter, 2)} mm stop</span>`).join("")}
       <span>Solid: sagittal</span>
       <span>Dashed: tangential</span>
+      ${sweepResults.some((item) => item.refocusAtSearchLimit) ? `<span>Refocus solution at search limit</span>` : ""}
     </div>
   `;
 };
@@ -13114,12 +13236,26 @@ const renderThroughFocusMtfControls = (result) => `
       </select>
     </label>
     <label>
+      Scan centre
+      <select data-action="update-through-focus-center" aria-label="Through-focus MTF scan centre">
+        <option value="current" ${state.mtfThroughFocusCenterMode === "current" ? "selected" : ""}>Current image plane</option>
+        <option value="best" ${state.mtfThroughFocusCenterMode === "best" ? "selected" : ""}>Best-focus plane</option>
+      </select>
+    </label>
+    <label>
+      Scan range
+      <select data-action="update-through-focus-range" aria-label="Through-focus MTF scan range">
+        ${[1, 2, 5].map((range) => `<option value="${range}" ${toNumber(state.mtfThroughFocusRangeMm) === range ? "selected" : ""}>±${range} mm</option>`).join("")}
+      </select>
+    </label>
+    <label>
       Wavelength
       <select data-action="update-through-focus-wavelength" aria-label="Through-focus MTF wavelength">
         ${Object.entries(SPECTRAL_LINES).map(([lineKey, line]) => `<option value="${lineKey}" ${state.mtfThroughFocusWavelengthKey === lineKey ? "selected" : ""}>${lineKey} ${line.wavelengthNm} nm</option>`).join("")}
       </select>
     </label>
     ${metric("Readout", result?.frequencyLpMm || 40, "lp/mm")}
+    ${metric("Centre", result?.centreMode === "best" ? formatNumber(result.centreImagePlaneX, 2) : "0", "mm")}
   </div>
 `;
 
@@ -13253,6 +13389,7 @@ const renderSagittalTangentialGeometricMTFPanel = (result) => {
         </div>
         ${renderThroughFocusMtfControls(result.throughFocusResult)}
         ${renderThroughFocusMtfChart(result.throughFocusResult)}
+        ${(result.throughFocusResult?.warnings || []).map((warning) => `<p class="warning ray-warning">${escapeHtml(warning)}</p>`).join("")}
         ${renderSagittalTangentialMTFBestFocusSummary(result.comparisons)}
       </section>
       ${renderSagittalTangentialMTFReadoutTable(result.activeResults)}
@@ -14958,7 +15095,9 @@ const render = () => {
       throughFocusField: state.mtfThroughFocusFieldKey,
       throughFocusAxis: state.mtfThroughFocusAxis,
       throughFocusAperture: state.mtfThroughFocusApertureKey,
-      throughFocusWavelength: state.mtfThroughFocusWavelengthKey
+      throughFocusWavelength: state.mtfThroughFocusWavelengthKey,
+      throughFocusCenter: state.mtfThroughFocusCenterMode,
+      throughFocusRange: state.mtfThroughFocusRangeMm
     }, () => calculateSagittalTangentialGeometricMTFPanelData(state.lenses, spectralSystems.d || system))
     : null;
   const diffractionHybridMtfResult = needsMtfResolution
@@ -16280,6 +16419,19 @@ mount.addEventListener("change", (event) => {
     state.mtfThroughFocusApertureKey = MTF_APERTURE_SWEEP_OPTIONS.some((option) => option.key === event.target.value)
       ? event.target.value
       : "wideOpen";
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-through-focus-center") {
+    state.mtfThroughFocusCenterMode = event.target.value === "best" ? "best" : "current";
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-through-focus-range") {
+    const value = toNumber(event.target.value);
+    state.mtfThroughFocusRangeMm = [1, 2, 5].includes(value) ? value : 2;
     update();
     return;
   }
@@ -19906,9 +20058,49 @@ const runOpticsSelfCheck = () => {
       && Math.abs(fieldData.maxImageHeightMm - 21.6333) < 0.01
       && fieldData.samples.length >= 9
       && fieldData.source === "iterated chief-ray intercept"
-      && fieldData.samples.every((sample) => sample.solveStatus === "solved" || sample.solveStatus === "unreachable" || sample.solveStatus === "invalid")
+      && fieldData.samples.every((sample) => ["solved", "unreachable", "nonMonotonic", "invalid"].includes(sample.solveStatus))
       && fieldData.frequencies.join(",") === "10,30";
   }));
+
+  test("manufacturer field solver reaches smaller valid angles even if large trials fail", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    const lenses = state.lenses.map((lens) => ({ ...lens }));
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const targetSample = chiefImageHeightForField(lenses, system, 8, {
+      ...rayTraceApertureOptions(state),
+      rayCount: 7,
+      maxFrequencyLpMm: 100
+    });
+    const solved = solveFieldAngleForImageHeight(lenses, system, targetSample.imageHeight, {
+      ...rayTraceApertureOptions(state),
+      rayCount: 7,
+      maxFrequencyLpMm: 100,
+      maxFieldAngleDegrees: 45
+    });
+    return Number.isFinite(targetSample.imageHeight)
+      && targetSample.imageHeight > 0
+      && solved.status === "solved"
+      && solved.residualMm <= 0.02;
+  }));
+
+  test("unreachable manufacturer MTF samples are not connected by one SVG polyline", () => {
+    const fieldData = {
+      maxImageHeightMm: 20,
+      frequencies: [10],
+      samples: [
+        { imageHeight: 0, solveStatus: "solved", readouts: { 10: { sagittal: 0.95, tangential: 0.9 } } },
+        { imageHeight: 5, solveStatus: "solved", readouts: { 10: { sagittal: 0.9, tangential: 0.84 } } },
+        { imageHeight: 10, solveStatus: "unreachable", readouts: { 10: { sagittal: NaN, tangential: NaN } } },
+        { imageHeight: 15, solveStatus: "solved", readouts: { 10: { sagittal: 0.7, tangential: 0.62 } } },
+        { imageHeight: 20, solveStatus: "solved", readouts: { 10: { sagittal: 0.6, tangential: 0.5 } } }
+      ],
+      source: "test",
+      sensor: SENSOR_FORMATS[0]
+    };
+    const markup = renderManufacturerMtfVsFieldChart(fieldData);
+    return (markup.match(/manufacturer-mtf-10 manufacturer-mtf-sagittal/g) || []).length === 2
+      && markup.includes("coverage ends");
+  });
 
   test("manufacturer-style MTF advanced frequencies are opt-in", () => withTemporaryState(() => {
     loadPresetIntoState("manual");
@@ -19931,6 +20123,14 @@ const runOpticsSelfCheck = () => {
     const fieldData = manufacturerMtfFieldSamples(lenses, system, { sampleCount: 9 });
     return fieldData.sensor.key === "apsC"
       && Math.abs(fieldData.maxImageHeightMm - 14.1) < 0.000001;
+  }));
+
+  test("Biotar manufacturer field samples are not falsely all unreachable", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    const system = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const fieldData = manufacturerMtfFieldSamples(state.lenses, system, { sampleCount: 9 });
+    const solvedCount = fieldData.samples.filter((sample) => sample.solveStatus === "solved" && sample.residualMm <= 0.02).length;
+    return solvedCount >= Math.ceil(fieldData.samples.length / 2);
   }));
 
   test("MTF aperture sweep solves different physical stop diameters and retraces", () => withTemporaryState(() => {
@@ -19973,11 +20173,15 @@ const runOpticsSelfCheck = () => {
 
   test("through-focus MTF renders a real focus-shift chart", () => withTemporaryState(() => {
     loadPresetIntoState("manual");
+    state.mtfThroughFocusCenterMode = "best";
+    state.mtfThroughFocusRangeMm = 5;
     const lenses = clonePresetLenses("manual");
     const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
     const result = calculateThroughFocusMtf(lenses, system, { maxFrequencyLpMm: 100, frequencyLpMm: 40 });
     const markup = renderThroughFocusMtfChart(result);
     return result.samples.length >= 21
+      && result.centreMode === "best"
+      && result.rangeMm === 5
       && result.samples.some((sample) => sample.shiftMm < 0)
       && result.samples.some((sample) => sample.shiftMm > 0)
       && markup.includes("mtf-through-focus-chart")

@@ -3009,20 +3009,40 @@ select {
   stroke: #d83a3a;
 }
 
+.mtf-line-swatch.manufacturer-mtf-10 {
+  color: #d83a3a;
+}
+
 .manufacturer-mtf-20 {
-  stroke: #ffb703;
+  stroke: #c78300;
+}
+
+.mtf-line-swatch.manufacturer-mtf-20 {
+  color: #c78300;
 }
 
 .manufacturer-mtf-30 {
   stroke: #0a6cf1;
 }
 
+.mtf-line-swatch.manufacturer-mtf-30 {
+  color: #0a6cf1;
+}
+
 .manufacturer-mtf-40 {
-  stroke: #79bbd9;
+  stroke: #087f8c;
+}
+
+.mtf-line-swatch.manufacturer-mtf-40 {
+  color: #087f8c;
 }
 
 .manufacturer-mtf-50 {
-  stroke: #f8f6f2;
+  stroke: #7a3fa0;
+}
+
+.mtf-line-swatch.manufacturer-mtf-50 {
+  color: #7a3fa0;
 }
 
 .manufacturer-mtf-sagittal {
@@ -3036,7 +3056,7 @@ select {
 }
 
 .mtf-title {
-  fill: var(--text);
+  fill: var(--light-surface-ink);
   font-size: 12px;
   font-weight: 900;
 }
@@ -3083,22 +3103,22 @@ select {
 }
 
 .mtf-aperture-meta {
-  color: var(--muted-strong);
+  color: var(--light-surface-muted);
   font-size: 0.72rem;
   font-weight: 800;
   margin-top: 4px;
 }
 
 .mtf-aperture-1 {
-  stroke: #f8f6f2;
+  stroke: #0a6cf1;
 }
 
 .mtf-aperture-2 {
-  stroke: #79bbd9;
+  stroke: #087f8c;
 }
 
 .mtf-aperture-3 {
-  stroke: #ffb703;
+  stroke: #c78300;
 }
 
 .mtf-aperture-4 {
@@ -3119,19 +3139,67 @@ select {
 }
 
 .mtf-aperture-key-1 {
-  color: #f8f6f2;
+  color: #0a6cf1;
 }
 
 .mtf-aperture-key-2 {
-  color: #79bbd9;
+  color: #087f8c;
 }
 
 .mtf-aperture-key-3 {
-  color: #ffb703;
+  color: #c78300;
 }
 
 .mtf-aperture-key-4 {
   color: #d83a3a;
+}
+
+.mtf-through-focus-sagittal {
+  stroke: #0a6cf1;
+  stroke-width: 2.4;
+}
+
+.mtf-through-focus-tangential {
+  stroke: #d83a3a;
+  stroke-width: 2;
+  stroke-dasharray: 7 5;
+}
+
+.mtf-swatch-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  margin-top: 8px;
+  color: var(--light-surface-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.mtf-swatch-item {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.mtf-line-swatch {
+  display: inline-block;
+  width: 28px;
+  height: 0;
+  border-top: 3px solid currentColor;
+  border-radius: 999px;
+}
+
+.mtf-line-swatch.manufacturer-mtf-sagittal {
+  border-top-style: solid;
+}
+
+.mtf-line-swatch.manufacturer-mtf-tangential {
+  border-top-style: dashed;
+}
+
+.mtf-swatch-note {
+  color: var(--light-surface-ink);
 }
 
 .mtf-center {

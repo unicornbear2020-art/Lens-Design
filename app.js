@@ -280,7 +280,8 @@ const DEFAULT_ANALYSIS_SETTINGS = {
   mtfPlaneMode: "current",
   mtfChartMode: "frequency",
   mtfMaxFrequencyLpMm: "auto",
-  mtfVsFieldFrequencyLpMm: 40,
+  mtfSensorFormatKey: "fullFrame",
+  mtfManufacturerFrequencies: [10, 30],
   mtfApertureSweepStops: ["wideOpen"],
   mtfApertureSweepFocusPolicy: "fixed",
   enable3DRayTrace: true,
@@ -6501,6 +6502,10 @@ const SENSOR_FORMATS = [
   { key: "mft", name: "Micro Four Thirds", width: 17.3, height: 13, diagonal: 21.6 }
 ];
 
+const activeMtfSensorFormat = () => (
+  SENSOR_FORMATS.find((format) => format.key === state.mtfSensorFormatKey) || SENSOR_FORMATS[0]
+);
+
 const fieldImageHeight = (system, angleDegrees, trace) => {
   const meanHeight = Math.abs(toNumber(trace?.meanSensorY));
   if (Number.isFinite(meanHeight)) return meanHeight;
@@ -11914,6 +11919,7 @@ const geometricMtfValueFromSigma = (sigma, frequency) => {
 };
 
 const MTF_MAX_FREQUENCY_OPTIONS = ["auto", 50, 100, 200, 400];
+const MTF_MANUFACTURER_DEFAULT_FREQUENCIES = [10, 30];
 const MTF_MANUFACTURER_FREQUENCIES = [10, 20, 30, 40, 50];
 const MTF_APERTURE_SWEEP_OPTIONS = [
   { key: "wideOpen", label: "Wide open", fNumber: null },
@@ -12212,7 +12218,8 @@ const calculateSagittalTangentialGeometricMTFPanelData = (lenses, system) => {
     activeResults,
     manufacturerFieldData: manufacturerMtfFieldSamples(lenses, system, {
       maxFrequencyLpMm,
-      frequencies: MTF_MANUFACTURER_FREQUENCIES,
+      frequencies: selectedManufacturerMtfFrequencies(),
+      sensorFormat: activeMtfSensorFormat(),
       sampleCount: 9
     }),
     apertureSweepResults: calculateMtfApertureSweepPreview(lenses, system, {
@@ -12228,6 +12235,16 @@ const mtfApertureSweepSelection = () => {
     ? state.mtfApertureSweepStops
     : ["wideOpen"];
   return MTF_APERTURE_SWEEP_OPTIONS.filter((option) => selected.includes(option.key));
+};
+
+const selectedManufacturerMtfFrequencies = () => {
+  const selected = Array.isArray(state.mtfManufacturerFrequencies) && state.mtfManufacturerFrequencies.length
+    ? state.mtfManufacturerFrequencies
+    : MTF_MANUFACTURER_DEFAULT_FREQUENCIES;
+  return selected
+    .map(toNumber)
+    .filter((frequency) => MTF_MANUFACTURER_FREQUENCIES.includes(frequency))
+    .sort((left, right) => left - right);
 };
 
 const physicalStopDiameterForRequestedFNumber = (lenses, system, requestedFNumber) => {
@@ -12266,42 +12283,107 @@ const calculateMtfApertureSweepPreview = (lenses, system, options = {}) => {
     const result = state.mtfApertureSweepFocusPolicy === "refocus"
       ? findBestFocusSagittalTangentialMTF(lenses, system, focusOptions)
       : calculateSagittalTangentialGeometricMTF(lenses, system, { ...focusOptions, imagePlaneX: 0 });
+    const fieldData = manufacturerMtfFieldSamples(lenses, system, {
+      maxFrequencyLpMm,
+      frequencies: selectedManufacturerMtfFrequencies(),
+      sensorFormat: activeMtfSensorFormat(),
+      sampleCount: 7,
+      apertureDiameter
+    });
     return {
       ...aperture,
       requestedFNumber,
       physicalStopDiameter: apertureDiameter,
+      fieldData,
       result,
       retraced: true
     };
   });
 };
 
+const chiefImageHeightForField = (lenses, system, fieldAngleDegrees, options = {}) => {
+  const result = calculateSagittalTangentialGeometricMTF(lenses, system, {
+    ...rayTraceApertureOptions(state),
+    ...options,
+    fieldAngleDegrees,
+    fieldName: `${formatNumber(fieldAngleDegrees, 2)}°`,
+    fieldKey: `field-${formatNumber(fieldAngleDegrees, 3)}`,
+    wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+    spectralLineKey: "d"
+  });
+  const imageHeight = Math.hypot(result.chiefY || 0, result.chiefZ || 0);
+  return {
+    imageHeight: Number.isFinite(imageHeight) ? imageHeight : NaN,
+    result
+  };
+};
+
+const solveFieldAngleForImageHeight = (lenses, system, targetImageHeight, options = {}) => {
+  if (targetImageHeight <= 0.000001) return { fieldAngleDegrees: 0, solved: true };
+  let low = 0;
+  let high = Math.max(1, Math.min(70, toNumber(options.maxFieldAngleDegrees) || 45));
+  let highResult = chiefImageHeightForField(lenses, system, high, options);
+  let expandCount = 0;
+  while ((!(highResult.imageHeight >= targetImageHeight) || !Number.isFinite(highResult.imageHeight)) && high < 70 && expandCount < 6) {
+    high = Math.min(70, high * 1.45 + 1);
+    highResult = chiefImageHeightForField(lenses, system, high, options);
+    expandCount += 1;
+  }
+  if (!(highResult.imageHeight >= targetImageHeight)) {
+    const focalLength = Math.max(1, Math.abs(toNumber(system.effectiveFocalLength) || 50));
+    return {
+      fieldAngleDegrees: radiansToDegrees(Math.atan(targetImageHeight / focalLength)),
+      solved: false
+    };
+  }
+  let best = highResult;
+  for (let iteration = 0; iteration < 10; iteration += 1) {
+    const mid = (low + high) / 2;
+    const midResult = chiefImageHeightForField(lenses, system, mid, options);
+    if (Number.isFinite(midResult.imageHeight) && midResult.imageHeight >= targetImageHeight) {
+      high = mid;
+      best = midResult;
+    } else {
+      low = mid;
+    }
+  }
+  return {
+    fieldAngleDegrees: high,
+    solved: true,
+    result: best.result,
+    imageHeight: best.imageHeight
+  };
+};
+
 const manufacturerMtfFieldSamples = (lenses, system, options = {}) => {
-  const maxHeight = FULL_FRAME_SENSOR.diagonal / 2;
+  const sensor = options.sensorFormat || activeMtfSensorFormat();
+  const maxHeight = (sensor.diagonal || FULL_FRAME_SENSOR.diagonal) / 2;
   const sampleCount = Math.max(9, Math.round(toNumber(options.sampleCount) || 9));
   const maxFrequencyLpMm = options.maxFrequencyLpMm || resolveMtfMaxFrequency(system);
-  const frequencies = options.frequencies || MTF_MANUFACTURER_FREQUENCIES;
-  const focalLength = Math.max(1, Math.abs(toNumber(system.effectiveFocalLength) || 50));
+  const frequencies = options.frequencies || selectedManufacturerMtfFrequencies();
   const rayCount = Math.round(clamp(toNumber(state.rayTrace3DSampleCount) || 7, 3, 15));
   const samples = Array.from({ length: sampleCount }, (_, index) => {
     const targetImageHeight = (maxHeight * index) / (sampleCount - 1);
-    const fieldAngleDegrees = radiansToDegrees(Math.atan(targetImageHeight / focalLength));
-    const result = calculateSagittalTangentialGeometricMTF(lenses, system, {
+    const commonOptions = {
       ...rayTraceApertureOptions(state),
-      fieldAngleDegrees,
-      fieldName: `${formatNumber(targetImageHeight, 1)} mm`,
-      fieldKey: `height-${index}`,
+      ...options,
       rayCount,
-      wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
-      spectralLineKey: "d",
       maxFrequencyLpMm,
       frequencyStepLpMm: 5
+    };
+    const solved = solveFieldAngleForImageHeight(lenses, system, targetImageHeight, commonOptions);
+    const result = solved.result || calculateSagittalTangentialGeometricMTF(lenses, system, {
+      ...commonOptions,
+      fieldAngleDegrees: solved.fieldAngleDegrees,
+      fieldName: `${formatNumber(targetImageHeight, 1)} mm`,
+      fieldKey: `height-${index}`
     });
     const chiefHeight = Math.hypot(result.chiefY || 0, result.chiefZ || 0);
     return {
       targetImageHeight,
       imageHeight: Number.isFinite(chiefHeight) && chiefHeight > 0 ? chiefHeight : targetImageHeight,
-      fieldAngleDegrees,
+      fieldAngleDegrees: solved.fieldAngleDegrees,
+      solvedFromChiefRay: solved.solved,
       result,
       readouts: Object.fromEntries(frequencies.map((frequency) => [
         frequency,
@@ -12314,9 +12396,10 @@ const manufacturerMtfFieldSamples = (lenses, system, options = {}) => {
   });
   return {
     maxImageHeightMm: maxHeight,
+    sensor,
     frequencies,
-    samples,
-    source: "chief-ray intercept"
+    samples: samples.sort((left, right) => left.imageHeight - right.imageHeight),
+    source: "iterated chief-ray intercept"
   };
 };
 
@@ -12729,10 +12812,10 @@ const renderSagittalTangentialMTFBestFocusSummary = (comparisons) => {
   `;
 };
 
-const renderManufacturerMtfVsFieldChart = (fieldData) => {
-  const width = 560;
-  const height = 250;
-  const margin = { left: 48, right: 18, top: 20, bottom: 42 };
+const renderManufacturerMtfVsFieldChart = (fieldData, options = {}) => {
+  const width = options.compact ? 420 : 560;
+  const height = options.compact ? 220 : 250;
+  const margin = { left: 48, right: 18, top: options.title ? 34 : 20, bottom: 42 };
   const plotWidth = width - margin.left - margin.right;
   const plotHeight = height - margin.top - margin.bottom;
   const maxHeight = Math.max(1, fieldData.maxImageHeightMm || FULL_FRAME_SENSOR.diagonal / 2);
@@ -12754,6 +12837,7 @@ const renderManufacturerMtfVsFieldChart = (fieldData) => {
   return `
     <svg class="mtf-chart manufacturer-mtf-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Manufacturer style MTF versus image height chart">
       <rect class="mtf-bg" x="0" y="0" width="${width}" height="${height}" />
+      ${options.title ? `<text class="mtf-title" x="${margin.left}" y="18">${escapeHtml(options.title)}</text>` : ""}
       <line class="mtf-axis" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}" />
       <line class="mtf-axis" x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" />
       ${[0.25, 0.5, 0.75, 1].map((tick) => `
@@ -12773,26 +12857,81 @@ const renderManufacturerMtfVsFieldChart = (fieldData) => {
   `;
 };
 
-const renderMtfApertureSweepSummary = (sweepResults) => `
-  <div class="mtf-sweep-summary">
-    ${sweepResults.map((item) => `
-      <div class="mtf-focus-card">
-        <strong>${escapeHtml(item.label)}</strong>
-        <span>Requested ${Number.isFinite(item.requestedFNumber) ? `f/${formatNumber(item.requestedFNumber, 2)}` : "--"}</span>
-        <span>Physical stop ${formatNumber(item.physicalStopDiameter, 2)} mm</span>
-        <span>40 lp/mm S ${renderMTFValue(item.result.sagittal.readouts?.[40])}</span>
-        <span>40 lp/mm T ${renderMTFValue(item.result.tangential.readouts?.[40])}</span>
+const renderMtfApertureFrequencyChart = (sweepResults, maxFrequencyLpMm = 100) => {
+  const width = 560;
+  const height = 260;
+  const margin = { left: 48, right: 18, top: 24, bottom: 42 };
+  const plotWidth = width - margin.left - margin.right;
+  const plotHeight = height - margin.top - margin.bottom;
+  const maxFrequency = Math.max(10, toNumber(maxFrequencyLpMm) || 100);
+  const x = (frequency) => margin.left + (frequency / maxFrequency) * plotWidth;
+  const y = (value) => margin.top + (1 - clamp(value, 0, 1)) * plotHeight;
+  const curves = sweepResults.flatMap((item, apertureIndex) => [
+    { item, apertureIndex, axis: "sagittal", data: item.result?.sagittal },
+    { item, apertureIndex, axis: "tangential", data: item.result?.tangential }
+  ]).filter((curve) => curve.data?.frequencies?.length);
+
+  return `
+    <svg class="mtf-chart mtf-aperture-frequency-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Aperture sweep MTF versus spatial frequency">
+      <rect class="mtf-bg" x="0" y="0" width="${width}" height="${height}" />
+      <line class="mtf-axis" x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}" />
+      <line class="mtf-axis" x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" />
+      ${[0.25, 0.5, 0.75, 1].map((tick) => `
+        <line class="mtf-grid" x1="${margin.left}" y1="${y(tick)}" x2="${width - margin.right}" y2="${y(tick)}" />
+        <text class="mtf-tick" x="${margin.left - 8}" y="${y(tick) + 4}" text-anchor="end">${tick}</text>
+      `).join("")}
+      ${Array.from({ length: 6 }, (_, index) => Math.round((maxFrequency * index) / 5)).map((tick) => `
+        <line class="mtf-grid" x1="${x(tick)}" y1="${margin.top}" x2="${x(tick)}" y2="${height - margin.bottom}" />
+        <text class="mtf-tick" x="${x(tick)}" y="${height - 18}" text-anchor="middle">${tick}</text>
+      `).join("")}
+      ${curves.map((curve) => `
+        <polyline class="mtf-curve mtf-aperture-${curve.apertureIndex + 1} mtf-aperture-${curve.axis}" points="${curve.data.frequencies.map((frequency, index) => `${x(frequency)},${y(curve.data.values[index])}`).join(" ")}" />
+      `).join("")}
+      ${curves.length ? "" : `<text class="mtf-empty" x="${width / 2}" y="${height / 2}" text-anchor="middle">No aperture sweep MTF data</text>`}
+      <text class="mtf-label" x="${width / 2}" y="${height - 4}" text-anchor="middle">Spatial frequency (lp/mm)</text>
+      <text class="mtf-label" x="15" y="${margin.top + 8}" text-anchor="start">MTF</text>
+    </svg>
+  `;
+};
+
+const renderMtfApertureSweepCharts = (sweepResults, chartMode, maxFrequencyLpMm) => {
+  if (!sweepResults.length) return "";
+  if (chartMode === "field") {
+    return `
+      <div class="mtf-aperture-chart-grid">
+        ${sweepResults.map((item) => `
+          <article class="mtf-aperture-chart-card">
+            ${renderManufacturerMtfVsFieldChart(item.fieldData, { title: item.label, compact: true })}
+            <div class="mtf-aperture-meta">Physical stop ${formatNumber(item.physicalStopDiameter, 2)} mm</div>
+          </article>
+        `).join("")}
       </div>
-    `).join("")}
-  </div>
+    `;
+  }
+
+  return `
+    ${renderMtfApertureFrequencyChart(sweepResults, maxFrequencyLpMm)}
+    <div class="rgb-overlay-legend">
+      ${sweepResults.map((item, index) => `<span class="mtf-aperture-key mtf-aperture-key-${index + 1}">${escapeHtml(item.label)} · ${formatNumber(item.physicalStopDiameter, 2)} mm stop</span>`).join("")}
+      <span>Solid: sagittal</span>
+      <span>Dashed: tangential</span>
+    </div>
+  `;
+};
+
+const renderPhysicalMtfPathStatus = () => `
+  <details class="mtf-diagnostics-details">
+    <summary>Physical wavefront MTF path</summary>
+    <p class="diagram-note">Not active yet. A validated stopped-down physical MTF path needs dense pupil sampling, clipped-pupil geometry, OPD interpolation, FFT grids, image-space lp/mm calibration, and polychromatic complex OTF combination.</p>
+  </details>
 `;
 
 const renderSagittalTangentialGeometricMTFPanel = (result) => {
   const manufacturerFieldData = result.manufacturerFieldData || {
     maxImageHeightMm: FULL_FRAME_SENSOR.diagonal / 2,
-    frequencies: MTF_MANUFACTURER_FREQUENCIES,
+    frequencies: selectedManufacturerMtfFrequencies(),
     samples: [],
-    source: "chief-ray intercept"
+    source: "iterated chief-ray intercept"
   };
   const apertureSweepResults = result.apertureSweepResults || [];
   return `
@@ -12820,6 +12959,14 @@ const renderSagittalTangentialGeometricMTFPanel = (result) => {
           </select>
         </label>
         <label>
+          Sensor format
+          <select data-action="update-mtf-sensor-format" aria-label="Manufacturer MTF sensor format">
+            ${SENSOR_FORMATS.map((format) => `
+              <option value="${format.key}" ${state.mtfSensorFormatKey === format.key ? "selected" : ""}>${escapeHtml(format.name)}</option>
+            `).join("")}
+          </select>
+        </label>
+        <label>
           MTF plane mode
           <select data-action="update-mtf-plane-mode" aria-label="Sagittal tangential MTF plane mode">
             <option value="current" ${state.mtfPlaneMode === "current" ? "selected" : ""}>Current sensor plane</option>
@@ -12835,6 +12982,33 @@ const renderSagittalTangentialGeometricMTFPanel = (result) => {
         </label>
         ${metric("3D pupil sample", result.rayCount, "grid width")}
       </div>
+      <details class="mtf-frequency-advanced">
+        <summary>Advanced frequency selector</summary>
+        <div class="mtf-frequency-options">
+          ${MTF_MANUFACTURER_FREQUENCIES.map((frequency) => `
+            <label class="toggle-row compact-toggle-row">
+              <input type="checkbox" data-action="toggle-mtf-manufacturer-frequency" data-frequency="${frequency}" ${manufacturerFieldData.frequencies.includes(frequency) ? "checked" : ""}>
+              ${frequency} lp/mm
+            </label>
+          `).join("")}
+        </div>
+      </details>
+      <section class="mtf-subsection">
+        <div class="panel-heading compact-heading">
+          <h4>Manufacturer-style MTF</h4>
+          <span class="badge">Wide-open geometric preview</span>
+          <span class="badge">Estimated aperture</span>
+        </div>
+        ${renderManufacturerMtfVsFieldChart(manufacturerFieldData, { title: "Wide-open geometric preview" })}
+        <div class="rgb-overlay-legend">
+          ${manufacturerFieldData.frequencies.map((frequency) => `<span>${frequency} lp/mm</span>`).join("")}
+          <span>10 lp/mm red</span>
+          <span>30 lp/mm blue</span>
+          <span>Solid: sagittal</span>
+          <span>Dashed: tangential / meridional</span>
+          <span>${escapeHtml(manufacturerFieldData.sensor?.name || "Sensor")} · image height from ${escapeHtml(manufacturerFieldData.source)}</span>
+        </div>
+      </section>
       <div class="mtf-aperture-sweep-controls">
         <strong>Aperture sweep</strong>
         ${MTF_APERTURE_SWEEP_OPTIONS.map((option) => `
@@ -12851,17 +13025,19 @@ const renderSagittalTangentialGeometricMTFPanel = (result) => {
           </select>
         </label>
       </div>
-      ${state.mtfChartMode === "field"
-        ? `
-          ${renderManufacturerMtfVsFieldChart(manufacturerFieldData)}
-          <div class="rgb-overlay-legend">
-            ${manufacturerFieldData.frequencies.map((frequency) => `<span>${frequency} lp/mm</span>`).join("")}
-            <span>Solid: sagittal</span>
-            <span>Dashed: tangential / meridional</span>
-            <span>Image height from ${escapeHtml(manufacturerFieldData.source)}</span>
-          </div>
-        `
-        : `
+      <section class="mtf-subsection">
+        <div class="panel-heading compact-heading">
+          <h4>Aperture sweep</h4>
+          <span class="badge">Geometric-only</span>
+        </div>
+        ${renderMtfApertureSweepCharts(apertureSweepResults, state.mtfChartMode, result.maxFrequencyLpMm)}
+        <p class="diagram-note">This aperture sweep uses ray-intercept geometric MTF only. It is not the final stopped-down physical MTF until the wavefront FFT path is active.</p>
+      </section>
+      <section class="mtf-subsection">
+        <div class="panel-heading compact-heading">
+          <h4>MTF vs spatial frequency</h4>
+          <span class="badge">Ray-intercept preview</span>
+        </div>
           <div class="st-mtf-chart-grid">
             ${RAY_TRACE_FIELDS.map((field) => renderSagittalTangentialMTFChart(
               field,
@@ -12869,20 +13045,28 @@ const renderSagittalTangentialGeometricMTFPanel = (result) => {
               result.maxFrequencyLpMm
             )).join("")}
           </div>
-        `
-      }
+      </section>
       <div class="rgb-overlay-legend">
         ${rayFanSpectralLines(result.wavelengthMode).map(([lineKey, line]) => `<span class="rgb-legend-${line.color}">${lineKey} ${line.wavelengthNm} nm</span>`).join("")}
         <span>Solid: sagittal</span>
         <span>Dashed: tangential</span>
         <span>${result.maxFrequencyLpMm} lp/mm range</span>
       </div>
-      ${renderMtfApertureSweepSummary(apertureSweepResults)}
+      <section class="mtf-subsection">
+        <div class="panel-heading compact-heading">
+          <h4>Through-focus MTF</h4>
+          <span class="badge">${state.mtfPlaneMode === "best" ? "Best focus" : "Current plane"}</span>
+        </div>
+        ${renderSagittalTangentialMTFBestFocusSummary(result.comparisons)}
+      </section>
       ${renderSagittalTangentialMTFReadoutTable(result.activeResults)}
-      ${renderSagittalTangentialMTFBestFocusSummary(result.comparisons)}
+      <details class="mtf-diagnostics-details">
+        <summary>Ray-intercept preview diagnostics</summary>
+        <p class="diagram-note">Ray-intercept Gaussian preview uses MTF = exp(-2π²σ²f²). It is fast for comparisons but is not production-quality MTF.</p>
+        <p class="diagram-note">Coating transmission affects brightness and contrast, but this model does not yet feed flare or scattering into MTF.</p>
+      </details>
+      ${renderPhysicalMtfPathStatus()}
       ${result.warnings.map((warning) => `<p class="warning ray-warning">${escapeHtml(warning)}</p>`).join("")}
-      <p class="diagram-note">Ray-intercept Gaussian preview uses MTF = exp(-2π²σ²f²). It is fast for comparisons but is not production-quality MTF.</p>
-      <p class="diagram-note">Coating transmission affects brightness and contrast, but this model does not yet feed flare or scattering into MTF.</p>
     </section>
   `;
 };
@@ -14572,7 +14756,8 @@ const render = () => {
       maxFrequency: state.mtfMaxFrequencyLpMm,
       sweep: (state.mtfApertureSweepStops || []).join(","),
       sweepFocus: state.mtfApertureSweepFocusPolicy,
-      fieldFrequency: state.mtfVsFieldFrequencyLpMm
+      manufacturerFrequencies: selectedManufacturerMtfFrequencies().join(","),
+      sensor: state.mtfSensorFormatKey
     }, () => calculateSagittalTangentialGeometricMTFPanelData(state.lenses, spectralSystems.d || system))
     : null;
   const diffractionHybridMtfResult = needsMtfResolution
@@ -15831,6 +16016,26 @@ mount.addEventListener("change", (event) => {
   if (event.target.dataset.action === "update-mtf-max-frequency") {
     const value = event.target.value === "auto" ? "auto" : toNumber(event.target.value);
     state.mtfMaxFrequencyLpMm = MTF_MAX_FREQUENCY_OPTIONS.includes(value) ? value : "auto";
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-mtf-sensor-format") {
+    state.mtfSensorFormatKey = SENSOR_FORMATS.some((format) => format.key === event.target.value)
+      ? event.target.value
+      : "fullFrame";
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "toggle-mtf-manufacturer-frequency") {
+    const frequency = toNumber(event.target.dataset.frequency);
+    if (!MTF_MANUFACTURER_FREQUENCIES.includes(frequency)) return;
+    const current = new Set(selectedManufacturerMtfFrequencies());
+    if (event.target.checked) current.add(frequency);
+    else current.delete(frequency);
+    if (!current.size) current.add(10);
+    state.mtfManufacturerFrequencies = [...current].sort((left, right) => left - right);
     update();
     return;
   }
@@ -19467,7 +19672,31 @@ const runOpticsSelfCheck = () => {
     return Math.abs(fieldData.maxImageHeightMm - FULL_FRAME_SENSOR.diagonal / 2) < 0.000001
       && Math.abs(fieldData.maxImageHeightMm - 21.6333) < 0.01
       && fieldData.samples.length >= 9
-      && fieldData.source === "chief-ray intercept";
+      && fieldData.source === "iterated chief-ray intercept"
+      && fieldData.frequencies.join(",") === "10,30";
+  }));
+
+  test("manufacturer-style MTF advanced frequencies are opt-in", () => withTemporaryState(() => {
+    loadPresetIntoState("manual");
+    state.mtfManufacturerFrequencies = [10, 20, 30, 40, 50];
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const fieldData = manufacturerMtfFieldSamples(lenses, system, { sampleCount: 9 });
+    const markup = renderManufacturerMtfVsFieldChart(fieldData, { title: "Wide-open geometric preview" });
+    return fieldData.frequencies.join(",") === "10,20,30,40,50"
+      && markup.includes("manufacturer-mtf-10")
+      && markup.includes("manufacturer-mtf-30")
+      && markup.includes("Wide-open geometric preview");
+  }));
+
+  test("manufacturer-style MTF sensor format controls image height endpoint", () => withTemporaryState(() => {
+    loadPresetIntoState("manual");
+    state.mtfSensorFormatKey = "apsC";
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const fieldData = manufacturerMtfFieldSamples(lenses, system, { sampleCount: 9 });
+    return fieldData.sensor.key === "apsC"
+      && Math.abs(fieldData.maxImageHeightMm - 14.1) < 0.000001;
   }));
 
   test("MTF aperture sweep solves different physical stop diameters and retraces", () => withTemporaryState(() => {
@@ -19480,6 +19709,19 @@ const runOpticsSelfCheck = () => {
     return sweep.length === 3
       && sweep.every((item) => item.retraced === true && item.result.totalRayCount > 0)
       && new Set(diameters.map((value) => formatNumber(value, 5))).size > 1;
+  }));
+
+  test("MTF aperture sweep renders charts instead of summary-only cards", () => withTemporaryState(() => {
+    loadPresetIntoState("manual");
+    state.mtfApertureSweepStops = ["wideOpen", "f4"];
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const sweep = calculateMtfApertureSweepPreview(lenses, system, { maxFrequencyLpMm: 100 });
+    const frequencyMarkup = renderMtfApertureSweepCharts(sweep, "frequency", 100);
+    const fieldMarkup = renderMtfApertureSweepCharts(sweep, "field", 100);
+    return frequencyMarkup.includes("mtf-aperture-frequency-chart")
+      && fieldMarkup.includes("manufacturer-mtf-chart")
+      && !frequencyMarkup.includes("mtf-sweep-summary");
   }));
 
   test("diffraction MTF at zero lp/mm equals one", () => {

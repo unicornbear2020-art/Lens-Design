@@ -278,11 +278,13 @@ const DEFAULT_ANALYSIS_SETTINGS = {
   rayFanCustomFieldAngleDegrees: 12,
   rayFanWavelengthMode: "d",
   mtfPlaneMode: "current",
-  mtfChartMode: "frequency",
+  mtfChartMode: "field",
   mtfMaxFrequencyLpMm: "auto",
   mtfSensorFormatKey: "fullFrame",
   mtfManufacturerFrequencies: [10, 30],
   mtfApertureSweepStops: ["wideOpen"],
+  mtfApertureFieldChartKey: "wideOpen",
+  mtfApertureFrequencyFieldKey: "center",
   mtfApertureSweepFocusPolicy: "fixed",
   mtfThroughFocusFieldKey: "center",
   mtfThroughFocusAxis: "both",
@@ -12234,7 +12236,7 @@ const calculateSagittalTangentialGeometricMTFPanelData = (lenses, system) => {
     manufacturerFieldData,
     apertureSweepResults: calculateMtfApertureSweepPreview(lenses, system, {
       maxFrequencyLpMm,
-      fieldKey: state.diffractionMtfFieldKey || "center"
+      fieldKey: state.mtfApertureFrequencyFieldKey || "center"
     }),
     throughFocusResult: calculateThroughFocusMtf(lenses, system, {
       maxFrequencyLpMm,
@@ -12250,6 +12252,10 @@ const mtfApertureSweepSelection = () => {
     : ["wideOpen"];
   return MTF_APERTURE_SWEEP_OPTIONS.filter((option) => selected.includes(option.key));
 };
+
+const mtfApertureSweepCalculationOptions = () => (
+  state.mtfChartMode === "field" ? MTF_APERTURE_SWEEP_OPTIONS : mtfApertureSweepSelection()
+);
 
 const selectedManufacturerMtfFrequencies = () => {
   const selected = Array.isArray(state.mtfManufacturerFrequencies) && state.mtfManufacturerFrequencies.length
@@ -12279,11 +12285,15 @@ const apertureOptionByKey = (key) => (
   MTF_APERTURE_SWEEP_OPTIONS.find((option) => option.key === key) || MTF_APERTURE_SWEEP_OPTIONS[0]
 );
 
+const mtfApertureSweepResultByKey = (sweepResults, key) => (
+  sweepResults.find((item) => item.key === key) || sweepResults[0] || null
+);
+
 const calculateMtfApertureSweepPreview = (lenses, system, options = {}) => {
   const field = RAY_TRACE_FIELDS.find((item) => item.key === options.fieldKey) || RAY_TRACE_FIELDS[0];
   const rayCount = Math.round(clamp(toNumber(state.rayTrace3DSampleCount) || 7, 3, 15));
   const maxFrequencyLpMm = options.maxFrequencyLpMm || resolveMtfMaxFrequency(system);
-  return mtfApertureSweepSelection().map((aperture) => {
+  return mtfApertureSweepCalculationOptions().map((aperture) => {
     const requestedFNumber = aperture.fNumber || calculateFNumber(system);
     const apertureDiameter = physicalStopDiameterForRequestedFNumber(lenses, system, aperture.fNumber);
     const focusOptions = {
@@ -13107,6 +13117,87 @@ const renderManufacturerMtfLegend = (fieldData, apertureInfo = {}) => {
   `;
 };
 
+const mtfReadoutAverage = (sample, frequency) => {
+  const values = [
+    sample?.readouts?.[frequency]?.sagittal,
+    sample?.readouts?.[frequency]?.tangential
+  ].filter(Number.isFinite);
+  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : NaN;
+};
+
+const mtfFieldSampleAt = (fieldData, position) => {
+  const solved = (fieldData?.samples || []).filter((sample) => sample.solveStatus === "solved");
+  if (!solved.length) return null;
+  if (position === "corner") {
+    return solved.reduce((best, sample) => (
+      (sample.imageHeight || 0) > (best.imageHeight || 0) ? sample : best
+    ), solved[0]);
+  }
+  return solved.reduce((best, sample) => (
+    Math.abs(sample.imageHeight || 0) < Math.abs(best.imageHeight || 0) ? sample : best
+  ), solved[0]);
+};
+
+const renderMtfApertureComparisonTable = (sweepResults) => {
+  if (!sweepResults.length) return "";
+  const wideOpen = mtfApertureSweepResultByKey(sweepResults, "wideOpen") || sweepResults[0];
+  const wideOpenCorner30 = mtfReadoutAverage(mtfFieldSampleAt(wideOpen.fieldData, "corner"), 30);
+  const valueCell = (sample, frequency) => {
+    const value = mtfReadoutAverage(sample, frequency);
+    return Number.isFinite(value) ? formatNumber(value, 2) : "--";
+  };
+  const deltaCell = (item) => {
+    const value = mtfReadoutAverage(mtfFieldSampleAt(item.fieldData, "corner"), 30);
+    if (!Number.isFinite(value) || !Number.isFinite(wideOpenCorner30)) return "--";
+    const delta = value - wideOpenCorner30;
+    return `${delta >= 0 ? "+" : ""}${formatNumber(delta, 2)}`;
+  };
+  return `
+    <div class="mtf-aperture-comparison-table" role="table" aria-label="Aperture sweep comparison">
+      <span role="columnheader">Aperture</span>
+      <span role="columnheader">10 centre</span>
+      <span role="columnheader">10 corner</span>
+      <span role="columnheader">30 centre</span>
+      <span role="columnheader">30 corner</span>
+      <span role="columnheader">Δ wide open</span>
+      ${sweepResults.map((item) => {
+        const centre = mtfFieldSampleAt(item.fieldData, "centre");
+        const corner = mtfFieldSampleAt(item.fieldData, "corner");
+        return `
+          <span role="rowheader">${escapeHtml(item.label)}</span>
+          <span>${valueCell(centre, 10)}</span>
+          <span>${valueCell(corner, 10)}</span>
+          <span>${valueCell(centre, 30)}</span>
+          <span>${valueCell(corner, 30)}</span>
+          <span>${deltaCell(item)}</span>
+        `;
+      }).join("")}
+    </div>
+  `;
+};
+
+const renderMtfApertureFieldChart = (sweepResults) => {
+  const activeKey = MTF_APERTURE_SWEEP_OPTIONS.some((option) => option.key === state.mtfApertureFieldChartKey)
+    ? state.mtfApertureFieldChartKey
+    : "wideOpen";
+  const activeResult = mtfApertureSweepResultByKey(sweepResults, activeKey);
+  if (!activeResult) return "";
+  const focusText = activeResult.focusPolicy === "center-refocused"
+    ? "centre-refocused common plane"
+    : "fixed image plane";
+  return `
+    <article class="mtf-aperture-single-chart">
+      ${renderManufacturerMtfVsFieldChart(activeResult.fieldData, { title: activeResult.label, compact: true })}
+      <div class="mtf-aperture-meta">
+        Physical stop ${formatNumber(activeResult.physicalStopDiameter, 2)} mm · ${focusText}
+        ${activeResult.refocusAtSearchLimit ? " · refocus solution at search limit" : ""}
+      </div>
+      ${activeResult.refocusAtSearchLimit ? `<p class="warning ray-warning">Refocus solution at search limit.</p>` : ""}
+    </article>
+    ${renderMtfApertureComparisonTable(sweepResults)}
+  `;
+};
+
 const renderMtfApertureFrequencyChart = (sweepResults, maxFrequencyLpMm = 100) => {
   const width = 560;
   const height = 260;
@@ -13147,17 +13238,7 @@ const renderMtfApertureFrequencyChart = (sweepResults, maxFrequencyLpMm = 100) =
 const renderMtfApertureSweepCharts = (sweepResults, chartMode, maxFrequencyLpMm) => {
   if (!sweepResults.length) return "";
   if (chartMode === "field") {
-    return `
-      <div class="mtf-aperture-chart-grid">
-        ${sweepResults.map((item) => `
-          <article class="mtf-aperture-chart-card">
-            ${renderManufacturerMtfVsFieldChart(item.fieldData, { title: item.label, compact: true })}
-            <div class="mtf-aperture-meta">Physical stop ${formatNumber(item.physicalStopDiameter, 2)} mm · ${item.focusPolicy === "center-refocused" ? "centre-refocused common plane" : "fixed image plane"}</div>
-            ${item.refocusAtSearchLimit ? `<p class="warning ray-warning">Refocus solution at search limit.</p>` : ""}
-          </article>
-        `).join("")}
-      </div>
-    `;
+    return renderMtfApertureFieldChart(sweepResults);
   }
 
   return `
@@ -13278,7 +13359,7 @@ const renderSagittalTangentialGeometricMTFPanel = (result) => {
       <div class="st-mtf-controls">
         <label>
           Aperture sweep display
-          <select data-action="update-mtf-chart-mode" aria-label="MTF chart mode">
+          <select data-action="update-mtf-chart-mode" aria-label="Aperture sweep display">
             <option value="field" ${state.mtfChartMode === "field" ? "selected" : ""}>MTF vs image height</option>
             <option value="frequency" ${state.mtfChartMode === "frequency" ? "selected" : ""}>MTF vs spatial frequency</option>
           </select>
@@ -13341,12 +13422,28 @@ const renderSagittalTangentialGeometricMTFPanel = (result) => {
       </section>
       <div class="mtf-aperture-sweep-controls">
         <strong>Aperture sweep</strong>
-        ${MTF_APERTURE_SWEEP_OPTIONS.map((option) => `
-          <label class="toggle-row compact-toggle-row">
-            <input type="checkbox" data-action="toggle-mtf-aperture-sweep" data-stop="${option.key}" ${mtfApertureSweepSelection().some((item) => item.key === option.key) ? "checked" : ""}>
-            ${escapeHtml(option.label)}
+        <div class="mtf-aperture-chip-row" role="${state.mtfChartMode === "field" ? "tablist" : "group"}" aria-label="Aperture sweep apertures">
+          ${state.mtfChartMode === "field"
+            ? MTF_APERTURE_SWEEP_OPTIONS.map((option) => `
+              <button class="mtf-aperture-chip ${state.mtfApertureFieldChartKey === option.key ? "is-active" : ""}" type="button" role="tab" aria-selected="${state.mtfApertureFieldChartKey === option.key}" data-action="select-mtf-aperture-field-chart" data-stop="${option.key}">
+                ${escapeHtml(option.label)}
+              </button>
+            `).join("")
+            : MTF_APERTURE_SWEEP_OPTIONS.map((option) => `
+              <label class="mtf-aperture-chip ${mtfApertureSweepSelection().some((item) => item.key === option.key) ? "is-active" : ""}">
+                <input type="checkbox" data-action="toggle-mtf-aperture-sweep" data-stop="${option.key}" ${mtfApertureSweepSelection().some((item) => item.key === option.key) ? "checked" : ""}>
+                ${escapeHtml(option.label)}
+              </label>
+            `).join("")}
+        </div>
+        ${state.mtfChartMode === "frequency" ? `
+          <label>
+            Field
+            <select data-action="update-mtf-aperture-frequency-field" aria-label="Aperture sweep frequency field">
+              ${RAY_TRACE_FIELDS.map((field) => `<option value="${field.key}" ${state.mtfApertureFrequencyFieldKey === field.key ? "selected" : ""}>${field.name}</option>`).join("")}
+            </select>
           </label>
-        `).join("")}
+        ` : `<span class="mtf-aperture-helper">One aperture chart at a time</span>`}
         <label>
           Focus policy
           <select data-action="update-mtf-aperture-focus-policy" aria-label="Aperture sweep focus policy">
@@ -15089,6 +15186,8 @@ const render = () => {
       chart: state.mtfChartMode,
       maxFrequency: state.mtfMaxFrequencyLpMm,
       sweep: (state.mtfApertureSweepStops || []).join(","),
+      apertureFieldChart: state.mtfApertureFieldChartKey,
+      apertureFrequencyField: state.mtfApertureFrequencyFieldKey,
       sweepFocus: state.mtfApertureSweepFocusPolicy,
       manufacturerFrequencies: selectedManufacturerMtfFrequencies().join(","),
       sensor: state.mtfSensorFormatKey,
@@ -16388,7 +16487,20 @@ mount.addEventListener("change", (event) => {
     if (event.target.checked) current.add(stopKey);
     else current.delete(stopKey);
     if (!current.size) current.add("wideOpen");
+    if (current.size > 3) {
+      const ordered = [...current].sort((left, right) => allowed.indexOf(left) - allowed.indexOf(right));
+      const removeKey = ordered.find((key) => key !== stopKey) || ordered[0];
+      current.delete(removeKey);
+    }
     state.mtfApertureSweepStops = [...current].sort((left, right) => allowed.indexOf(left) - allowed.indexOf(right));
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-mtf-aperture-frequency-field") {
+    state.mtfApertureFrequencyFieldKey = RAY_TRACE_FIELDS.some((field) => field.key === event.target.value)
+      ? event.target.value
+      : "center";
     update();
     return;
   }
@@ -16720,6 +16832,15 @@ mount.addEventListener("click", (event) => {
       [panelId]: !isCurrentlyCollapsed
     };
     update();
+    return;
+  }
+
+  if (action === "select-mtf-aperture-field-chart") {
+    const stopKey = button.dataset.stop;
+    if (MTF_APERTURE_SWEEP_OPTIONS.some((option) => option.key === stopKey)) {
+      state.mtfApertureFieldChartKey = stopKey;
+      update();
+    }
     return;
   }
 
@@ -20135,6 +20256,7 @@ const runOpticsSelfCheck = () => {
 
   test("MTF aperture sweep solves different physical stop diameters and retraces", () => withTemporaryState(() => {
     loadPresetIntoState("manual");
+    state.mtfChartMode = "frequency";
     state.mtfApertureSweepStops = ["wideOpen", "f4", "f8"];
     const lenses = clonePresetLenses("manual");
     const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
@@ -20147,12 +20269,13 @@ const runOpticsSelfCheck = () => {
 
   test("MTF aperture field sweep uses one centre-refocused plane per aperture", () => withTemporaryState(() => {
     loadPresetIntoState("manual");
+    state.mtfChartMode = "field";
     state.mtfApertureSweepStops = ["wideOpen", "f4"];
     state.mtfApertureSweepFocusPolicy = "refocus";
     const lenses = clonePresetLenses("manual");
     const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
     const sweep = calculateMtfApertureSweepPreview(lenses, system, { maxFrequencyLpMm: 100 });
-    return sweep.length === 2
+    return sweep.length === MTF_APERTURE_SWEEP_OPTIONS.length
       && sweep.every((item) => item.focusPolicy === "center-refocused")
       && sweep.every((item) => Number.isFinite(item.imagePlaneX))
       && sweep.every((item) => item.fieldData.samples.every((sample) => sample.result.imagePlaneX === item.imagePlaneX));
@@ -20160,14 +20283,21 @@ const runOpticsSelfCheck = () => {
 
   test("MTF aperture sweep renders charts instead of summary-only cards", () => withTemporaryState(() => {
     loadPresetIntoState("manual");
+    state.mtfChartMode = "frequency";
     state.mtfApertureSweepStops = ["wideOpen", "f4"];
     const lenses = clonePresetLenses("manual");
     const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
-    const sweep = calculateMtfApertureSweepPreview(lenses, system, { maxFrequencyLpMm: 100 });
-    const frequencyMarkup = renderMtfApertureSweepCharts(sweep, "frequency", 100);
-    const fieldMarkup = renderMtfApertureSweepCharts(sweep, "field", 100);
+    const frequencySweep = calculateMtfApertureSweepPreview(lenses, system, { maxFrequencyLpMm: 100 });
+    const frequencyMarkup = renderMtfApertureSweepCharts(frequencySweep, "frequency", 100);
+    state.mtfChartMode = "field";
+    state.mtfApertureFieldChartKey = "f4";
+    const fieldSweep = calculateMtfApertureSweepPreview(lenses, system, { maxFrequencyLpMm: 100 });
+    const fieldMarkup = renderMtfApertureSweepCharts(fieldSweep, "field", 100);
     return frequencyMarkup.includes("mtf-aperture-frequency-chart")
       && fieldMarkup.includes("manufacturer-mtf-chart")
+      && (fieldMarkup.match(/manufacturer-mtf-chart/g) || []).length === 1
+      && fieldMarkup.includes("mtf-aperture-comparison-table")
+      && !fieldMarkup.includes("mtf-aperture-chart-grid")
       && !frequencyMarkup.includes("mtf-sweep-summary");
   }));
 

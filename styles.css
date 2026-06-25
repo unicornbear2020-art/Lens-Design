@@ -3092,9 +3092,20 @@ select {
   margin-top: 8px;
 }
 
+.compact-diagnostic-list {
+  margin: 8px 0;
+  padding-left: 18px;
+  color: rgba(215, 229, 238, 0.86);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
 .mtf-aperture-sweep-controls {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    "title focus"
+    "chips chips";
   align-items: center;
   gap: 8px;
   margin: 10px 0;
@@ -3104,11 +3115,33 @@ select {
   background: rgba(10, 53, 86, 0.34);
 }
 
+.mtf-aperture-sweep-controls.is-frequency-mode {
+  grid-template-areas:
+    "title field"
+    "chips chips"
+    "focus focus";
+}
+
+.mtf-aperture-sweep-controls > strong {
+  grid-area: title;
+}
+
 .mtf-aperture-chip-row {
+  grid-area: chips;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   min-width: 0;
+}
+
+.mtf-aperture-field-select {
+  grid-area: field;
+  justify-self: end;
+}
+
+.mtf-aperture-focus-select {
+  grid-area: focus;
+  justify-self: end;
 }
 
 .mtf-aperture-chip {
@@ -3140,12 +3173,6 @@ select {
   border-color: #79bbd9;
 }
 
-.mtf-aperture-helper {
-  color: rgba(215, 229, 238, 0.76);
-  font-size: 0.72rem;
-  font-weight: 750;
-}
-
 .mtf-aperture-single-chart {
   min-width: 0;
 }
@@ -3165,6 +3192,28 @@ select {
   font-size: 0.72rem;
   font-weight: 800;
   margin-top: 4px;
+}
+
+.analysis-updating,
+.mtf-aperture-comparison-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+  padding: 7px 9px;
+  border: 1px solid rgba(121, 189, 217, 0.35);
+  border-radius: 8px;
+  background: rgba(2, 132, 201, 0.16);
+  color: #f8f6f2;
+  font-size: 0.68rem;
+  font-weight: 760;
+}
+
+.analysis-updating {
+  width: fit-content;
+  border-color: rgba(255, 183, 3, 0.42);
+  background: rgba(255, 183, 3, 0.14);
 }
 
 .mtf-aperture-comparison-table {
@@ -3222,6 +3271,40 @@ select {
   stroke-dasharray: 7 5;
 }
 
+.physical-mtf-analytic {
+  stroke: #d83a3a;
+  stroke-width: 2.3;
+}
+
+.physical-mtf-fft {
+  stroke: #0a6cf1;
+  stroke-width: 2.1;
+  stroke-dasharray: 7 5;
+}
+
+.physical-mtf-cutoff {
+  stroke: #c78300;
+  stroke-width: 1.4;
+  stroke-dasharray: 5 4;
+  opacity: 0.9;
+}
+
+.physical-mtf-analytic-key::before,
+.physical-mtf-fft-key::before {
+  content: "";
+  display: inline-block;
+  width: 24px;
+  height: 0;
+  margin-right: 6px;
+  vertical-align: middle;
+  border-top: 3px solid #d83a3a;
+}
+
+.physical-mtf-fft-key::before {
+  border-top-color: #0a6cf1;
+  border-top-style: dashed;
+}
+
 .mtf-aperture-key::before {
   background: currentColor;
 }
@@ -3256,7 +3339,17 @@ select {
 @media (max-width: 520px) {
   .mtf-aperture-sweep-controls {
     grid-template-columns: 1fr;
+    grid-template-areas:
+      "title"
+      "field"
+      "chips"
+      "focus";
     align-items: start;
+  }
+
+  .mtf-aperture-field-select,
+  .mtf-aperture-focus-select {
+    justify-self: stretch;
   }
 }
 

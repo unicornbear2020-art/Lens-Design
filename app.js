@@ -237,6 +237,23 @@ const automaticBevelFaceWidthMm = (diameter) => (
 const PANEL_FIELD_STEPS = {
   sagDiameter: 1,
   sagHeight: 0.1,
+  metrologyRearSag: 0.1,
+  indexEstimateR1: 1,
+  indexEstimateR2: 1,
+  indexEstimateThickness: 0.1,
+  indexEstimateEdgeThickness: 0.1,
+  indexEstimateTargetValue: 1,
+  indexEstimateSearchMin: 0.01,
+  indexEstimateSearchMax: 0.01,
+  metrologySagUncertainty: 0.01,
+  metrologyThicknessUncertainty: 0.01,
+  metrologyFocusUncertainty: 0.1,
+  geometryTargetEfl: 1,
+  geometryDiameter: 1,
+  geometryThickness: 0.1,
+  geometryIndex: 0.01,
+  geometryFixedR1: 1,
+  geometryFixedR2: 1,
   apertureDiameter: 1,
   apertureStopSurfaceNumber: 1,
   apertureStopSurfaceOffsetMm: 0.5,
@@ -298,6 +315,31 @@ const DEFAULT_ANALYSIS_SETTINGS = {
   physicalMtfWavelengthKey: "d",
   physicalMtfChartMode: "normalized",
   physicalMtfLabOpen: false,
+  metrologyMode: "surface",
+  metrologyRearSag: 4,
+  metrologyLensForm: "biconvex",
+  metrologySelectedLensIndex: 0,
+  metrologyCopyStatus: "",
+  indexEstimateR1: null,
+  indexEstimateR2: null,
+  indexEstimateThickness: 6,
+  indexEstimateEdgeThickness: null,
+  indexEstimateTargetType: "efl",
+  indexEstimateTargetValue: 80,
+  indexEstimateWavelengthNm: 587.6,
+  indexEstimateLensForm: "biconvex",
+  indexEstimateSearchMin: 1.3,
+  indexEstimateSearchMax: 2.2,
+  metrologySagUncertainty: 0,
+  metrologyThicknessUncertainty: 0,
+  metrologyFocusUncertainty: 0,
+  geometryTargetEfl: 50,
+  geometryDiameter: 50,
+  geometryThickness: 6,
+  geometryIndex: 1.5168,
+  geometryForm: "symmetricalBiconvex",
+  geometryFixedR1: 80,
+  geometryFixedR2: -80,
   enable3DRayTrace: true,
   rayTrace3DFieldAngleDegrees: 10,
   rayTrace3DOrientation: "tangential",
@@ -2356,6 +2398,12 @@ const adjustPanelField = (field, delta) => {
 
   if (field === "sagDiameter") nextValue = Math.max(step, nextValue);
   if (field === "sagHeight") nextValue = Math.max(step, nextValue);
+  if (field === "metrologyRearSag") nextValue = Math.max(0, nextValue);
+  if (["indexEstimateThickness", "geometryThickness"].includes(field)) nextValue = Math.max(step, nextValue);
+  if (["indexEstimateSearchMin", "indexEstimateSearchMax", "geometryIndex"].includes(field)) nextValue = Math.max(1.0001, nextValue);
+  if (["indexEstimateTargetValue", "geometryTargetEfl", "geometryDiameter"].includes(field)) nextValue = Math.max(step, nextValue);
+  if (["indexEstimateWavelengthNm"].includes(field)) nextValue = clamp(nextValue, 350, 900);
+  if (["metrologySagUncertainty", "metrologyThicknessUncertainty", "metrologyFocusUncertainty"].includes(field)) nextValue = Math.max(0, nextValue);
   if (field === "apertureDiameter") nextValue = Math.max(step, nextValue);
   if (field === "apertureStopSurfaceNumber") nextValue = Math.max(1, Math.round(nextValue));
   if (field === "apertureStopSurfaceOffsetMm") nextValue = Math.max(0, nextValue);
@@ -2373,7 +2421,38 @@ const adjustPanelField = (field, delta) => {
   if (field === "stRayFanRayCount") nextValue = clamp(Math.round(nextValue), 3, 31);
   if (field === "physicalMtfFNumber") nextValue = Math.max(0.5, nextValue);
 
-  state[field] = Number(nextValue.toFixed(["sagHeight", "apertureStopSurfaceOffsetMm", "apertureStopDistanceFromSensorMm", "apertureStopDistanceFromFrontMm", "imageCircleAngleDegrees", "imageCircleFocalLength", "rayCircleMaxFieldAngleDegrees", "rayCircleFieldStepDegrees", "rayFanCustomFieldAngleDegrees", "rayTrace3DFieldAngleDegrees", "stRayFanCustomFieldAngleDegrees", "physicalMtfFNumber"].includes(field) ? 2 : 0));
+  state[field] = Number(nextValue.toFixed([
+    "sagHeight",
+    "metrologyRearSag",
+    "indexEstimateR1",
+    "indexEstimateR2",
+    "indexEstimateThickness",
+    "indexEstimateEdgeThickness",
+    "indexEstimateTargetValue",
+    "indexEstimateWavelengthNm",
+    "indexEstimateSearchMin",
+    "indexEstimateSearchMax",
+    "metrologySagUncertainty",
+    "metrologyThicknessUncertainty",
+    "metrologyFocusUncertainty",
+    "geometryTargetEfl",
+    "geometryDiameter",
+    "geometryThickness",
+    "geometryIndex",
+    "geometryFixedR1",
+    "geometryFixedR2",
+    "apertureStopSurfaceOffsetMm",
+    "apertureStopDistanceFromSensorMm",
+    "apertureStopDistanceFromFrontMm",
+    "imageCircleAngleDegrees",
+    "imageCircleFocalLength",
+    "rayCircleMaxFieldAngleDegrees",
+    "rayCircleFieldStepDegrees",
+    "rayFanCustomFieldAngleDegrees",
+    "rayTrace3DFieldAngleDegrees",
+    "stRayFanCustomFieldAngleDegrees",
+    "physicalMtfFNumber"
+  ].includes(field) ? 2 : 0));
   if (field === "apertureDiameter") state.matchPatentFNumber = false;
   return true;
 };
@@ -2881,7 +2960,7 @@ const steppableInput = (lens, field, label, step, unit = "") => `
   </div>
 `;
 
-const panelSteppableInput = ({ field, label, action, inputmode = "decimal", unit = "" }) => `
+const panelSteppableInput = ({ field, label, action, inputmode = "decimal", unit = "", value = state[field] }) => `
   <div class="control panel-step-control">
     <span class="control-label">${label}</span>
     <div class="stepper">
@@ -2891,7 +2970,7 @@ const panelSteppableInput = ({ field, label, action, inputmode = "decimal", unit
         inputmode="${inputmode}"
         data-action="${action}"
         data-field="${field}"
-        value="${escapeHtml(state[field])}"
+        value="${escapeHtml(value ?? "")}"
         aria-label="${label}"
       >
       <button class="step-button" type="button" data-action="adjust-panel-field" data-field="${field}" data-delta="1" aria-label="Increase ${label}">+</button>
@@ -10815,7 +10894,7 @@ const ANALYSIS_PANEL_REGISTRY = [
   { id: "debugTools", group: "Advanced", title: "3D / Debug Tools", priority: 2, isExperimental: true },
   { id: "optimizerBuild", group: "Build", title: "Lens Optimizer", priority: 1, isExperimental: true },
   { id: "toleranceBuild", group: "Build", title: "Tolerance / Manufacturing", priority: 2, isExperimental: true },
-  { id: "sagittaUtility", group: "Utility", title: "Sagitta / Radius Calculator", priority: 1 }
+  { id: "sagittaUtility", group: "Utility", title: "Lens Metrology & Inverse Solver", priority: 1 }
 ];
 
 const ANALYSIS_PANEL_BY_ID = Object.fromEntries(ANALYSIS_PANEL_REGISTRY.map((panel) => [panel.id, panel]));
@@ -10916,6 +10995,368 @@ const calculateSagitta = () => {
     angleDegrees: angleRadians * 180 / Math.PI,
     chord: diameter,
     sag
+  };
+};
+
+const METROLOGY_LENS_FORMS = [
+  { value: "biconvex", label: "Biconvex" },
+  { value: "biconcave", label: "Biconcave" },
+  { value: "planoConvex", label: "Plano-convex" },
+  { value: "planoConcave", label: "Plano-concave" },
+  { value: "positiveMeniscus", label: "Positive meniscus" },
+  { value: "negativeMeniscus", label: "Negative meniscus" }
+];
+
+const GEOMETRY_EXPLORER_FORMS = [
+  { value: "planoConvex", label: "Plano-convex" },
+  { value: "symmetricalBiconvex", label: "Symmetrical biconvex" },
+  { value: "fixedR1", label: "Fixed R1" },
+  { value: "fixedR2", label: "Fixed R2" },
+  { value: "positiveMeniscus", label: "Positive meniscus" },
+  { value: "negativeMeniscus", label: "Negative meniscus" }
+];
+
+const sphericalRadiusFromSag = (diameter, sag) => {
+  const d = toNumber(diameter);
+  const s = toNumber(sag);
+  if (!(d > 0) || !(s > 0)) return NaN;
+  return d ** 2 / (8 * s) + s / 2;
+};
+
+const surfaceSagFromRadius = (diameter, radius) => {
+  const d = toNumber(diameter);
+  const r = Math.abs(toNumber(radius));
+  if (!(d > 0) || !(r > 0)) return 0;
+  const half = d / 2;
+  if (half > r) return NaN;
+  return r - Math.sqrt(Math.max(0, r ** 2 - half ** 2));
+};
+
+const metrologyRadiusSigns = (form) => {
+  switch (form) {
+    case "biconcave": return { r1: -1, r2: 1 };
+    case "planoConvex": return { r1: 1, r2: 0 };
+    case "planoConcave": return { r1: -1, r2: 0 };
+    case "positiveMeniscus": return { r1: 1, r2: 1 };
+    case "negativeMeniscus": return { r1: -1, r2: -1 };
+    case "biconvex":
+    default:
+      return { r1: 1, r2: -1 };
+  }
+};
+
+const metrologyStatus = (level, label, detail = "") => ({ level, label, detail });
+
+const calculateSurfaceMetrology = (options = {}) => {
+  const diameter = toNumber(options.diameter ?? state.sagDiameter);
+  const frontSag = toNumber(options.frontSag ?? state.sagHeight);
+  const rearSag = toNumber(options.rearSag ?? state.metrologyRearSag);
+  const form = options.form || state.metrologyLensForm || "biconvex";
+  const signs = metrologyRadiusSigns(form);
+  const frontRadiusMagnitude = sphericalRadiusFromSag(diameter, frontSag);
+  const rearRadiusMagnitude = signs.r2 === 0 ? 0 : sphericalRadiusFromSag(diameter, rearSag);
+  const r1 = signs.r1 === 0 ? 0 : signs.r1 * frontRadiusMagnitude;
+  const r2 = signs.r2 === 0 ? 0 : signs.r2 * rearRadiusMagnitude;
+  const frontAngle = Number.isFinite(frontRadiusMagnitude) && frontRadiusMagnitude > 0
+    ? radiansToDegrees(2 * Math.asin(clamp((diameter / 2) / frontRadiusMagnitude, -1, 1)))
+    : 0;
+  const rearAngle = Number.isFinite(rearRadiusMagnitude) && rearRadiusMagnitude > 0
+    ? radiansToDegrees(2 * Math.asin(clamp((diameter / 2) / rearRadiusMagnitude, -1, 1)))
+    : 0;
+  const valid = diameter > 0
+    && (signs.r1 === 0 || (frontSag > 0 && Number.isFinite(r1)))
+    && (signs.r2 === 0 || (rearSag > 0 && Number.isFinite(r2)));
+  const status = valid
+    ? metrologyStatus("green", "Solvable from supplied measurements", "Chord and sag define spherical radii.")
+    : metrologyStatus("red", "Physically inconsistent", "Enter a positive chord and positive sag for each curved surface.");
+  return {
+    valid,
+    diameter,
+    frontSag,
+    rearSag,
+    form,
+    r1,
+    r2,
+    frontRadiusMagnitude,
+    rearRadiusMagnitude,
+    frontAngle,
+    rearAngle,
+    status
+  };
+};
+
+const nullableNumber = (value, fallback = NaN) => {
+  if (value === null || value === undefined || value === "") return fallback;
+  const numeric = toNumber(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+};
+
+const metrologyIndexInputValues = (surfaceResult = calculateSurfaceMetrology()) => ({
+  r1: nullableNumber(state.indexEstimateR1, surfaceResult.r1),
+  r2: nullableNumber(state.indexEstimateR2, surfaceResult.r2),
+  thickness: Math.max(0.001, nullableNumber(state.indexEstimateThickness, 0.001)),
+  targetValue: nullableNumber(state.indexEstimateTargetValue),
+  wavelengthNm: clamp(nullableNumber(state.indexEstimateWavelengthNm, SPECTRAL_LINES.d.wavelengthNm), 350, 900),
+  searchMin: Math.max(1.0001, nullableNumber(state.indexEstimateSearchMin, 1.3)),
+  searchMax: Math.max(1.0002, nullableNumber(state.indexEstimateSearchMax, 2.2))
+});
+
+const metrologyLensTypeFromRadii = (r1, r2) => {
+  if (Math.abs(r1) < 0.000001 && Math.abs(r2) < 0.000001) return "plano";
+  if (r1 > 0 && r2 < 0) return "biconvex";
+  if (r1 < 0 && r2 > 0) return "biconcave";
+  if (Math.abs(r1) < 0.000001 && r2 < 0) return "planoConvex";
+  if (r1 > 0 && Math.abs(r2) < 0.000001) return "planoConvex";
+  if (Math.abs(r1) < 0.000001 && r2 > 0) return "planoConcave";
+  return "meniscus";
+};
+
+const makeMetrologyLens = ({ r1, r2, thickness, n, vd = 55, diameter = state.sagDiameter }) => normalizeLens({
+  id: "metrology-lens",
+  type: metrologyLensTypeFromRadii(r1, r2),
+  r1,
+  r2,
+  thickness,
+  gapAfter: 0,
+  diameter: Math.max(1, toNumber(diameter) || 50),
+  glassKey: "custom",
+  customNd: n,
+  customVd: vd,
+  refractiveIndex: n,
+  frontCoatingKey: "multiCoated",
+  rearCoatingKey: "multiCoated",
+  internalTransmissionPerMm: 1
+});
+
+const evaluateMetrologyIndexTarget = (n, inputs, targetType = state.indexEstimateTargetType) => {
+  const lens = makeMetrologyLens({
+    r1: inputs.r1,
+    r2: inputs.r2,
+    thickness: inputs.thickness,
+    n,
+    diameter: state.sagDiameter
+  });
+  const system = calculateSystem([lens], inputs.wavelengthNm);
+  const value = targetType === "bfl"
+    ? system.backFocalLength
+    : targetType === "finite"
+      ? NaN
+      : system.effectiveFocalLength;
+  return { lens, system, value };
+};
+
+const solveRefractiveIndexEstimate = (options = {}) => {
+  const surfaceResult = options.surfaceResult || calculateSurfaceMetrology();
+  const inputs = options.inputs || metrologyIndexInputValues(surfaceResult);
+  const targetType = options.targetType || state.indexEstimateTargetType || "efl";
+  const targetValue = toNumber(options.targetValue ?? inputs.targetValue);
+  const min = Math.min(inputs.searchMin, inputs.searchMax);
+  const max = Math.max(inputs.searchMin, inputs.searchMax);
+  const warnings = [];
+  if (targetType === "finite") {
+    return {
+      status: metrologyStatus("red", "Underdetermined", "Finite-conjugate testing needs object distance and image distance, not a single focus value."),
+      estimatedN: NaN,
+      residual: NaN,
+      predictedEfl: NaN,
+      predictedBfl: NaN,
+      warnings: ["Finite-conjugate estimate is underdetermined without both conjugate distances."]
+    };
+  }
+  if (![inputs.r1, inputs.r2, inputs.thickness, targetValue].every(Number.isFinite) || !(inputs.thickness > 0) || !(targetValue > 0)) {
+    return {
+      status: metrologyStatus("red", "Physically inconsistent", "Radii, thickness and target focus must be finite positive inputs."),
+      estimatedN: NaN,
+      residual: NaN,
+      predictedEfl: NaN,
+      predictedBfl: NaN,
+      warnings: ["Invalid geometry or target focus."]
+    };
+  }
+  const residualAt = (n) => evaluateMetrologyIndexTarget(n, inputs, targetType).value - targetValue;
+  const samples = Array.from({ length: 80 }, (_, index) => {
+    const n = min + (max - min) * index / 79;
+    return { n, residual: residualAt(n) };
+  }).filter((sample) => Number.isFinite(sample.residual));
+  let bracket = null;
+  for (let index = 1; index < samples.length; index += 1) {
+    const left = samples[index - 1];
+    const right = samples[index];
+    if (left.residual === 0) bracket = { left, right: left };
+    if (left.residual * right.residual <= 0) {
+      bracket = { left, right };
+      break;
+    }
+  }
+  if (!bracket) {
+    warnings.push("No refractive-index root exists in the selected search range.");
+    return {
+      status: metrologyStatus("red", "No physical solution in selected range", "Try widening the n range or checking radius / focus measurements."),
+      estimatedN: NaN,
+      residual: NaN,
+      predictedEfl: NaN,
+      predictedBfl: NaN,
+      warnings
+    };
+  }
+  let low = bracket.left.n;
+  let high = bracket.right.n;
+  let lowResidual = residualAt(low);
+  let mid = low;
+  let midResidual = lowResidual;
+  for (let iteration = 0; iteration < 90; iteration += 1) {
+    mid = (low + high) / 2;
+    midResidual = residualAt(mid);
+    if (Math.abs(midResidual) < 1e-8 || Math.abs(high - low) < 1e-8) break;
+    if (lowResidual * midResidual <= 0) {
+      high = mid;
+    } else {
+      low = mid;
+      lowResidual = midResidual;
+    }
+  }
+  const final = evaluateMetrologyIndexTarget(mid, inputs, targetType);
+  const hint = mid < 1.5
+    ? "low-index family"
+    : mid < 1.58
+      ? "crown-like family"
+      : mid < 1.7
+        ? "flint-like family"
+        : "high-index family";
+  warnings.push("White-light focus is chromatic; refractive index depends on wavelength.");
+  return {
+    status: metrologyStatus("green", "Solvable from supplied measurements", "Estimated refractive index at test wavelength."),
+    estimatedN: mid,
+    predictedEfl: final.system.effectiveFocalLength,
+    predictedBfl: final.system.backFocalLength,
+    residual: targetType === "bfl"
+      ? final.system.backFocalLength - targetValue
+      : final.system.effectiveFocalLength - targetValue,
+    convergenceStatus: Math.abs(midResidual) < 1e-5 ? "converged" : "best effort",
+    candidateFamilyHint: hint,
+    warnings
+  };
+};
+
+const estimateIndexUncertaintyRange = (baseInputs, targetType) => {
+  const focusU = Math.max(0, toNumber(state.metrologyFocusUncertainty) || 0);
+  const thickU = Math.max(0, toNumber(state.metrologyThicknessUncertainty) || 0);
+  if (!focusU && !thickU) return null;
+  const estimates = [];
+  [-1, 1].forEach((focusSign) => {
+    [-1, 1].forEach((thickSign) => {
+      const inputs = {
+        ...baseInputs,
+        thickness: Math.max(0.001, baseInputs.thickness + thickSign * thickU),
+        targetValue: Math.max(0.001, baseInputs.targetValue + focusSign * focusU)
+      };
+      const solved = solveRefractiveIndexEstimate({ inputs, targetType, targetValue: inputs.targetValue });
+      if (Number.isFinite(solved.estimatedN)) estimates.push(solved.estimatedN);
+    });
+  });
+  return estimates.length ? { low: Math.min(...estimates), high: Math.max(...estimates) } : null;
+};
+
+const solveGeometryExplorer = (options = {}) => {
+  const targetEfl = toNumber(options.targetEfl ?? state.geometryTargetEfl);
+  const diameter = toNumber(options.diameter ?? state.geometryDiameter);
+  const thickness = toNumber(options.thickness ?? state.geometryThickness);
+  const n = toNumber(options.n ?? state.geometryIndex);
+  const form = options.form || state.geometryForm;
+  const fixedR1 = toNumber(options.fixedR1 ?? state.geometryFixedR1);
+  const fixedR2 = toNumber(options.fixedR2 ?? state.geometryFixedR2);
+  if (!(targetEfl > 0) || !(diameter > 0)) {
+    return {
+      status: metrologyStatus("red", "Underdetermined", "Diameter + focal length alone cannot determine a unique curvature."),
+      warnings: ["Add thickness, refractive index and a form assumption."],
+      r1: NaN,
+      r2: NaN
+    };
+  }
+  if (!(thickness > 0) || !(n > 1) || !form) {
+    return {
+      status: metrologyStatus("red", "Underdetermined", "Diameter + focal length alone cannot determine a unique curvature."),
+      warnings: ["Add thickness, refractive index and a form assumption."],
+      r1: NaN,
+      r2: NaN
+    };
+  }
+  const radiiForScale = (scale) => {
+    switch (form) {
+      case "planoConvex": return { r1: scale, r2: 0 };
+      case "fixedR1": return { r1: fixedR1, r2: scale };
+      case "fixedR2": return { r1: scale, r2: fixedR2 };
+      case "positiveMeniscus": return { r1: scale, r2: scale * 2.2 };
+      case "negativeMeniscus": return { r1: -scale, r2: -scale * 2.2 };
+      case "symmetricalBiconvex":
+      default:
+        return { r1: scale, r2: -scale };
+    }
+  };
+  const residualAt = (scale) => {
+    const radii = radiiForScale(scale);
+    const system = calculateSystem([makeMetrologyLens({ ...radii, thickness, n, diameter })], SPECTRAL_LINES.d.wavelengthNm);
+    return system.effectiveFocalLength - targetEfl;
+  };
+  let bracket = null;
+  const min = Math.max(diameter / 2 + 0.01, 1);
+  const max = 5000;
+  const samples = Array.from({ length: 90 }, (_, index) => {
+    const t = index / 89;
+    const scale = min * (max / min) ** t;
+    return { scale, residual: residualAt(scale) };
+  }).filter((sample) => Number.isFinite(sample.residual));
+  for (let index = 1; index < samples.length; index += 1) {
+    const left = samples[index - 1];
+    const right = samples[index];
+    if (left.residual * right.residual <= 0) {
+      bracket = { left, right };
+      break;
+    }
+  }
+  if (!bracket) {
+    return {
+      status: metrologyStatus("red", "Physically inconsistent", "No feasible radius was found for the selected assumptions."),
+      warnings: ["Try a different form assumption, index, thickness or focal target."],
+      r1: NaN,
+      r2: NaN
+    };
+  }
+  let low = bracket.left.scale;
+  let high = bracket.right.scale;
+  let lowResidual = residualAt(low);
+  for (let iteration = 0; iteration < 90; iteration += 1) {
+    const mid = (low + high) / 2;
+    const midResidual = residualAt(mid);
+    if (Math.abs(midResidual) < 1e-7) {
+      low = mid;
+      high = mid;
+      break;
+    }
+    if (lowResidual * midResidual <= 0) {
+      high = mid;
+    } else {
+      low = mid;
+      lowResidual = midResidual;
+    }
+  }
+  const radii = radiiForScale((low + high) / 2);
+  const frontSag = surfaceSagFromRadius(diameter, radii.r1);
+  const rearSag = surfaceSagFromRadius(diameter, radii.r2);
+  const edgeThickness = thickness - (Number.isFinite(frontSag) ? frontSag : 0) - (Number.isFinite(rearSag) ? rearSag : 0);
+  const system = calculateSystem([makeMetrologyLens({ ...radii, thickness, n, diameter })], SPECTRAL_LINES.d.wavelengthNm);
+  return {
+    status: edgeThickness > 0
+      ? metrologyStatus("amber", "Assumption-driven", "Not uniquely determined from focal length and diameter alone.")
+      : metrologyStatus("red", "Physically inconsistent", "Predicted edge thickness is negative."),
+    warnings: ["Assumption-driven estimate — not uniquely determined from focal length and diameter alone."],
+    r1: radii.r1,
+    r2: radii.r2,
+    frontSag,
+    rearSag,
+    edgeThickness,
+    predictedEfl: system.effectiveFocalLength,
+    predictedBfl: system.backFocalLength
   };
 };
 
@@ -11552,24 +11993,189 @@ const renderSagittalTangentialRayFan3DPanel = (result) => {
   `;
 };
 
-const renderSagittaCalculator = () => {
-  const result = calculateSagitta();
+const renderMetrologyStatusBadge = (status) => `
+  <span class="metrology-status-badge metrology-status-${escapeHtml(status?.level || "amber")}">
+    ${escapeHtml(status?.label || "Assumption-driven")}
+  </span>
+`;
 
+const renderMetrologyPreview = (result) => {
+  const width = 260;
+  const height = 130;
+  const cx = width / 2;
+  const cy = height / 2 + 4;
+  const half = 86;
+  const frontBulge = clamp(Math.abs(toNumber(result.frontSag) || 0) * 5, 0, 36);
+  const rearBulge = clamp(Math.abs(toNumber(result.rearSag) || 0) * 5, 0, 36);
+  const r1x = cx - 30;
+  const r2x = cx + 30;
   return `
-    <section class="sagitta-panel">
+    <svg class="metrology-preview" viewBox="0 0 ${width} ${height}" role="img" aria-label="Metrology cross-section preview">
+      <line class="metrology-axis" x1="16" y1="${cy}" x2="${width - 16}" y2="${cy}" />
+      <line class="metrology-chord" x1="${cx - half}" y1="${cy - 42}" x2="${cx - half}" y2="${cy + 42}" />
+      <line class="metrology-chord" x1="${cx + half}" y1="${cy - 42}" x2="${cx + half}" y2="${cy + 42}" />
+      <path class="metrology-lens-preview" d="M ${r1x},${cy - 42} Q ${r1x - frontBulge},${cy} ${r1x},${cy + 42} L ${r2x},${cy + 42} Q ${r2x + rearBulge},${cy} ${r2x},${cy - 42} Z" />
+      <text x="${cx}" y="18" text-anchor="middle">measurement chord ${formatNumber(result.diameter, 1)} mm</text>
+      <text x="${r1x - 18}" y="${cy - 48}" text-anchor="end">R1 ${formatNumber(result.r1, 2)}</text>
+      <text x="${r2x + 18}" y="${cy - 48}" text-anchor="start">R2 ${formatNumber(result.r2, 2)}</text>
+    </svg>
+  `;
+};
+
+const renderMetrologyModeTabs = () => {
+  const modes = [
+    ["surface", "Surface Metrology"],
+    ["index", "Refractive Index Estimate"],
+    ["geometry", "Geometry Explorer"]
+  ];
+  return `
+    <div class="metrology-tabs" role="tablist" aria-label="Lens metrology modes">
+      ${modes.map(([mode, label]) => `
+        <button class="metrology-tab ${state.metrologyMode === mode ? "is-active" : ""}" type="button" role="tab" aria-selected="${state.metrologyMode === mode}" data-action="set-metrology-mode" data-mode="${mode}">
+          ${escapeHtml(label)}
+        </button>
+      `).join("")}
+    </div>
+  `;
+};
+
+const renderSurfaceMetrologyPanel = (result) => `
+  <div class="metrology-grid">
+    ${panelSteppableInput({ field: "sagDiameter", label: "Measurement chord diameter", action: "update-metrology", unit: "mm" })}
+    ${panelSteppableInput({ field: "sagHeight", label: "Front sag", action: "update-metrology", unit: "mm" })}
+    ${panelSteppableInput({ field: "metrologyRearSag", label: "Rear sag", action: "update-metrology", unit: "mm" })}
+    <label class="control">
+      Lens form
+      <select data-action="update-metrology-select" data-field="metrologyLensForm">
+        ${METROLOGY_LENS_FORMS.map((form) => `<option value="${form.value}" ${state.metrologyLensForm === form.value ? "selected" : ""}>${form.label}</option>`).join("")}
+      </select>
+    </label>
+  </div>
+  <div class="metrology-status-row">
+    ${renderMetrologyStatusBadge(result.status)}
+    <span>Chord diameter is the measurement chord, not the mechanical outside diameter.</span>
+  </div>
+  <div class="metrology-results-layout">
+    ${renderMetrologyPreview(result)}
+    <div class="compact-metric-row">
+      ${metric("R1", formatNumber(result.r1, 3), "mm")}
+      ${metric("R2", formatNumber(result.r2, 3), "mm")}
+      ${metric("Front arc angle", formatNumber(result.frontAngle, 2), "deg")}
+      ${metric("Rear arc angle", formatNumber(result.rearAngle, 2), "deg")}
+    </div>
+  </div>
+  <div class="metrology-actions">
+    <button type="button" data-action="copy-metrology-value" data-copy-value="${formatNumber(result.r1, 6)}">Copy R1</button>
+    <button type="button" data-action="copy-metrology-value" data-copy-value="${formatNumber(result.r2, 6)}">Copy R2</button>
+    <label>
+      Selected lens
+      <select data-action="update-metrology-selected-lens">
+        ${state.lenses.map((lens, index) => `<option value="${index}" ${Number(state.metrologySelectedLensIndex) === index ? "selected" : ""}>L${index + 1}</option>`).join("")}
+      </select>
+    </label>
+    <button type="button" data-action="copy-metrology-to-lens" ${result.valid ? "" : "disabled"}>Copy All to Selected Lens</button>
+  </div>
+`;
+
+const renderIndexEstimatePanel = (surfaceResult) => {
+  const inputs = metrologyIndexInputValues(surfaceResult);
+  const result = solveRefractiveIndexEstimate({ surfaceResult, inputs });
+  const uncertainty = estimateIndexUncertaintyRange(inputs, state.indexEstimateTargetType);
+  return `
+    <div class="metrology-grid">
+      ${panelSteppableInput({ field: "indexEstimateR1", label: "R1", action: "update-metrology", unit: "mm", value: inputs.r1 })}
+      ${panelSteppableInput({ field: "indexEstimateR2", label: "R2", action: "update-metrology", unit: "mm", value: inputs.r2 })}
+      ${panelSteppableInput({ field: "indexEstimateThickness", label: "Centre thickness", action: "update-metrology", unit: "mm" })}
+      ${panelSteppableInput({ field: "indexEstimateEdgeThickness", label: "Optional edge thickness", action: "update-metrology", unit: "mm" })}
+      <label class="control">
+        Target type
+        <select data-action="update-metrology-select" data-field="indexEstimateTargetType">
+          <option value="efl" ${state.indexEstimateTargetType === "efl" ? "selected" : ""}>Effective focal length</option>
+          <option value="bfl" ${state.indexEstimateTargetType === "bfl" ? "selected" : ""}>Back focal length from rear vertex</option>
+          <option value="finite" ${state.indexEstimateTargetType === "finite" ? "selected" : ""}>Finite-conjugate test</option>
+        </select>
+      </label>
+      ${panelSteppableInput({ field: "indexEstimateTargetValue", label: "Target focal / BFL value", action: "update-metrology", unit: "mm" })}
+      ${panelSteppableInput({ field: "indexEstimateWavelengthNm", label: "Test wavelength", action: "update-metrology", unit: "nm" })}
+      <label class="control">
+        Lens form
+        <select data-action="update-metrology-select" data-field="indexEstimateLensForm">
+          ${METROLOGY_LENS_FORMS.map((form) => `<option value="${form.value}" ${state.indexEstimateLensForm === form.value ? "selected" : ""}>${form.label}</option>`).join("")}
+        </select>
+      </label>
+      ${panelSteppableInput({ field: "indexEstimateSearchMin", label: "Search n min", action: "update-metrology", unit: "" })}
+      ${panelSteppableInput({ field: "indexEstimateSearchMax", label: "Search n max", action: "update-metrology", unit: "" })}
+    </div>
+    <div class="metrology-status-row">
+      ${renderMetrologyStatusBadge(result.status)}
+      <span>Estimated refractive index at test wavelength. This is not a glass identification.</span>
+    </div>
+    <div class="compact-metric-row">
+      ${metric("Estimated n", formatNumber(result.estimatedN, 5), `${formatNumber(inputs.wavelengthNm, 1)} nm`)}
+      ${metric("Predicted EFL", formatNumber(result.predictedEfl, 3), "mm")}
+      ${metric("Predicted BFL", formatNumber(result.predictedBfl, 3), "mm")}
+      ${metric("Residual", formatNumber(result.residual, 6), "mm")}
+      ${metric("Convergence", result.convergenceStatus || "--", result.candidateFamilyHint || "")}
+      ${uncertainty ? metric("n uncertainty range", `${formatNumber(uncertainty.low, 5)}–${formatNumber(uncertainty.high, 5)}`, "simple perturbation") : ""}
+    </div>
+    <details class="metrology-uncertainty">
+      <summary>Measurement quality / uncertainty</summary>
+      <div class="metrology-grid">
+        ${panelSteppableInput({ field: "metrologySagUncertainty", label: "Sag uncertainty", action: "update-metrology", unit: "mm" })}
+        ${panelSteppableInput({ field: "metrologyThicknessUncertainty", label: "Thickness uncertainty", action: "update-metrology", unit: "mm" })}
+        ${panelSteppableInput({ field: "metrologyFocusUncertainty", label: "Focus measurement uncertainty", action: "update-metrology", unit: "mm" })}
+      </div>
+      <p class="diagram-note">White-light focus is chromatic. Refractive index depends on wavelength and measurement setup.</p>
+    </details>
+    ${result.warnings.map((warning) => `<p class="warning ray-warning">${escapeHtml(warning)}</p>`).join("")}
+  `;
+};
+
+const renderGeometryExplorerPanel = () => {
+  const result = solveGeometryExplorer();
+  return `
+    <div class="metrology-grid">
+      ${panelSteppableInput({ field: "geometryTargetEfl", label: "Target EFL", action: "update-metrology", unit: "mm" })}
+      ${panelSteppableInput({ field: "geometryDiameter", label: "Lens diameter", action: "update-metrology", unit: "mm" })}
+      ${panelSteppableInput({ field: "geometryThickness", label: "Centre thickness", action: "update-metrology", unit: "mm" })}
+      ${panelSteppableInput({ field: "geometryIndex", label: "Assumed refractive index", action: "update-metrology", unit: "" })}
+      <label class="control">
+        Form assumption
+        <select data-action="update-metrology-select" data-field="geometryForm">
+          ${GEOMETRY_EXPLORER_FORMS.map((form) => `<option value="${form.value}" ${state.geometryForm === form.value ? "selected" : ""}>${form.label}</option>`).join("")}
+        </select>
+      </label>
+      ${panelSteppableInput({ field: "geometryFixedR1", label: "Fixed R1", action: "update-metrology", unit: "mm" })}
+      ${panelSteppableInput({ field: "geometryFixedR2", label: "Fixed R2", action: "update-metrology", unit: "mm" })}
+    </div>
+    <div class="metrology-status-row">
+      ${renderMetrologyStatusBadge(result.status)}
+      <span class="badge badge-warning">Assumption-driven estimate — not uniquely determined from focal length and diameter alone.</span>
+    </div>
+    <div class="compact-metric-row">
+      ${metric("Feasible R1", formatNumber(result.r1, 3), "mm")}
+      ${metric("Feasible R2", formatNumber(result.r2, 3), "mm")}
+      ${metric("Front sag", formatNumber(result.frontSag, 3), "mm")}
+      ${metric("Rear sag", formatNumber(result.rearSag, 3), "mm")}
+      ${metric("Predicted edge thickness", formatNumber(result.edgeThickness, 3), "mm")}
+      ${metric("Predicted EFL", formatNumber(result.predictedEfl, 3), "mm")}
+    </div>
+    ${result.warnings.map((warning) => `<p class="warning ray-warning">${escapeHtml(warning)}</p>`).join("")}
+  `;
+};
+
+const renderSagittaCalculator = () => {
+  const surfaceResult = calculateSurfaceMetrology();
+  const mode = state.metrologyMode || "surface";
+  return `
+    <section class="sagitta-panel metrology-panel">
       <div class="panel-heading">
-        <h3>Sagitta / Radius Calculator</h3>
+        <h3>Lens Metrology &amp; Inverse Solver</h3>
       </div>
-      ${menuIntro("sagitta")}
-      <div class="sagitta-inputs">
-        ${panelSteppableInput({ field: "sagDiameter", label: "Lens diameter", action: "update-sagitta", unit: "mm" })}
-        ${panelSteppableInput({ field: "sagHeight", label: "Lens height / sag", action: "update-sagitta", unit: "mm" })}
-      </div>
-      <div class="sagitta-results">
-        ${metric("Curvature radius", formatNumber(result.radius), "mm")}
-        ${metric("Arc angle", formatNumber(result.angleDegrees), "degrees")}
-      </div>
-      <p class="diagram-note">Formula: a = diameter / 2, R = (a^2 + sag^2) / (2sag). Use this radius as a starting value for R1 or R2.</p>
+      ${renderMetrologyModeTabs()}
+      ${state.metrologyCopyStatus ? `<p class="copy-status">${escapeHtml(state.metrologyCopyStatus)}</p>` : ""}
+      ${mode === "index" ? renderIndexEstimatePanel(surfaceResult) : mode === "geometry" ? renderGeometryExplorerPanel() : renderSurfaceMetrologyPanel(surfaceResult)}
+      <p class="diagram-note">The utility stays separate from the lens prescription until you explicitly copy values to a selected lens.</p>
     </section>
   `;
 };
@@ -16113,7 +16719,7 @@ const render = () => {
             `)}
 
             ${renderWorkflowGroup("Utility", `
-              ${renderWorkflowPanel("sagittaUtility", isPanelExpanded("sagittaUtility") ? renderSagittaCalculator() : "", { summary: "Sag / radius" })}
+              ${renderWorkflowPanel("sagittaUtility", isPanelExpanded("sagittaUtility") ? renderSagittaCalculator() : "", { summary: "Metrology / inverse" })}
             `)}
           </aside>
         </div>
@@ -16652,6 +17258,20 @@ mount.addEventListener("input", (event) => {
     update();
 
     const sameInput = mount.querySelector(`[data-action="update-sagitta"][data-field="${event.target.dataset.field}"]`);
+    if (sameInput) sameInput.focus();
+    return;
+  }
+
+  if (action === "update-metrology") {
+    const field = event.target.dataset.field;
+    const nullableFields = new Set(["indexEstimateR1", "indexEstimateR2", "indexEstimateEdgeThickness"]);
+    state[field] = nullableFields.has(field) && event.target.value.trim() === ""
+      ? null
+      : event.target.value;
+    state.metrologyCopyStatus = "";
+    update();
+
+    const sameInput = mount.querySelector(`[data-action="update-metrology"][data-field="${field}"]`);
     if (sameInput) sameInput.focus();
     return;
   }
@@ -17324,6 +17944,28 @@ mount.addEventListener("change", (event) => {
     return;
   }
 
+  if (event.target.dataset.action === "update-metrology-select") {
+    const field = event.target.dataset.field;
+    const allowed = {
+      metrologyLensForm: METROLOGY_LENS_FORMS.map((item) => item.value),
+      indexEstimateTargetType: ["efl", "bfl", "finite"],
+      indexEstimateLensForm: METROLOGY_LENS_FORMS.map((item) => item.value),
+      geometryForm: GEOMETRY_EXPLORER_FORMS.map((item) => item.value)
+    };
+    if (allowed[field]?.includes(event.target.value)) {
+      state[field] = event.target.value;
+      state.metrologyCopyStatus = "";
+    }
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-metrology-selected-lens") {
+    state.metrologySelectedLensIndex = clamp(Math.round(toNumber(event.target.value) || 0), 0, Math.max(0, state.lenses.length - 1));
+    update();
+    return;
+  }
+
   if (event.target.dataset.action === "update-physical-mtf-grid") {
     state.physicalMtfGridSize = [128, 256].includes(toNumber(event.target.value)) ? toNumber(event.target.value) : 128;
     if (state.physicalMtfLabOpen) schedulePhysicalMtfLabCalculation();
@@ -17615,6 +18257,48 @@ mount.addEventListener("click", (event) => {
     loadPresetIntoState(button.dataset.preset);
   }
 
+  if (action === "set-metrology-mode") {
+    state.metrologyMode = ["surface", "index", "geometry"].includes(button.dataset.mode)
+      ? button.dataset.mode
+      : "surface";
+    update();
+    return;
+  }
+
+  if (action === "copy-metrology-value") {
+    const value = button.dataset.copyValue || "";
+    state.metrologyCopyStatus = "Copying...";
+    copyTextToClipboard(value)
+      .then(() => {
+        state.metrologyCopyStatus = "Copied value";
+        update();
+      })
+      .catch(() => {
+        state.metrologyCopyStatus = value ? `Copy manually: ${value}` : "Nothing to copy";
+        update();
+      });
+    update();
+    return;
+  }
+
+  if (action === "copy-metrology-to-lens") {
+    const result = calculateSurfaceMetrology();
+    const index = clamp(Math.round(toNumber(state.metrologySelectedLensIndex) || 0), 0, Math.max(0, state.lenses.length - 1));
+    const lens = state.lenses[index];
+    if (!lens || !result.valid) return;
+    rememberState();
+    lens.r1 = roundedLensFieldValue("r1", result.r1);
+    lens.r2 = roundedLensFieldValue("r2", result.r2);
+    state.indexEstimateR1 = lens.r1;
+    state.indexEstimateR2 = lens.r2;
+    state.preset = "custom";
+    resetGeneratedAnalysisState();
+    scheduleOpticalAnalysisRefresh();
+    state.metrologyCopyStatus = `Copied R1/R2 to L${index + 1}`;
+    update();
+    return;
+  }
+
   if (action === "toggle-panel") {
     const panelId = button.dataset.panel;
     const isCurrentlyCollapsed = (state.collapsedPanels || {})[panelId] === true;
@@ -17853,6 +18537,57 @@ const runOpticsSelfCheck = () => {
       });
     }
   };
+
+  test("surface metrology sag formula returns expected radius", () => (
+    Math.abs(sphericalRadiusFromSag(50, 4) - 80.125) < 1e-9
+  ));
+
+  test("refractive index inverse solver round-trips thick-lens EFL", () => {
+    const sourceLens = makeMetrologyLens({ r1: 80, r2: -80, thickness: 6, n: 1.5168, diameter: 50 });
+    const sourceSystem = calculateSystem([sourceLens], SPECTRAL_LINES.d.wavelengthNm);
+    const solved = solveRefractiveIndexEstimate({
+      inputs: {
+        r1: 80,
+        r2: -80,
+        thickness: 6,
+        targetValue: sourceSystem.effectiveFocalLength,
+        wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+        searchMin: 1.3,
+        searchMax: 2.2
+      },
+      targetType: "efl",
+      targetValue: sourceSystem.effectiveFocalLength
+    });
+    return solved.status.level === "green"
+      && Math.abs(solved.estimatedN - 1.5168) < 0.0001
+      && Math.abs(solved.residual) < 0.0001;
+  });
+
+  test("geometry explorer rejects diameter and focal length only as underdetermined", () => {
+    const result = solveGeometryExplorer({ targetEfl: 50, diameter: 50, thickness: NaN, n: NaN, form: "" });
+    return result.status.level === "red"
+      && result.status.label === "Underdetermined";
+  });
+
+  test("metrology inverse solver fails gracefully for no root and plano power", () => {
+    const noRoot = solveRefractiveIndexEstimate({
+      inputs: {
+        r1: 0,
+        r2: 0,
+        thickness: 6,
+        targetValue: 50,
+        wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+        searchMin: 1.3,
+        searchMax: 2.2
+      },
+      targetType: "efl",
+      targetValue: 50
+    });
+    const invalidSag = calculateSurfaceMetrology({ diameter: 50, frontSag: 0, rearSag: 4, form: "biconvex" });
+    return noRoot.status.level === "red"
+      && !Number.isFinite(noRoot.estimatedN)
+      && invalidSag.status.level === "red";
+  });
 
   test("plano-plano lens does not focus and does not crash", () => {
     const lenses = [{ diameter: 40, thickness: 5, refractiveIndex: 1.5, r1: 0, r2: 0, gapAfter: 0 }];

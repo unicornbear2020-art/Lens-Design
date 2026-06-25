@@ -1922,6 +1922,129 @@ select {
   gap: 10px;
 }
 
+.metrology-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 10px;
+}
+
+.metrology-tab {
+  min-height: 30px;
+  padding: 6px 10px;
+  border: 1px solid rgba(121, 189, 217, 0.28);
+  border-radius: 999px;
+  background: rgba(10, 53, 86, 0.36);
+  color: #d7e5ee;
+  font-size: 0.7rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.metrology-tab.is-active {
+  border-color: rgba(255, 183, 3, 0.72);
+  background: rgba(255, 183, 3, 0.18);
+  color: #f8f6f2;
+}
+
+.metrology-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(130px, 1fr));
+  gap: 8px;
+  align-items: end;
+}
+
+.metrology-status-row,
+.metrology-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.metrology-actions button,
+.metrology-actions select {
+  min-height: 30px;
+  font-size: 0.7rem;
+}
+
+.metrology-status-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+}
+
+.metrology-status-green {
+  background: rgba(46, 204, 113, 0.2);
+  color: #d8ffe8;
+  border: 1px solid rgba(46, 204, 113, 0.5);
+}
+
+.metrology-status-amber {
+  background: rgba(255, 183, 3, 0.2);
+  color: #fff2c7;
+  border: 1px solid rgba(255, 183, 3, 0.56);
+}
+
+.metrology-status-red {
+  background: rgba(216, 58, 58, 0.2);
+  color: #ffe0e0;
+  border: 1px solid rgba(216, 58, 58, 0.6);
+}
+
+.metrology-results-layout {
+  display: grid;
+  grid-template-columns: minmax(180px, 260px) minmax(0, 1fr);
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.metrology-preview {
+  width: 100%;
+  border: 1px solid rgba(121, 189, 217, 0.24);
+  border-radius: 10px;
+  background: rgba(248, 246, 242, 0.96);
+}
+
+.metrology-preview text {
+  fill: #0a3556;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.metrology-axis {
+  stroke: rgba(10, 53, 86, 0.42);
+  stroke-dasharray: 5 4;
+}
+
+.metrology-chord {
+  stroke: #c78300;
+  stroke-width: 1.4;
+}
+
+.metrology-lens-preview {
+  fill: rgba(121, 189, 217, 0.28);
+  stroke: #0a3556;
+  stroke-width: 2;
+}
+
+.metrology-uncertainty {
+  margin-top: 10px;
+}
+
+@media (max-width: 520px) {
+  .metrology-grid,
+  .metrology-results-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
 .image-circle-panel {
   display: grid;
   grid-column: span 3;

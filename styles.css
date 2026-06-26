@@ -701,6 +701,12 @@ select:focus-visible {
   font-weight: 900;
 }
 
+.duplicate-button {
+  border-color: rgba(121, 189, 217, 0.42);
+  background: rgba(121, 189, 217, 0.14);
+  color: var(--ink);
+}
+
 .lens-card-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(118px, 0.28fr);
@@ -708,6 +714,24 @@ select:focus-visible {
 
 .lens-stack-card.is-collapsed .lens-card-body {
   display: none;
+}
+
+.lens-geometry-limit {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 183, 3, 0.36);
+  border-radius: 8px;
+  background: rgba(255, 183, 3, 0.12);
+  color: #fff8e3;
+  font-size: 0.68rem;
+}
+
+.lens-geometry-limit strong {
+  color: #ffcc45;
 }
 
 .lens-control-section .lens-title {
@@ -3221,6 +3245,43 @@ select {
   color: rgba(215, 229, 238, 0.86);
   font-size: 0.72rem;
   line-height: 1.45;
+}
+
+.geometry-analysis-diagnostics {
+  display: grid;
+  gap: 10px;
+}
+
+.diagnostic-row-grid {
+  display: grid;
+  gap: 6px;
+}
+
+.diagnostic-row {
+  display: grid;
+  grid-template-columns: minmax(34px, auto) repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  align-items: center;
+  padding: 7px 9px;
+  border: 1px solid rgba(121, 189, 217, 0.2);
+  border-radius: 8px;
+  background: rgba(10, 53, 86, 0.45);
+  color: #f8f6f2;
+  font-size: 0.68rem;
+}
+
+.diagnostic-row span {
+  min-width: 0;
+  color: rgba(248, 246, 242, 0.86);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diagnostic-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .mtf-aperture-sweep-controls {

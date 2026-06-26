@@ -275,6 +275,11 @@ const PANEL_FIELD_STEPS = {
 
 const DEFAULT_ANALYSIS_SETTINGS = {
   diagramViewMode: "optical",
+  diagramRenderStyle: "professionalOptical",
+  diagramLensFill: false,
+  diagramRayDisplayMode: "selected",
+  diagramRayFieldKey: "center",
+  diagramCustomFieldAngleDegrees: 20,
   productionSilhouetteSource: "generated",
   showSvgReferenceOverlay: false,
   patentDiameterSource: "auto",
@@ -2123,15 +2128,87 @@ const DIAGRAM_VIEW_OPTIONS = [
 ];
 
 const DIAGRAM_GEOMETRY_DISPLAY_OPTIONS = [
-  { value: "safe", label: "Manufacturing-safe" },
+  { value: "safe", label: "Optical layout" },
+  { value: "manufacturing", label: "Manufacturing envelope" },
   { value: "requested", label: "Requested profile" },
   { value: "invalidLines", label: "Invalid geometry lines" }
 ];
+
+const DIAGRAM_RENDER_STYLE_OPTIONS = [
+  { value: "professionalOptical", label: "Professional Optical" },
+  { value: "transparentGlass", label: "Transparent glass" },
+  { value: "manufacturingEnvelope", label: "Manufacturing envelope" },
+  { value: "requestedInvalid", label: "Requested / invalid" }
+];
+
+const normalizeDiagramRenderStyle = (style) => (
+  DIAGRAM_RENDER_STYLE_OPTIONS.some((option) => option.value === style)
+    ? style
+    : DEFAULT_ANALYSIS_SETTINGS.diagramRenderStyle
+);
+
+const diagramGeometryModeForRenderStyle = (style, fallback = state.diagramGeometryDisplayMode) => {
+  const normalized = normalizeDiagramRenderStyle(style);
+  if (normalized === "manufacturingEnvelope") return "manufacturing";
+  if (normalized === "requestedInvalid") return "invalidLines";
+  return "safe";
+};
+
+const isProfessionalOpticalRenderStyle = (style) => normalizeDiagramRenderStyle(style) === "professionalOptical";
+const isTransparentGlassRenderStyle = (style) => normalizeDiagramRenderStyle(style) === "transparentGlass";
+const shouldRenderOpticalStyleFill = (style) => (
+  isTransparentGlassRenderStyle(style) || (isProfessionalOpticalRenderStyle(style) && state.diagramLensFill === true)
+);
+
+const DIAGRAM_RAY_DISPLAY_OPTIONS = [
+  { value: "selected", label: "Selected field" },
+  { value: "centerEdge", label: "Centre + edge comparison" },
+  { value: "all", label: "All fields" }
+];
+
+const DIAGRAM_RAY_FIELD_OPTIONS = [
+  { value: "center", label: "On-axis" },
+  { value: "mid", label: "0.7 field" },
+  { value: "corner", label: "Full field" },
+  { value: "custom", label: "Custom" }
+];
+
+const normalizeDiagramRayDisplayMode = (mode) => (
+  DIAGRAM_RAY_DISPLAY_OPTIONS.some((option) => option.value === mode)
+    ? mode
+    : DEFAULT_ANALYSIS_SETTINGS.diagramRayDisplayMode
+);
+
+const normalizeDiagramRayFieldKey = (fieldKey) => (
+  DIAGRAM_RAY_FIELD_OPTIONS.some((option) => option.value === fieldKey)
+    ? fieldKey
+    : DEFAULT_ANALYSIS_SETTINGS.diagramRayFieldKey
+);
 
 const normalizeDiagramGeometryDisplayMode = (mode) => (
   DIAGRAM_GEOMETRY_DISPLAY_OPTIONS.some((option) => option.value === mode)
     ? mode
     : DEFAULT_ANALYSIS_SETTINGS.diagramGeometryDisplayMode
+);
+
+const isRequestedGeometryDisplayMode = (mode) => (
+  normalizeDiagramGeometryDisplayMode(mode) === "requested"
+);
+
+const isOpticalLayoutGeometryDisplayMode = (mode) => (
+  normalizeDiagramGeometryDisplayMode(mode) === "safe"
+);
+
+const isManufacturingGeometryDisplayMode = (mode) => (
+  normalizeDiagramGeometryDisplayMode(mode) === "manufacturing"
+);
+
+const isInvalidLinesGeometryDisplayMode = (mode) => (
+  normalizeDiagramGeometryDisplayMode(mode) === "invalidLines"
+);
+
+const usesRequestedGeometryDisplay = (mode) => (
+  isRequestedGeometryDisplayMode(mode) || isInvalidLinesGeometryDisplayMode(mode)
 );
 
 const SUPPORTED_DIAGRAM_VIEW_MODES = [
@@ -2248,7 +2325,17 @@ const loadPresetIntoState = (presetKey) => {
 const snapshotState = () => ({
   preset: state.preset,
   prescription: clonePrescriptionForHistory(state.prescription),
-  lenses: cloneLensesForHistory(state.lenses)
+  lenses: cloneLensesForHistory(state.lenses),
+  collapsedLensCards: { ...(state.collapsedLensCards || {}) },
+  lensEditStatus: state.lensEditStatus || "",
+  diagramAperturePreviewMode: state.diagramAperturePreviewMode,
+  diagramAperturePreviewKey: state.diagramAperturePreviewKey,
+  diagramGeometryDisplayMode: state.diagramGeometryDisplayMode,
+  diagramRenderStyle: state.diagramRenderStyle,
+  diagramLensFill: state.diagramLensFill,
+  diagramRayDisplayMode: state.diagramRayDisplayMode,
+  diagramRayFieldKey: state.diagramRayFieldKey,
+  diagramCustomFieldAngleDegrees: state.diagramCustomFieldAngleDegrees
 });
 
 const restoreSnapshot = (snapshot) => {
@@ -2269,6 +2356,18 @@ const restoreSnapshot = (snapshot) => {
       lenses: state.lenses
     });
   }
+  state.collapsedLensCards = { ...(snapshot.collapsedLensCards || {}) };
+  state.lensEditStatus = snapshot.lensEditStatus || "";
+  state.diagramAperturePreviewMode = normalizeDiagramAperturePreviewMode(snapshot.diagramAperturePreviewMode);
+  state.diagramAperturePreviewKey = apertureOptionByKey(snapshot.diagramAperturePreviewKey).key;
+  state.diagramGeometryDisplayMode = normalizeDiagramGeometryDisplayMode(snapshot.diagramGeometryDisplayMode);
+  state.diagramRenderStyle = normalizeDiagramRenderStyle(snapshot.diagramRenderStyle);
+  state.diagramLensFill = snapshot.diagramLensFill === true;
+  state.diagramRayDisplayMode = normalizeDiagramRayDisplayMode(snapshot.diagramRayDisplayMode);
+  state.diagramRayFieldKey = normalizeDiagramRayFieldKey(snapshot.diagramRayFieldKey);
+  state.diagramCustomFieldAngleDegrees = Number.isFinite(toNumber(snapshot.diagramCustomFieldAngleDegrees))
+    ? toNumber(snapshot.diagramCustomFieldAngleDegrees)
+    : DEFAULT_ANALYSIS_SETTINGS.diagramCustomFieldAngleDegrees;
 };
 
 const rememberState = () => {
@@ -2493,7 +2592,11 @@ const duplicateLensAfter = (lensId) => {
   PATENT_LINKAGE_FIELDS.forEach((field) => {
     delete duplicated[field];
   });
-  duplicated.manufacturingGeometrySource = duplicated.manufacturingGeometrySource || source.manufacturingGeometrySource || "estimated";
+  duplicated.duplicatedFromLensId = source.id;
+  duplicated.apertureSource = "manual";
+  duplicated.diameterSource = "duplicated";
+  duplicated.manufacturingGeometrySource = "duplicated";
+  duplicated.sourceNote = `Duplicated from ${source.id}`;
   source.gapAfter = 1;
   state.lenses.splice(sourceIndex + 1, 0, duplicated);
   state.collapsedLensCards = {
@@ -3564,6 +3667,7 @@ const renderLens = (lens, index, result, manufacturingModel = null) => `
         }
       </div>
       ${renderLensGeometryLimitNotice(lens, manufacturingModel)}
+      ${lens.duplicatedFromLensId ? `<p class="lens-source-note">Duplicated element</p>` : ""}
       <div class="lens-material-grid">
         ${renderTypeControl(lens)}
         ${renderGlassControl(lens)}
@@ -3622,7 +3726,9 @@ const lensPositions = (system, lenses = state.lenses) => {
   return positions;
 };
 
-const createSvgPointMapper = (system, chromaticSystems) => {
+const createSvgPointMapper = (system, chromaticSystems, options = {}) => {
+  const geometryDisplayMode = normalizeDiagramGeometryDisplayMode(options.geometryDisplayMode);
+  const includeRequestedDiameter = usesRequestedGeometryDisplay(geometryDisplayMode);
   const width = DIAGRAM_SIZE.width;
   const height = DIAGRAM_SIZE.height;
   const margin = { left: 60, right: 60, top: 60, bottom: 82 };
@@ -3634,6 +3740,7 @@ const createSvgPointMapper = (system, chromaticSystems) => {
         result.diameter,
         toNumber(lens.visualDiameter) || 0,
         toNumber(lens.mechanicalDiameter) || 0,
+        includeRequestedDiameter ? toNumber(lens.requestedMechanicalDiameterMm) || 0 : 0,
         toNumber(lens.clearApertureDiameter) || 0,
         toNumber(lens.patentFrontClearAperture) || 0,
         toNumber(lens.patentRearClearAperture) || 0
@@ -3686,6 +3793,7 @@ const createSvgPointMapper = (system, chromaticSystems) => {
     lensStackCenter,
     positions,
     mmScale,
+    verticalHalfRange,
     displayDirection: "objectToImage",
     x,
     y: (mm) => axisY - mm * mmScale,
@@ -6858,6 +6966,79 @@ const visibleRayTraceResults = (dLineResults, spectralResults) => (
   state.spotDisplayMode === "rgb" ? spectralResults : dLineResults
 );
 
+const diagramRayFieldDefinition = (fieldKey) => {
+  const normalized = normalizeDiagramRayFieldKey(fieldKey);
+  if (normalized === "custom") {
+    const angle = Number.isFinite(toNumber(state.diagramCustomFieldAngleDegrees))
+      ? toNumber(state.diagramCustomFieldAngleDegrees)
+      : DEFAULT_ANALYSIS_SETTINGS.diagramCustomFieldAngleDegrees;
+    return {
+      key: "custom",
+      name: `Custom ${formatNumber(angle, 1)}°`,
+      angle
+    };
+  }
+  const field = RAY_TRACE_FIELDS.find((item) => item.key === normalized)
+    || RAY_TRACE_FIELDS.find((item) => item.key === "center")
+    || RAY_TRACE_FIELDS[0];
+  return {
+    key: field.key,
+    name: field.name,
+    angle: field.angle
+  };
+};
+
+const diagramRayFields = () => {
+  const mode = normalizeDiagramRayDisplayMode(state.diagramRayDisplayMode);
+  if (mode === "all") {
+    return RAY_TRACE_FIELDS.map((field) => ({
+      key: field.key,
+      name: field.name,
+      angle: field.angle,
+      secondaryRayBundle: false
+    }));
+  }
+  if (mode === "centerEdge") {
+    const center = diagramRayFieldDefinition("center");
+    const edge = diagramRayFieldDefinition("corner");
+    return [
+      { ...center, secondaryRayBundle: false },
+      { ...edge, secondaryRayBundle: true }
+    ];
+  }
+  return [{ ...diagramRayFieldDefinition(state.diagramRayFieldKey), secondaryRayBundle: false }];
+};
+
+const traceDiagramFieldSet = (lenses, system, options = {}) => diagramRayFields().map((field) => ({
+  ...traceSystemRealRays(lenses, system, {
+    ...rayTraceApertureOptions(options),
+    fieldAngleDegrees: field.angle,
+    rayCount: options.rayCount,
+    wavelengthNm: options.wavelengthNm ?? SPECTRAL_LINES.d.wavelengthNm,
+    spectralLineKey: options.spectralLineKey ?? "d",
+    fieldKey: field.key,
+    fieldName: field.name
+  }),
+  fieldKey: field.key,
+  fieldName: field.name,
+  fieldAngleDegrees: field.angle,
+  secondaryRayBundle: field.secondaryRayBundle === true,
+  diagnosticRayOverlay: normalizeDiagramRayDisplayMode(state.diagramRayDisplayMode) === "all"
+}));
+
+const traceDiagramSpectralFieldSet = (lenses, geometrySystem, options = {}) => Object.entries(SPECTRAL_LINES)
+  .flatMap(([lineKey, line]) => traceDiagramFieldSet(lenses, geometrySystem, {
+    ...options,
+    wavelengthNm: line.wavelengthNm,
+    spectralLineKey: lineKey
+  }));
+
+const visibleDiagramRayTraceResults = (dLineResults, spectralResults) => (
+  normalizeDiagramRayDisplayMode(state.diagramRayDisplayMode) === "all" && state.spotDisplayMode === "rgb"
+    ? spectralResults
+    : dLineResults
+);
+
 const SENSOR_FORMATS = [
   { key: "fullFrame", name: "Full-frame", width: 36, height: 24, diagonal: FULL_FRAME_SENSOR.diagonal },
   { key: "apsC", name: "APS-C", width: 23.5, height: 15.6, diagonal: 28.2 },
@@ -8673,6 +8854,8 @@ const shouldUseMechanicalValidation = (
 );
 
 const buildPrescriptionLensRenderModel = (position, mapper, result, lens, lensIndex, rayTraceResults, options = {}) => {
+  const geometryDisplayMode = normalizeDiagramGeometryDisplayMode(options.geometryDisplayMode);
+  const showRequestedGeometry = usesRequestedGeometryDisplay(geometryDisplayMode);
   const frontSurface = prescriptionSurfaceForDrawing(position, result, lens, "front");
   const rearSurface = prescriptionSurfaceForDrawing(position, result, lens, "rear");
   const statedFront = statedSurfaceSemiDiameter(lens, result, "front");
@@ -8688,6 +8871,7 @@ const buildPrescriptionLensRenderModel = (position, mapper, result, lens, lensIn
   const fallbackSemiDiameter = Math.max(clearApertureSemiDiameter, (toNumber(lens.visualDiameter) || result.diameter) / 2);
   const unconstrainedRequestedSemiDiameter = Math.max(
     clearApertureSemiDiameter,
+    toNumber(lens.requestedMechanicalDiameterMm) > 0 ? toNumber(lens.requestedMechanicalDiameterMm) / 2 :
     toNumber(lens.mechanicalDiameter) > 0 ? toNumber(lens.mechanicalDiameter) / 2 : fallbackSemiDiameter
   );
   if (options.mechanicalValidation === false) {
@@ -8714,7 +8898,8 @@ const buildPrescriptionLensRenderModel = (position, mapper, result, lens, lensIn
     const frontPoints = frontMm.map((point) => ({ x: mapper.x(point.x), y: mapper.y(point.y) }));
     const rearPoints = rearMm.map((point) => ({ x: mapper.x(point.x), y: mapper.y(point.y) }));
     const polygonPoints = [...frontPoints, ...rearPoints];
-    const fallbackFill = buildOpticalFillFallbackPath(frontSurface, rearSurface, clearApertureSemiDiameter, mapper);
+    const opticalLayoutProfile = buildOpticalSurfaceProfile(frontSurface, rearSurface, clearApertureSemiDiameter, mapper);
+    const fallbackFill = { path: opticalLayoutProfile.polygonPath, radius: opticalLayoutProfile.radius };
     const frontTop = frontPoints[frontPoints.length - 1];
     const frontBottom = frontPoints[0];
     const rearTop = rearPoints[0];
@@ -8744,6 +8929,7 @@ const buildPrescriptionLensRenderModel = (position, mapper, result, lens, lensIn
       edgeThicknessMm: prescriptionRawEdgeThickness(frontSurface, rearSurface, semiDiameter),
       polygonPoints,
       polygonPath: svgPathFromPoints(polygonPoints, true),
+      opticalLayoutProfile,
       opticalFillFallbackPath: fallbackFill.path,
       opticalFillFallbackSemiDiameter: fallbackFill.radius,
       frontPath: svgPathFromPoints(frontPoints),
@@ -8799,6 +8985,32 @@ const buildPrescriptionLensRenderModel = (position, mapper, result, lens, lensIn
     if (reverse) values.reverse();
     return values.map((y) => ({ x: prescriptionDrawingSurfaceXAtHeight(surface, Math.abs(y)), y }));
   };
+  const buildRequestedProfile = (radius) => {
+    const requestedRadius = Math.max(0.05, toNumber(radius) || 0.05);
+    const requestedFrontMm = sampleSurface(frontSurface, requestedRadius);
+    const requestedRearMm = sampleSurface(rearSurface, requestedRadius, true);
+    if ([...requestedFrontMm, ...requestedRearMm].some((point) => !Number.isFinite(point.x) || !Number.isFinite(point.y))) {
+      return null;
+    }
+    const requestedFrontPoints = requestedFrontMm.map((point) => ({ x: mapper.x(point.x), y: mapper.y(point.y) }));
+    const requestedRearPoints = requestedRearMm.map((point) => ({ x: mapper.x(point.x), y: mapper.y(point.y) }));
+    const requestedPolygonPoints = [...requestedFrontPoints, ...requestedRearPoints];
+    return {
+      semiDiameter: requestedRadius,
+      polygonPoints: requestedPolygonPoints,
+      polygonPath: svgPathFromPoints(requestedPolygonPoints, true),
+      frontPath: svgPathFromPoints(requestedFrontPoints),
+      rearPath: svgPathFromPoints(requestedRearPoints),
+      topEdge: {
+        front: requestedFrontPoints[requestedFrontPoints.length - 1],
+        rear: requestedRearPoints[0]
+      },
+      bottomEdge: {
+        front: requestedFrontPoints[0],
+        rear: requestedRearPoints[requestedRearPoints.length - 1]
+      }
+    };
+  };
   const frontMm = sampleSurface(frontSurface, edgeGeometry.frontBevelStartRadius ?? semiDiameter);
   const rearMm = sampleSurface(rearSurface, edgeGeometry.rearBevelStartRadius ?? semiDiameter, true);
   const frontTop = frontMm[frontMm.length - 1];
@@ -8839,12 +9051,19 @@ const buildPrescriptionLensRenderModel = (position, mapper, result, lens, lensIn
   });
   const centerThicknessMm = position.thickness;
   const edgeThicknessMm = edgeGeometry.rawEdgeThickness;
-  const fallbackFill = buildOpticalFillFallbackPath(frontSurface, rearSurface, clearApertureSemiDiameter, mapper);
+  const opticalLayoutProfile = buildOpticalSurfaceProfile(frontSurface, rearSurface, clearApertureSemiDiameter, mapper);
+  const fallbackFill = { path: opticalLayoutProfile.polygonPath, radius: opticalLayoutProfile.radius };
+  const requestedProfile = buildRequestedProfile(unconstrainedRequestedSemiDiameter);
+  const displayedSemiDiameter = showRequestedGeometry && requestedProfile
+    ? requestedProfile.semiDiameter
+    : semiDiameter;
 
   return {
     frontSurface,
     rearSurface,
-    semiDiameter,
+    geometryDisplayMode,
+    semiDiameter: displayedSemiDiameter,
+    safeSemiDiameter: semiDiameter,
     requestedSemiDiameter: unconstrainedRequestedSemiDiameter,
     edgeClipped: edgeGeometry.warnings.some((warning) => warning.startsWith("Mechanical diameter reduced")),
     apertureSource: lens.apertureSource || (statedValues.length ? "patent" : envelopeValues.length ? "rayEnvelope" : "estimated"),
@@ -8874,6 +9093,11 @@ const buildPrescriptionLensRenderModel = (position, mapper, result, lens, lensIn
     polygonPath: polygonGeometryValid && (edgeGeometry.manufacturable || edgeGeometry.safeInvalidGeometry)
       ? svgPathFromPoints(polygonPoints, true)
       : "",
+    opticalLayoutProfile,
+    requestedProfile,
+    requestedPolygonPath: requestedProfile?.polygonPath || "",
+    requestedFrontPath: requestedProfile?.frontPath || "",
+    requestedRearPath: requestedProfile?.rearPath || "",
     opticalFillFallbackPath: fallbackFill.path,
     opticalFillFallbackSemiDiameter: fallbackFill.radius,
     frontPath: svgPathFromPoints(frontPoints),
@@ -8907,9 +9131,7 @@ const samplePrescriptionSurfacePoints = (surface, semiDiameter, mapper, reverse 
   });
 };
 
-const OPTICAL_FILL_FALLBACK_NOTE = "Optical fill estimated from clear aperture only; mechanical body not verified.";
-
-const buildOpticalFillFallbackPath = (frontSurface, rearSurface, requestedSemiDiameter, mapper) => {
+const buildOpticalSurfaceProfile = (frontSurface, rearSurface, requestedSemiDiameter, mapper) => {
   const requestedRadius = Math.max(0.05, toNumber(requestedSemiDiameter) || 0.05);
   const sphericalLimit = [frontSurface, rearSurface]
     .filter((surface) => !isSurfaceAsphereActive(surface) && Math.abs(surface?.radius || 0) > 1e-9)
@@ -8919,12 +9141,23 @@ const buildOpticalFillFallbackPath = (frontSurface, rearSurface, requestedSemiDi
     const frontSamples = samplePrescriptionSurfacePoints(frontSurface, radius, mapper);
     const rearSamples = samplePrescriptionSurfacePoints(rearSurface, radius, mapper, true);
     if ([...frontSamples, ...rearSamples].some((point) => !Number.isFinite(point.mm.x))) return null;
+    const frontPoints = frontSamples.map((point) => point.mapped);
+    const rearPoints = rearSamples.map((point) => point.mapped);
+    const polygonPoints = [...frontPoints, ...rearPoints];
     return {
       radius,
-      path: svgPathFromPoints([
-        ...frontSamples.map((point) => point.mapped),
-        ...rearSamples.map((point) => point.mapped)
-      ], true)
+      polygonPoints,
+      polygonPath: svgPathFromPoints(polygonPoints, true),
+      frontPath: svgPathFromPoints(frontPoints),
+      rearPath: svgPathFromPoints(rearPoints),
+      topEdge: {
+        front: frontPoints[frontPoints.length - 1],
+        rear: rearPoints[0]
+      },
+      bottomEdge: {
+        front: frontPoints[0],
+        rear: rearPoints[rearPoints.length - 1]
+      }
     };
   };
 
@@ -8934,7 +9167,7 @@ const buildOpticalFillFallbackPath = (frontSurface, rearSurface, requestedSemiDi
   let low = 0.05;
   let high = maxRadius;
   let best = sampleAt(low);
-  if (!best) return { radius: 0, path: "" };
+  if (!best) return { radius: 0, polygonPath: "", frontPath: "", rearPath: "", polygonPoints: [] };
   for (let iteration = 0; iteration < 48; iteration += 1) {
     const mid = (low + high) / 2;
     const candidate = sampleAt(mid);
@@ -8946,6 +9179,13 @@ const buildOpticalFillFallbackPath = (frontSurface, rearSurface, requestedSemiDi
     }
   }
   return best;
+};
+
+const OPTICAL_FILL_FALLBACK_NOTE = "Optical fill estimated from clear aperture only; mechanical body not verified.";
+
+const buildOpticalFillFallbackPath = (frontSurface, rearSurface, requestedSemiDiameter, mapper) => {
+  const profile = buildOpticalSurfaceProfile(frontSurface, rearSurface, requestedSemiDiameter, mapper);
+  return { radius: profile.radius, path: profile.polygonPath };
 };
 
 const solveAdjacentSurfaceClearanceRadius = (surfaceA, surfaceB, maximumRadiusMm, minimumClearanceMm) => {
@@ -9028,6 +9268,7 @@ const resolveAdjacentAirGapConstraints = (
       ? toNumber(options.minimumAirGapClearanceMm)
       : 0.5
   );
+  const includeMechanicalAllowances = options.includeMechanicalAllowances === true;
   const constraints = [];
 
   groups.slice(0, -1).forEach((leftGroup, groupIndex) => {
@@ -9060,15 +9301,22 @@ const resolveAdjacentAirGapConstraints = (
     const xA0 = prescriptionDrawingSurfaceXAtHeight(surfaceA, 0);
     const xB0 = prescriptionDrawingSurfaceXAtHeight(surfaceB, 0);
     const vertexGapMm = Math.abs(xB0 - xA0);
+    const rearBevelAllowanceMm = includeMechanicalAllowances
+      ? bevelGeometryRuns(normalizeLensBevel(leftLens, "rear", leftGroup.mechanicalDiameter)).axialRun
+      : 0;
+    const frontBevelAllowanceMm = includeMechanicalAllowances
+      ? bevelGeometryRuns(normalizeLensBevel(rightLens, "front", rightGroup.mechanicalDiameter)).axialRun
+      : 0;
+    const requiredClearanceMm = minimumAirGapClearanceMm + rearBevelAllowanceMm + frontBevelAllowanceMm;
     const zeroContact = solveAdjacentSurfaceClearanceRadius(surfaceA, surfaceB, requestedRadiusMm, 0);
     const selectedClearance = solveAdjacentSurfaceClearanceRadius(
       surfaceA,
       surfaceB,
       requestedRadiusMm,
-      minimumAirGapClearanceMm
+      requiredClearanceMm
     );
     const valid = selectedClearance.valid;
-    const selectedClearanceAchievable = vertexGapMm + 1e-9 >= minimumAirGapClearanceMm;
+    const selectedClearanceAchievable = vertexGapMm + 1e-9 >= requiredClearanceMm;
     const renderSafeRadiusMm = selectedClearance.maximumSafeRadiusMm > 0
       ? selectedClearance.maximumSafeRadiusMm
       : zeroContact.maximumSafeRadiusMm;
@@ -9092,9 +9340,17 @@ const resolveAdjacentAirGapConstraints = (
       renderSafeDiameterMm: renderSafeRadiusMm * 2,
       selectedClearanceAchievable,
       minimumClearanceMm: minimumAirGapClearanceMm,
+      requiredClearanceMm,
+      previousRearBevelAllowanceMm: rearBevelAllowanceMm,
+      nextFrontBevelAllowanceMm: frontBevelAllowanceMm,
       minimumSeparationMm: selectedClearance.minimumSeparationMm,
       limitingHeightMm: selectedClearance.limitingHeightMm,
       valid,
+      appliedEdgeTreatment: valid
+        ? "full requested profile"
+        : selectedClearanceAchievable
+          ? "clipped to air-gap-safe radius"
+          : "zero-contact drawing fallback",
       geometrySource: "Patent optical prescription; estimated mechanical aperture",
       warning: valid
         ? ""
@@ -9108,6 +9364,8 @@ const resolveAdjacentAirGapConstraints = (
 };
 
 const buildCementedGroupRenderModel = (group, system, mapper, rayTraceResults, options = {}) => {
+  const geometryDisplayMode = normalizeDiagramGeometryDisplayMode(options.geometryDisplayMode);
+  const showRequestedGeometry = usesRequestedGeometryDisplay(geometryDisplayMode);
   const displayMode = options.cementedGroupDisplayMode || state.cementedGroupDisplayMode || "opticalLayout";
   const interfaceBevelMode = displayMode === "opticalLayout"
     ? "hidden"
@@ -9177,7 +9435,11 @@ const buildCementedGroupRenderModel = (group, system, mapper, rayTraceResults, o
     groupGeometricRadiusLimit,
     Math.max(
       minimumMechanicalRadius,
-      ...members.map(({ lens }) => (toNumber(lens.mechanicalDiameter) || clearApertureDiameter) / 2)
+      ...members.map(({ lens }) => (
+        toNumber(lens.requestedMechanicalDiameterMm)
+          || toNumber(lens.mechanicalDiameter)
+          || clearApertureDiameter
+      ) / 2)
     )
   );
   const adjacentAirGapRadiusLimit = Number.isFinite(toNumber(options.maximumMechanicalRadiusMm))
@@ -9185,7 +9447,7 @@ const buildCementedGroupRenderModel = (group, system, mapper, rayTraceResults, o
     : Infinity;
   const requestedMechanicalRadius = Math.min(
     unconstrainedRequestedMechanicalRadius,
-    adjacentAirGapRadiusLimit
+    showRequestedGeometry ? Infinity : adjacentAirGapRadiusLimit
   );
   const airGapCollision = adjacentAirGapRadiusLimit + 1e-9 < minimumMechanicalRadius;
   const minimumFlatLandMm = Math.max(
@@ -9339,7 +9601,7 @@ const buildCementedGroupRenderModel = (group, system, mapper, rayTraceResults, o
       0.05,
       (toNumber(member.lens.clearApertureDiameter) || toNumber(member.lens.diameter) || clearApertureDiameter || 0.1) / 2
     );
-    const opticalFallbackFill = buildOpticalFillFallbackPath(
+    const opticalFallbackProfile = buildOpticalSurfaceProfile(
       member.frontSurface,
       member.rearSurface,
       opticalFallbackRadius,
@@ -9374,8 +9636,13 @@ const buildCementedGroupRenderModel = (group, system, mapper, rayTraceResults, o
       rearAsphereActive: isSurfaceAsphereActive(member.rearSurface),
       polygonPoints,
       polygonPath: svgPathFromPoints(polygonPoints, true),
-      opticalFillFallbackPath: opticalFallbackFill.path,
-      opticalFillFallbackSemiDiameter: opticalFallbackFill.radius,
+      opticalLayoutProfile: opticalFallbackProfile,
+      opticalFillFallbackPath: opticalFallbackProfile.polygonPath,
+      opticalFillFallbackSemiDiameter: opticalFallbackProfile.radius,
+      opticalFrontPath: opticalFallbackProfile.frontPath,
+      opticalRearPath: opticalFallbackProfile.rearPath,
+      opticalTopEdge: opticalFallbackProfile.topEdge,
+      opticalBottomEdge: opticalFallbackProfile.bottomEdge,
       frontPoints: frontSamples.map((point) => point.mapped),
       rearPoints: rearSamples.map((point) => point.mapped),
       frontPath: svgPathFromPoints(frontSamples.map((point) => point.mapped)),
@@ -9461,6 +9728,11 @@ const buildCementedGroupRenderModel = (group, system, mapper, rayTraceResults, o
     points: region.rearPoints,
     path: region.rearPath
   }));
+  const opticalSharedInterfacePaths = internalGlassRegions.slice(0, -1).map((region, index) => ({
+    surfaceNumber: group.sharedSurfaces[index],
+    points: region.opticalLayoutProfile?.polygonPoints || [],
+    path: region.opticalRearPath || region.rearPath
+  }));
   const internalInterfacesContained = sharedInterfacePaths.every((surface) => (
     surface.points.every((point) => polygonContainsPoint(point, outerPolygonPoints))
   ));
@@ -9494,7 +9766,9 @@ const buildCementedGroupRenderModel = (group, system, mapper, rayTraceResults, o
     clearApertureDiameter,
     requestedMechanicalDiameter: unconstrainedRequestedMechanicalRadius * 2,
     requiredOpticalRadius: minimumMechanicalRadius,
-    mechanicalDiameter: mechanicalRadius * 2,
+    geometryDisplayMode,
+    mechanicalDiameter: (showRequestedGeometry ? requestedMechanicalRadius : mechanicalRadius) * 2,
+    safeMechanicalDiameter: mechanicalRadius * 2,
     frontExternalBevel,
     rearExternalBevel,
     frontRuns,
@@ -9504,6 +9778,7 @@ const buildCementedGroupRenderModel = (group, system, mapper, rayTraceResults, o
     outerPolygonPath,
     internalGlassRegions,
     sharedInterfacePaths,
+    opticalSharedInterfacePaths,
     topEdge: { front: firstRegion.frontOuterTop, rear: lastRegion.rearOuterTop },
     bottomEdge: { front: firstRegion.frontOuterBottom, rear: lastRegion.rearOuterBottom },
     frontBevelTop: {
@@ -9538,11 +9813,14 @@ const buildCementedGroupRenderModel = (group, system, mapper, rayTraceResults, o
 };
 
 const resolveOpticalLayoutGeometry = (system, mapper, rayTraceResults, options = {}) => {
+  const geometryDisplayMode = normalizeDiagramGeometryDisplayMode(options.geometryDisplayMode);
+  const showRequestedGeometry = usesRequestedGeometryDisplay(geometryDisplayMode);
   const groups = buildCementedMechanicalGroups(state.lenses);
   const initialModels = groups.map((group) => (
     group.elements.length > 1
       ? buildCementedGroupRenderModel(group, system, mapper, rayTraceResults, {
         ...options,
+        geometryDisplayMode,
         cementedGroupDisplayMode: "opticalLayout"
       })
       : buildPrescriptionLensRenderModel(
@@ -9552,7 +9830,7 @@ const resolveOpticalLayoutGeometry = (system, mapper, rayTraceResults, options =
         state.lenses[group.elements[0]],
         group.elements[0],
         rayTraceResults,
-        { cementedGroupDisplayMode: "opticalLayout" }
+        { ...options, geometryDisplayMode, cementedGroupDisplayMode: "opticalLayout" }
       )
   ));
   const requestedGroupRadii = groups.map((group, index) => {
@@ -9577,6 +9855,7 @@ const resolveOpticalLayoutGeometry = (system, mapper, rayTraceResults, options =
     requestedGroupRadii,
     {
       groups,
+      includeMechanicalAllowances: isManufacturingGeometryDisplayMode(geometryDisplayMode),
       minimumAirGapClearanceMm: Number.isFinite(toNumber(options.minimumAirGapClearanceMm))
         ? Math.max(0, toNumber(options.minimumAirGapClearanceMm))
         : state.minimumAirGapClearanceMm
@@ -9600,8 +9879,9 @@ const resolveOpticalLayoutGeometry = (system, mapper, rayTraceResults, options =
     ));
     return buildCementedGroupRenderModel(group, system, mapper, rayTraceResults, {
       ...options,
+      geometryDisplayMode,
       cementedGroupDisplayMode: "opticalLayout",
-      maximumMechanicalRadiusMm: groupRadiusLimits[index],
+      maximumMechanicalRadiusMm: showRequestedGeometry ? Infinity : groupRadiusLimits[index],
       airGapConstraints: relatedConstraints
     });
   });
@@ -9616,8 +9896,10 @@ const resolveOpticalLayoutGeometry = (system, mapper, rayTraceResults, options =
       lensIndex,
       rayTraceResults,
       {
+        ...options,
+        geometryDisplayMode,
         cementedGroupDisplayMode: "opticalLayout",
-        maximumMechanicalRadiusMm: groupRadiusLimits[index]
+        maximumMechanicalRadiusMm: showRequestedGeometry ? Infinity : groupRadiusLimits[index]
       }
     );
   });
@@ -9674,6 +9956,13 @@ const resolveOpticalLayoutGeometry = (system, mapper, rayTraceResults, options =
 const renderCementedGroupSvg = (model, mapper, annotationLanes = {}) => {
   const renderLayer = annotationLanes.renderLayer || "all";
   const diagramViewMode = normalizeDiagramViewMode(annotationLanes.diagramViewMode);
+  const renderStyle = normalizeDiagramRenderStyle(annotationLanes.diagramRenderStyle);
+  const geometryDisplayMode = normalizeDiagramGeometryDisplayMode(annotationLanes.diagramGeometryDisplayMode || model.geometryDisplayMode);
+  const opticalLayoutMode = isOpticalLayoutGeometryDisplayMode(geometryDisplayMode) && isOpticalRayViewMode(diagramViewMode);
+  const renderOpticalFill = opticalLayoutMode && shouldRenderOpticalStyleFill(renderStyle);
+  const showOpticalCaps = false;
+  const requestedMode = isRequestedGeometryDisplayMode(geometryDisplayMode);
+  const invalidLinesMode = isInvalidLinesGeometryDisplayMode(geometryDisplayMode);
   const elementLabel = model.elementIndices.map((index) => `L${index + 1}`).join(" + ");
   if (!model.manufacturable && !model.safeInvalidGeometry && !model.lineOnlyOpticalFallback) {
     if (suppressInDiagramDiagnostics(diagramViewMode)) return "";
@@ -9699,6 +9988,31 @@ const renderCementedGroupSvg = (model, mapper, annotationLanes = {}) => {
     : mapper.y(-model.mechanicalDiameter / 2) + 18;
   const title = `<title>${escapeHtml(`${elementLabel}; common mechanical ${formatNumber(model.mechanicalDiameter, 3)} mm; clear ${formatNumber(model.clearApertureDiameter, 3)} mm; ${model.geometrySource}`)}</title>`;
   if (renderLayer === "glass") {
+    if (opticalLayoutMode) {
+      if (!renderOpticalFill) return "";
+      return `
+        <g class="${groupClass} is-optical-layout-profile" data-elements="${model.elementIndices.join(",")}">
+          ${title}
+          ${model.internalGlassRegions
+            .filter((region) => region.opticalFillFallbackPath)
+            .map((region) => `
+              <path class="glass-fill optical-layout-fill ${region.glassClass}" data-element-index="${region.elementIndex}" d="${region.opticalFillFallbackPath}">
+                <title>Optical layout fill — exact surfaces clipped to clear aperture, not a manufacturing envelope</title>
+              </path>
+            `).join("")}
+        </g>
+      `;
+    }
+    if (invalidLinesMode) return "";
+    if (requestedMode && model.outerPolygonPath) {
+      return `
+        <g class="${groupClass} is-requested-profile" data-elements="${model.elementIndices.join(",")}">
+          <path class="requested-profile-fill" d="${model.outerPolygonPath}">
+            <title>Requested geometry only — not manufacturing-safe</title>
+          </path>
+        </g>
+      `;
+    }
     const useOpticalFallbackFill = isOpticalRayViewMode(diagramViewMode)
       && (model.renderFilledGlass === false || model.lineOnlyOpticalFallback);
     const glassFill = useOpticalFallbackFill
@@ -9715,6 +10029,38 @@ const renderCementedGroupSvg = (model, mapper, annotationLanes = {}) => {
     return `<g class="${groupClass}" data-elements="${model.elementIndices.join(",")}">${title}${glassFill}</g>`;
   }
   if (renderLayer === "optical") {
+    if (opticalLayoutMode) {
+      const firstRegion = model.internalGlassRegions[0];
+      const lastRegion = model.internalGlassRegions[model.internalGlassRegions.length - 1];
+      const topEdge = firstRegion?.opticalTopEdge && lastRegion?.opticalTopEdge
+        && showOpticalCaps
+        ? `<line class="optical-aperture-edge" x1="${firstRegion.opticalTopEdge.front.x}" y1="${firstRegion.opticalTopEdge.front.y}" x2="${lastRegion.opticalTopEdge.rear.x}" y2="${lastRegion.opticalTopEdge.rear.y}" />`
+        : "";
+      const bottomEdge = firstRegion?.opticalBottomEdge && lastRegion?.opticalBottomEdge
+        && showOpticalCaps
+        ? `<line class="optical-aperture-edge" x1="${firstRegion.opticalBottomEdge.front.x}" y1="${firstRegion.opticalBottomEdge.front.y}" x2="${lastRegion.opticalBottomEdge.rear.x}" y2="${lastRegion.opticalBottomEdge.rear.y}" />`
+        : "";
+      return `
+        <g class="${groupClass} is-optical-layout-profile" data-elements="${model.elementIndices.join(",")}">
+          ${firstRegion?.opticalFrontPath ? `<path class="surface-outline optical-layout-surface ${firstRegion.frontAsphereActive ? "asphere-surface-outline" : ""}" data-element-index="${firstRegion.elementIndex}" d="${firstRegion.opticalFrontPath}" />` : ""}
+          ${model.opticalSharedInterfacePaths?.map((surface) => `<path class="surface-outline cemented-shared-interface optical-layout-surface" data-surface-number="${surface.surfaceNumber}" d="${surface.path}" />`).join("") || ""}
+          ${lastRegion?.opticalRearPath ? `<path class="surface-outline optical-layout-surface ${lastRegion.rearAsphereActive ? "asphere-surface-outline" : ""}" data-element-index="${lastRegion.elementIndex}" d="${lastRegion.opticalRearPath}" />` : ""}
+          ${topEdge}
+          ${bottomEdge}
+        </g>
+      `;
+    }
+    if (requestedMode || invalidLinesMode) {
+      return `
+        <g class="${groupClass} ${invalidLinesMode ? "is-invalid-lines-profile" : "is-requested-profile"}" data-elements="${model.elementIndices.join(",")}">
+          ${model.internalGlassRegions.map((region) => `
+            <path class="surface-outline requested-profile-outline ${region.frontAsphereActive ? "asphere-surface-outline" : ""}" data-element-index="${region.elementIndex}" d="${region.frontPath}" />
+            <path class="surface-outline requested-profile-outline ${region.rearAsphereActive ? "asphere-surface-outline" : ""}" data-element-index="${region.elementIndex}" d="${region.rearPath}" />
+          `).join("")}
+          ${model.sharedInterfacePaths.map((surface) => `<path class="surface-outline cemented-shared-interface" data-surface-number="${surface.surfaceNumber}" d="${surface.path}" />`).join("")}
+        </g>
+      `;
+    }
     const fallbackSurfaces = model.lineOnlyOpticalFallback
       ? model.internalGlassRegions.map((region) => `
         <path class="surface-outline patent-line-only-surface ${region.frontAsphereActive ? "asphere-surface-outline" : ""}" data-element-index="${region.elementIndex}" d="${region.frontPath}" />
@@ -9730,6 +10076,25 @@ const renderCementedGroupSvg = (model, mapper, annotationLanes = {}) => {
     return `<g class="${groupClass}" data-elements="${model.elementIndices.join(",")}">${fallbackSurfaces}${asphereSurfaces}${model.sharedInterfacePaths.map((surface) => `<path class="surface-outline cemented-shared-interface" data-surface-number="${surface.surfaceNumber}" d="${surface.path}" />`).join("")}</g>`;
   }
   if (renderLayer === "mechanical") {
+    if (opticalLayoutMode) return "";
+    if (invalidLinesMode) {
+      return model.outerPolygonPath ? `
+        <g class="${groupClass} is-invalid-lines-profile" data-elements="${model.elementIndices.join(",")}">
+          <path class="requested-profile-outline invalid-geometry-reference" d="${model.outerPolygonPath}">
+            <title>Invalid geometry display — not manufacturable</title>
+          </path>
+        </g>
+      ` : "";
+    }
+    if (requestedMode && model.outerPolygonPath) {
+      return `
+        <g class="${groupClass} is-requested-profile" data-elements="${model.elementIndices.join(",")}">
+          <path class="requested-profile-outline" d="${model.outerPolygonPath}">
+            <title>Requested geometry only — not manufacturing-safe</title>
+          </path>
+        </g>
+      `;
+    }
     if (model.lineOnlyOpticalFallback && isOpticalRayViewMode(diagramViewMode)) return "";
     return `
       <g class="${groupClass}" data-elements="${model.elementIndices.join(",")}">
@@ -9750,7 +10115,28 @@ const renderCementedGroupSvg = (model, mapper, annotationLanes = {}) => {
   if (renderLayer === "annotations") {
     return `<text class="cemented-group-label" x="${mapper.x(centerX)}" y="${labelY}" text-anchor="middle">${elementLabel}</text>`;
   }
-  if (renderLayer === "warnings") return "";
+  if (renderLayer === "warnings") {
+    if (opticalLayoutMode) return "";
+    return invalidLinesMode ? `
+      <text class="geometry-warning-marker invalid-geometry-display-label" x="${mapper.x(centerX)}" y="${mapper.y(model.mechanicalDiameter / 2) - 10}" text-anchor="middle">Invalid geometry display — not manufacturable</text>
+    ` : "";
+  }
+  if ((requestedMode || invalidLinesMode) && model.outerPolygonPath) {
+    return `
+      <g class="${groupClass} ${invalidLinesMode ? "is-invalid-lines-profile" : "is-requested-profile"}" data-elements="${model.elementIndices.join(",")}">
+        ${requestedMode ? `<path class="requested-profile-fill" d="${model.outerPolygonPath}"><title>Requested geometry only — not manufacturing-safe</title></path>` : ""}
+        <path class="requested-profile-outline ${invalidLinesMode ? "invalid-geometry-reference" : ""}" d="${model.outerPolygonPath}">
+          <title>${invalidLinesMode ? "Invalid geometry display — not manufacturable" : "Requested geometry only — not manufacturing-safe"}</title>
+        </path>
+        ${model.internalGlassRegions.map((region) => `
+          <path class="surface-outline requested-profile-outline ${region.frontAsphereActive ? "asphere-surface-outline" : ""}" data-element-index="${region.elementIndex}" d="${region.frontPath}" />
+          <path class="surface-outline requested-profile-outline ${region.rearAsphereActive ? "asphere-surface-outline" : ""}" data-element-index="${region.elementIndex}" d="${region.rearPath}" />
+        `).join("")}
+        ${model.sharedInterfacePaths.map((surface) => `<path class="surface-outline cemented-shared-interface" data-surface-number="${surface.surfaceNumber}" d="${surface.path}" />`).join("")}
+        <text class="cemented-group-label" x="${mapper.x(centerX)}" y="${labelY}" text-anchor="middle">${elementLabel}</text>
+      </g>
+    `;
+  }
   return `
     <g class="${groupClass}" data-elements="${model.elementIndices.join(",")}" data-interface-bevel-mode="${model.interfaceBevelMode}">
       ${title}
@@ -9819,8 +10205,8 @@ const renderCementedGroupControls = (groupModels, airGapConstraints = [], patent
         <span class="unit">mm</span>
       </label>
     </div>
-    <p class="diagram-note">Optical layout uses one continuous mechanical silhouette per cemented assembly. Individual manufacturing can show estimated peripheral cement-filled edge relief without adding an optical air gap.</p>
-    <p class="diagram-note">The clean optical view suppresses construction markers. Mechanical and debug views expose estimated manufacturing limits without changing the patent prescription.</p>
+    <p class="diagram-note">Optical layout draws exact optical curves clipped to the clear aperture. Manufacturing envelope applies estimated bevel, chip-zone and air-gap checks without changing the prescription.</p>
+    <p class="diagram-note">Requested and invalid-geometry views expose estimated manufacturing limits without changing ray tracing, focal length, BFL or MTF calculations.</p>
     ${groupModels.map((model) => `
       <div class="cemented-group-diagnostic">
         <strong>${model.elementIndices.map((index) => `L${index + 1}`).join(" + ")}</strong>
@@ -9846,9 +10232,12 @@ const renderCementedGroupControls = (groupModels, airGapConstraints = [], patent
           <span>Requested diameter ${formatNumber(constraint.requestedDiameterMm, 3)} mm</span>
           <span>Zero-contact limit ${formatNumber(constraint.maximumZeroContactDiameterMm, 3)} mm</span>
           <span>${formatNumber(constraint.minimumClearanceMm, 3)} mm clearance limit ${formatNumber(constraint.maximumSafeDiameterMm, 3)} mm</span>
+          <span>Required gap incl. edge allowances ${formatNumber(constraint.requiredClearanceMm, 3)} mm</span>
+          <span>Rear / front edge allowance ${formatNumber(constraint.previousRearBevelAllowanceMm, 3)} / ${formatNumber(constraint.nextFrontBevelAllowanceMm, 3)} mm</span>
           <span>Limiting radial height ${formatNumber(constraint.limitingHeightMm, 3)} mm</span>
           ${constraint.selectedClearanceAchievable ? "" : `<span>Non-intersecting fallback ${formatNumber(constraint.renderSafeDiameterMm, 3)} mm</span>`}
           <span>Minimum sampled separation ${formatNumber(constraint.minimumSeparationMm, 3)} mm</span>
+          <span>Applied edge treatment ${escapeHtml(constraint.appliedEdgeTreatment || "not constrained")}</span>
           <span class="${constraint.valid && !constraint.filledPolygonOverlap ? "status-good" : "status-bad"}">${escapeHtml(constraint.collisionStatus || (constraint.valid ? "Clear" : "Collision constrained"))}</span>
           <span>${escapeHtml(constraint.geometrySource)}</span>
         </div>
@@ -9881,6 +10270,14 @@ const renderIndividualLensSvg = (system, mapper, rayTraceResults, index, options
   );
   if (!model) return "";
   const diagramViewMode = normalizeDiagramViewMode(options.annotationLanes?.diagramViewMode);
+  const renderStyle = normalizeDiagramRenderStyle(options.annotationLanes?.diagramRenderStyle);
+  const geometryDisplayMode = normalizeDiagramGeometryDisplayMode(options.annotationLanes?.diagramGeometryDisplayMode || options.geometryDisplayMode || model.geometryDisplayMode);
+  const requestedMode = isRequestedGeometryDisplayMode(geometryDisplayMode);
+  const invalidLinesMode = isInvalidLinesGeometryDisplayMode(geometryDisplayMode);
+  const opticalLayoutMode = isOpticalLayoutGeometryDisplayMode(geometryDisplayMode)
+    && isOpticalRayViewMode(diagramViewMode);
+  const renderOpticalFill = opticalLayoutMode && shouldRenderOpticalStyleFill(renderStyle);
+  const showOpticalCaps = false;
   if (isOpticalRayViewMode(diagramViewMode) && !(model.manufacturable || model.safeInvalidGeometry)) {
     model = buildPrescriptionLensRenderModel(
       position,
@@ -9920,6 +10317,26 @@ const renderIndividualLensSvg = (system, mapper, rayTraceResults, index, options
   const groupClass = `lens-shape lens-${type}${patentClass}${edgeClass}${manufacturabilityClass}${bevelClass}${cleanClass}`;
   const title = `<title>L${index + 1}: ${apertureLabel}; clear ${formatNumber(model.clearApertureSemiDiameter * 2)} mm; mechanical ${formatNumber(model.semiDiameter * 2)} mm${model.geometryWarning ? `; ${model.geometryWarning}` : ""}</title>`;
   if (renderLayer === "glass") {
+    if (opticalLayoutMode && model.opticalLayoutProfile?.polygonPath) {
+      if (!renderOpticalFill) return "";
+      return `
+        <g class="${groupClass} is-optical-layout-profile" data-aperture-source="${model.apertureSource}">
+          <path class="glass-fill optical-layout-fill${glassClass}" data-element-index="${index}" d="${model.opticalLayoutProfile.polygonPath}">
+            <title>Optical layout fill — exact surfaces clipped to clear aperture, not a manufacturing envelope</title>
+          </path>
+        </g>
+      `;
+    }
+    if (invalidLinesMode) return "";
+    if (requestedMode && model.requestedPolygonPath) {
+      return `
+        <g class="${groupClass} is-requested-profile" data-aperture-source="${model.apertureSource}">
+          <path class="requested-profile-fill${glassClass}" data-element-index="${index}" d="${model.requestedPolygonPath}">
+            <title>Requested geometry only — not manufacturing-safe</title>
+          </path>
+        </g>
+      `;
+    }
     const shouldFill = model.renderFilledGlass !== false && model.polygonPath;
     const fallbackFill = isOpticalRayViewMode(diagramViewMode)
       && (model.renderFilledGlass === false || model.lineOnlyOpticalFallback)
@@ -9933,6 +10350,27 @@ const renderIndividualLensSvg = (system, mapper, rayTraceResults, index, options
     return `<g class="${groupClass}" data-aperture-source="${model.apertureSource}">${title}${shouldFill ? `<path class="glass-fill${glassClass}" data-element-index="${index}" d="${model.polygonPath}" />` : fallbackFill}</g>`;
   }
   if (renderLayer === "optical") {
+    if (opticalLayoutMode && model.opticalLayoutProfile) {
+      const profile = model.opticalLayoutProfile;
+      return `
+        <g class="${groupClass} is-optical-layout-profile">
+          ${hideSharedFrontOutline ? "" : `<path class="surface-outline optical-layout-surface front-surface-outline ${frontAsphere.active ? "asphere-surface-outline" : ""}" data-element-index="${index}" d="${profile.frontPath}" />`}
+          <path class="surface-outline optical-layout-surface rear-surface-outline ${rearAsphere.active ? "asphere-surface-outline" : ""}" data-element-index="${index}" d="${profile.rearPath}" />
+          ${showOpticalCaps ? `
+            <line class="optical-aperture-edge" x1="${profile.topEdge.front.x}" y1="${profile.topEdge.front.y}" x2="${profile.topEdge.rear.x}" y2="${profile.topEdge.rear.y}" />
+            <line class="optical-aperture-edge" x1="${profile.bottomEdge.front.x}" y1="${profile.bottomEdge.front.y}" x2="${profile.bottomEdge.rear.x}" y2="${profile.bottomEdge.rear.y}" />
+          ` : ""}
+        </g>
+      `;
+    }
+    if ((requestedMode || invalidLinesMode) && model.requestedFrontPath && model.requestedRearPath) {
+      return `
+        <g class="${groupClass} ${invalidLinesMode ? "is-invalid-lines-profile" : "is-requested-profile"}">
+          ${hideSharedFrontOutline ? "" : `<path class="surface-outline requested-profile-outline front-surface-outline ${frontAsphere.active ? "asphere-surface-outline" : ""}" data-element-index="${index}" d="${model.requestedFrontPath}" />`}
+          <path class="surface-outline requested-profile-outline rear-surface-outline ${rearAsphere.active ? "asphere-surface-outline" : ""}" data-element-index="${index}" d="${model.requestedRearPath}" />
+        </g>
+      `;
+    }
     return `
       <g class="${groupClass}">
         ${hideSharedFrontOutline ? "" : `<path class="surface-outline front-surface-outline ${frontAsphere.active ? "asphere-surface-outline" : ""}" data-element-index="${index}" d="${model.frontPath}" />`}
@@ -9941,6 +10379,26 @@ const renderIndividualLensSvg = (system, mapper, rayTraceResults, index, options
     `;
   }
   if (renderLayer === "mechanical") {
+    if (opticalLayoutMode) return "";
+    if (invalidLinesMode) {
+      return model.requestedPolygonPath ? `
+        <g class="${groupClass} is-invalid-lines-profile">
+          <path class="requested-profile-outline invalid-geometry-reference" d="${model.requestedPolygonPath}">
+            <title>Invalid geometry display — not manufacturable</title>
+          </path>
+        </g>
+      ` : "";
+    }
+    if (requestedMode && model.requestedProfile) {
+      return `
+        <g class="${groupClass} is-requested-profile">
+          <line class="requested-profile-outline" x1="${model.requestedProfile.topEdge.front.x}" y1="${model.requestedProfile.topEdge.front.y}" x2="${model.requestedProfile.topEdge.rear.x}" y2="${model.requestedProfile.topEdge.rear.y}">
+            <title>Requested geometry only — not manufacturing-safe</title>
+          </line>
+          <line class="requested-profile-outline" x1="${model.requestedProfile.bottomEdge.front.x}" y1="${model.requestedProfile.bottomEdge.front.y}" x2="${model.requestedProfile.bottomEdge.rear.x}" y2="${model.requestedProfile.bottomEdge.rear.y}" />
+        </g>
+      `;
+    }
     if (model.lineOnlyOpticalFallback && isOpticalRayViewMode(diagramViewMode)) return "";
     if (!(model.manufacturable || model.safeInvalidGeometry)) return "";
     return `
@@ -9968,10 +10426,49 @@ const renderIndividualLensSvg = (system, mapper, rayTraceResults, index, options
     `;
   }
   if (renderLayer === "warnings") {
+    if (opticalLayoutMode) return "";
+    if (invalidLinesMode) {
+      return `<text class="geometry-warning-marker invalid-geometry-display-label" x="${mapper.x(position.center)}" y="${mapper.y(model.semiDiameter) - 8}" text-anchor="middle">Invalid geometry display — not manufacturable</text>`;
+    }
     if (suppressInDiagramDiagnostics(diagramViewMode)) return "";
     return model.manufacturable || model.safeInvalidGeometry
       ? ""
       : `<text class="geometry-warning-marker" x="${mapper.x(position.center)}" y="${mapper.y(-model.semiDiameter) - 8}" text-anchor="middle">EDGE !</text>`;
+  }
+
+  if ((requestedMode || invalidLinesMode) && model.requestedProfile) {
+    return `
+      <g class="${groupClass} ${invalidLinesMode ? "is-invalid-lines-profile" : "is-requested-profile"}" data-aperture-source="${model.apertureSource}">
+        ${requestedMode ? `<path class="requested-profile-fill${glassClass}" data-element-index="${index}" d="${model.requestedPolygonPath}"><title>Requested geometry only — not manufacturing-safe</title></path>` : ""}
+        ${hideSharedFrontOutline ? "" : `<path class="surface-outline requested-profile-outline front-surface-outline ${frontAsphere.active ? "asphere-surface-outline" : ""}" d="${model.requestedFrontPath}" />`}
+        <path class="surface-outline requested-profile-outline rear-surface-outline ${rearAsphere.active ? "asphere-surface-outline" : ""}" d="${model.requestedRearPath}" />
+        <path class="requested-profile-outline ${invalidLinesMode ? "invalid-geometry-reference" : ""}" d="${model.requestedPolygonPath}">
+          <title>${invalidLinesMode ? "Invalid geometry display — not manufacturable" : "Requested geometry only — not manufacturing-safe"}</title>
+        </path>
+        <text class="individual-lens-label" x="${mapper.x(position.center)}" y="${lensLabelY}" text-anchor="middle">L${index + 1}</text>
+      </g>
+    `;
+  }
+
+  if (opticalLayoutMode && model.opticalLayoutProfile) {
+    const profile = model.opticalLayoutProfile;
+    return `
+      <g class="${groupClass} is-optical-layout-profile" data-aperture-source="${model.apertureSource}">
+        ${title}
+        ${renderOpticalFill ? `<path class="glass-fill optical-layout-fill${glassClass}" data-element-index="${index}" d="${profile.polygonPath}">
+          <title>Optical layout fill — exact surfaces clipped to clear aperture, not a manufacturing envelope</title>
+        </path>` : ""}
+        ${hideSharedFrontOutline ? "" : `<path class="surface-outline optical-layout-surface front-surface-outline ${frontAsphere.active ? "asphere-surface-outline" : ""}" d="${profile.frontPath}" />`}
+        <path class="surface-outline optical-layout-surface rear-surface-outline ${rearAsphere.active ? "asphere-surface-outline" : ""}" d="${profile.rearPath}" />
+        ${showOpticalCaps ? `
+          <line class="optical-aperture-edge" x1="${profile.topEdge.front.x}" y1="${profile.topEdge.front.y}" x2="${profile.topEdge.rear.x}" y2="${profile.topEdge.rear.y}" />
+          <line class="optical-aperture-edge" x1="${profile.bottomEdge.front.x}" y1="${profile.bottomEdge.front.y}" x2="${profile.bottomEdge.rear.x}" y2="${profile.bottomEdge.rear.y}" />
+        ` : ""}
+        <text class="individual-lens-label" x="${mapper.x(position.center)}" y="${lensLabelY}" text-anchor="middle">L${index + 1}</text>
+        ${frontAsphere.active ? `<text class="asphere-label" x="${mapper.x(position.end)}" y="${mapper.y(profile.radius) - 8}" text-anchor="middle">ASP</text>` : ""}
+        ${rearAsphere.active ? `<text class="asphere-label" x="${mapper.x(position.start)}" y="${mapper.y(profile.radius) - 8}" text-anchor="middle">ASP</text>` : ""}
+      </g>
+    `;
   }
 
   return `
@@ -10107,6 +10604,7 @@ const renderLensStackSvg = (
       index,
       {
         mechanicalValidation: false,
+        geometryDisplayMode: annotationLanes.diagramGeometryDisplayMode,
         renderLayer,
         annotationLanes
       }
@@ -10124,6 +10622,7 @@ const renderLensStackSvg = (
         cementedInterfaceBevelMode: state.cementedInterfaceBevelMode,
         cementedInterfaceBevelFaceWidthMm: state.cementedInterfaceBevelFaceWidthMm,
         cementedInterfaceBevelAngleDeg: state.cementedInterfaceBevelAngleDeg,
+        geometryDisplayMode: annotationLanes.diagramGeometryDisplayMode,
         renderLayer,
         annotationLanes
       }
@@ -10131,7 +10630,9 @@ const renderLensStackSvg = (
     return `${elements}${["all", "mechanical"].includes(renderLayer) ? renderCementedInterfaceReliefSvg(system, mapper, rayTraceResults) : ""}`;
   }
 
-  const resolution = layoutResolution || resolveOpticalLayoutGeometry(system, mapper, rayTraceResults);
+  const resolution = layoutResolution || resolveOpticalLayoutGeometry(system, mapper, rayTraceResults, {
+    geometryDisplayMode: annotationLanes.diagramGeometryDisplayMode
+  });
   const groups = resolution.groups;
   return groups.map((group) => {
     const groupIndex = groups.indexOf(group);
@@ -10668,6 +11169,7 @@ const renderRealRayPathsSvg = (rayTraceResults, mapper, options = {}) => {
       const points = pathPoints.map(pointToSvg).join(" ");
       const roleClass = ray.role ? ` ${ray.role.split(" ").map((role) => `real-ray-${role}`).join(" ")}` : "";
       const fieldClass = result.fieldKey ? ` real-ray-${result.fieldKey}` : "";
+      const displayClass = `${result.secondaryRayBundle ? " real-ray-secondary" : ""}${result.diagnosticRayOverlay ? " real-ray-diagnostic" : ""}`;
       const spectralLine = SPECTRAL_LINES[result.spectralLineKey] || result.spectralLine;
       const colorClass = spectralLine?.color ? ` real-ray-${spectralLine.color}` : "";
       const failedClass = isValid ? "" : " real-ray-failed";
@@ -10677,7 +11179,7 @@ const renderRealRayPathsSvg = (rayTraceResults, mapper, options = {}) => {
         ? `<circle class="real-ray-failure-marker" cx="${mapper.x(lastPoint.x)}" cy="${mapper.y(lastPoint.y)}" r="2.4"><title>${escapeHtml(ray.status || "ray failed")}</title></circle>`
         : "";
 
-      return `<polyline class="real-ray${fieldClass}${colorClass}${roleClass}${failedClass}" points="${points}">${statusTitle}</polyline>${marker}`;
+      return `<polyline class="real-ray${fieldClass}${colorClass}${roleClass}${displayClass}${failedClass}" points="${points}">${statusTitle}</polyline>${marker}`;
     })
     .join("");
 };
@@ -10802,7 +11304,14 @@ const validateSequentialDisplayConvention = (system, mapper, lenses = state.lens
 };
 
 const renderOpticalDiagram = (system, spectralSystems, rayTraceResult, diagramAperturePreview = null) => {
-  const mapper = createSvgPointMapper(system, spectralSystems);
+  const diagramRenderStyle = normalizeDiagramRenderStyle(state.diagramRenderStyle);
+  const rawGeometryDisplayMode = normalizeDiagramGeometryDisplayMode(state.diagramGeometryDisplayMode);
+  const diagramGeometryDisplayMode = isOpticalRayViewMode(state.diagramViewMode)
+    ? diagramGeometryModeForRenderStyle(diagramRenderStyle, rawGeometryDisplayMode)
+    : rawGeometryDisplayMode;
+  const mapper = createSvgPointMapper(system, spectralSystems, {
+    geometryDisplayMode: diagramGeometryDisplayMode
+  });
   const selectedPreset = PRESETS[state.preset] || PRESETS[DEFAULT_PRESET_KEY];
   const mechanicalValidation = shouldUseMechanicalValidation(selectedPreset, state.lenses, state.prescription);
   const diagramViewMode = normalizeDiagramViewMode(state.diagramViewMode);
@@ -10823,14 +11332,17 @@ const renderOpticalDiagram = (system, spectralSystems, rayTraceResult, diagramAp
       mapper
     });
   }
-  const layoutClearanceMm = suppressInDiagramDiagnostics(diagramViewMode)
+  const layoutClearanceMm = isOpticalLayoutGeometryDisplayMode(diagramGeometryDisplayMode)
     ? 0
-    : state.minimumAirGapClearanceMm;
+    : (isManufacturingGeometryDisplayMode(diagramGeometryDisplayMode) || !suppressInDiagramDiagnostics(diagramViewMode)
+      ? state.minimumAirGapClearanceMm
+      : 0);
   const layoutResolution = mechanicalValidation
     ? resolveOpticalLayoutGeometry(system, mapper, rayTraceResult, {
       cementedGroupDisplayMode: state.cementedGroupDisplayMode,
       cementedInterfaceBevelMode: state.cementedInterfaceBevelMode,
-      minimumAirGapClearanceMm: layoutClearanceMm
+      minimumAirGapClearanceMm: layoutClearanceMm,
+      geometryDisplayMode: diagramGeometryDisplayMode
     })
     : null;
   const cementedGroupModels = layoutResolution?.models.filter(Boolean) || [];
@@ -10852,7 +11364,8 @@ const renderOpticalDiagram = (system, spectralSystems, rayTraceResult, diagramAp
   const annotationLanes = {
     ...diagramAnnotationLanes(mapper, maximumDrawnRadius),
     diagramViewMode,
-    diagramGeometryDisplayMode: normalizeDiagramGeometryDisplayMode(state.diagramGeometryDisplayMode)
+    diagramGeometryDisplayMode,
+    diagramRenderStyle
   };
   const focusWarning = Number.isFinite(system.backFocalLength) && system.backFocalLength < -1
     ? "Possible radius sign convention or prescription error: paraxial back focal distance is on the object side."
@@ -10888,6 +11401,44 @@ const renderOpticalDiagram = (system, spectralSystems, rayTraceResult, diagramAp
           </label>
           ${isOpticalRayView ? `
             <label class="diagram-view-mode-control compact-diagram-control">
+              <span>Style</span>
+              <select data-action="update-diagram-render-style" aria-label="Optical ray view render style">
+                ${DIAGRAM_RENDER_STYLE_OPTIONS.map((option) => `
+                  <option value="${option.value}" ${diagramRenderStyle === option.value ? "selected" : ""}>${option.label}</option>
+                `).join("")}
+              </select>
+            </label>
+            ${isProfessionalOpticalRenderStyle(diagramRenderStyle) ? `
+              <label class="diagram-view-mode-control compact-diagram-control diagram-fill-toggle">
+                <input type="checkbox" data-action="toggle-diagram-lens-fill" ${state.diagramLensFill ? "checked" : ""}>
+                <span>Lens fill</span>
+              </label>
+            ` : ""}
+            <label class="diagram-view-mode-control compact-diagram-control">
+              <span>Rays</span>
+              <select data-action="update-diagram-ray-display" aria-label="Optical ray display">
+                ${DIAGRAM_RAY_DISPLAY_OPTIONS.map((option) => `
+                  <option value="${option.value}" ${normalizeDiagramRayDisplayMode(state.diagramRayDisplayMode) === option.value ? "selected" : ""}>${option.label}</option>
+                `).join("")}
+              </select>
+            </label>
+            ${normalizeDiagramRayDisplayMode(state.diagramRayDisplayMode) !== "all" ? `
+              <label class="diagram-view-mode-control compact-diagram-control">
+                <span>Field</span>
+                <select data-action="update-diagram-ray-field" aria-label="Optical ray field">
+                  ${DIAGRAM_RAY_FIELD_OPTIONS.map((option) => `
+                    <option value="${option.value}" ${normalizeDiagramRayFieldKey(state.diagramRayFieldKey) === option.value ? "selected" : ""}>${option.label}</option>
+                  `).join("")}
+                </select>
+              </label>
+              ${normalizeDiagramRayFieldKey(state.diagramRayFieldKey) === "custom" ? `
+                <label class="diagram-view-mode-control compact-diagram-control">
+                  <span>Deg</span>
+                  <input type="number" min="0" max="80" step="0.5" value="${formatNumber(state.diagramCustomFieldAngleDegrees, 2)}" data-action="update-diagram-custom-field" aria-label="Custom ray field angle">
+                </label>
+              ` : ""}
+            ` : `<span class="diagram-mode-badge">Diagnostic ray overlay</span>`}
+            <label class="diagram-view-mode-control compact-diagram-control">
               <span>Aperture</span>
               <select data-action="update-diagram-aperture-preview-mode" aria-label="Diagram aperture preview mode">
                 <option value="design" ${normalizeDiagramAperturePreviewMode(state.diagramAperturePreviewMode) === "design" ? "selected" : ""}>Design aperture</option>
@@ -10920,7 +11471,7 @@ const renderOpticalDiagram = (system, spectralSystems, rayTraceResult, diagramAp
               <span>Geometry</span>
               <select data-action="update-diagram-geometry-display-mode" aria-label="Optical diagram geometry display mode">
                 ${DIAGRAM_GEOMETRY_DISPLAY_OPTIONS.map((option) => `
-                  <option value="${option.value}" ${normalizeDiagramGeometryDisplayMode(state.diagramGeometryDisplayMode) === option.value ? "selected" : ""}>${option.label}</option>
+                  <option value="${option.value}" ${diagramGeometryDisplayMode === option.value ? "selected" : ""}>${option.label}</option>
                 `).join("")}
               </select>
             </label>
@@ -10937,7 +11488,7 @@ const renderOpticalDiagram = (system, spectralSystems, rayTraceResult, diagramAp
           ${state.diagramExpanded || state.diagramZoom > 1.001 ? `<span class="zoom-badge">${zoomPercent}%</span>` : ""}
         </div>
       </div>
-      <svg class="ray-diagram view-${diagramViewMode} geometry-${normalizeDiagramGeometryDisplayMode(state.diagramGeometryDisplayMode)}" viewBox="${diagramViewBox(mapper, diagramViewMode)}" role="img" aria-label="RGB ray path side view with full-frame sensor and focus markers">
+      <svg class="ray-diagram view-${diagramViewMode} geometry-${diagramGeometryDisplayMode} render-${diagramRenderStyle} ray-display-${normalizeDiagramRayDisplayMode(state.diagramRayDisplayMode)} ${state.diagramLensFill ? "has-lens-fill" : "no-lens-fill"}" viewBox="${diagramViewBox(mapper, diagramViewMode)}" role="img" aria-label="RGB ray path side view with full-frame sensor and focus markers">
         <defs>
           <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
             <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#dfe8e8" stroke-width="1" />
@@ -11014,13 +11565,17 @@ const renderMechanicalDiagnosticsPanel = (system, rayTraceResult) => {
 
   const mapper = createSvgPointMapper(system, getSpectralSystems());
   const diagramViewMode = normalizeDiagramViewMode(state.diagramViewMode);
-  const layoutClearanceMm = suppressInDiagramDiagnostics(diagramViewMode)
+  const geometryDisplayMode = normalizeDiagramGeometryDisplayMode(state.diagramGeometryDisplayMode);
+  const layoutClearanceMm = isOpticalLayoutGeometryDisplayMode(geometryDisplayMode)
     ? 0
-    : state.minimumAirGapClearanceMm;
+    : (isManufacturingGeometryDisplayMode(geometryDisplayMode) || !suppressInDiagramDiagnostics(diagramViewMode)
+      ? state.minimumAirGapClearanceMm
+      : 0);
   const layoutResolution = resolveOpticalLayoutGeometry(system, mapper, rayTraceResult, {
     cementedGroupDisplayMode: state.cementedGroupDisplayMode,
     cementedInterfaceBevelMode: state.cementedInterfaceBevelMode,
-    minimumAirGapClearanceMm: layoutClearanceMm
+    minimumAirGapClearanceMm: layoutClearanceMm,
+    geometryDisplayMode
   });
 
   return renderCementedGroupControls(
@@ -15445,6 +16000,13 @@ const renderSagittalTangentialGeometricMTFPanel = (result) => {
             <option value="refocus" ${state.mtfApertureSweepFocusPolicy === "refocus" ? "selected" : ""}>Refocus per aperture</option>
           </select>
         </label>
+        ${state.mtfChartMode === "field" ? `
+          <label class="mtf-diagram-link-toggle toggle-row compact-toggle-row">
+            <input type="checkbox" data-action="toggle-diagram-aperture-link" ${normalizeDiagramAperturePreviewMode(state.diagramAperturePreviewMode) === "followSweep" ? "checked" : ""}>
+            Link diagram preview to selected aperture
+          </label>
+          ${normalizeDiagramAperturePreviewMode(state.diagramAperturePreviewMode) === "followSweep" ? `<span class="mtf-diagram-link-status">Diagram linked — preview only</span>` : ""}
+        ` : ""}
       </div>
       <section class="mtf-subsection">
         <div class="panel-heading compact-heading">
@@ -17134,17 +17696,20 @@ const render = () => {
     ...baseApertureOptions,
     rayCount: state.rayTraceRayCount
   });
-  const diagramDLineRayTraceResults = traceSystemFieldSet(state.lenses, spectralSystems.d || system, {
+  const diagramRayCount = normalizeDiagramRayDisplayMode(state.diagramRayDisplayMode) === "selected"
+    ? 7
+    : state.rayTraceRayCount;
+  const diagramDLineRayTraceResults = traceDiagramFieldSet(state.lenses, spectralSystems.d || system, {
     ...diagramApertureOptions,
-    rayCount: state.rayTraceRayCount,
+    rayCount: diagramRayCount,
     wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
     spectralLineKey: "d"
   });
-  const diagramSpectralRayTraceResults = traceSpectralFieldSet(state.lenses, spectralSystems.d || system, {
+  const diagramSpectralRayTraceResults = traceDiagramSpectralFieldSet(state.lenses, spectralSystems.d || system, {
     ...diagramApertureOptions,
-    rayCount: state.rayTraceRayCount
+    rayCount: diagramRayCount
   });
-  const diagramRayTraceResults = visibleRayTraceResults(diagramDLineRayTraceResults, diagramSpectralRayTraceResults);
+  const diagramRayTraceResults = visibleDiagramRayTraceResults(diagramDLineRayTraceResults, diagramSpectralRayTraceResults);
   const needsRayTraceSpot = isPanelExpanded("rayTraceSpot");
   const needsRayFanAberrations = isPanelExpanded("rayFanAberrations");
   const needsMtfResolution = isPanelExpanded("mtfResolution");
@@ -18201,8 +18766,46 @@ mount.addEventListener("change", (event) => {
     return;
   }
 
+  if (event.target.dataset.action === "update-diagram-render-style") {
+    state.diagramRenderStyle = normalizeDiagramRenderStyle(event.target.value);
+    state.diagramGeometryDisplayMode = diagramGeometryModeForRenderStyle(state.diagramRenderStyle, state.diagramGeometryDisplayMode);
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "toggle-diagram-lens-fill") {
+    state.diagramLensFill = event.target.checked;
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-diagram-ray-display") {
+    state.diagramRayDisplayMode = normalizeDiagramRayDisplayMode(event.target.value);
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-diagram-ray-field") {
+    state.diagramRayFieldKey = normalizeDiagramRayFieldKey(event.target.value);
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-diagram-custom-field") {
+    state.diagramCustomFieldAngleDegrees = clamp(toNumber(event.target.value) || 0, 0, 80);
+    update();
+    return;
+  }
+
   if (event.target.dataset.action === "update-diagram-geometry-display-mode") {
     state.diagramGeometryDisplayMode = normalizeDiagramGeometryDisplayMode(event.target.value);
+    if (isOpticalRayViewMode(state.diagramViewMode)) {
+      state.diagramRenderStyle = state.diagramGeometryDisplayMode === "manufacturing"
+        ? "manufacturingEnvelope"
+        : usesRequestedGeometryDisplay(state.diagramGeometryDisplayMode)
+          ? "requestedInvalid"
+          : "professionalOptical";
+    }
     update();
     return;
   }
@@ -18610,6 +19213,12 @@ mount.addEventListener("change", (event) => {
       current.delete(removeKey);
     }
     state.mtfApertureSweepStops = [...current].sort((left, right) => allowed.indexOf(left) - allowed.indexOf(right));
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "toggle-diagram-aperture-link") {
+    state.diagramAperturePreviewMode = event.target.checked ? "followSweep" : "design";
     update();
     return;
   }
@@ -19232,6 +19841,14 @@ const runOpticsSelfCheck = () => {
       tests.push({ name, pass: false, error: error.message });
     }
   };
+  const markupClassList = (markup) => (
+    [...String(markup).matchAll(/class="([^"]*)"/g)]
+      .flatMap((match) => match[1].trim().split(/\s+/).filter(Boolean))
+  );
+  const markupHasClass = (markup, className) => markupClassList(markup).includes(className);
+  const markupClassCount = (markup, className) => (
+    markupClassList(markup).filter((name) => name === className).length
+  );
   const optimizerQuickOptions = {
     algorithm: "hybrid",
     iterations: 8,
@@ -19833,13 +20450,15 @@ const runOpticsSelfCheck = () => {
     });
     const mapper = createSvgPointMapper(system, getSpectralSystems());
     const layout = resolveOpticalLayoutGeometry(system, mapper, trace);
-    const stackMarkup = renderLensStackSvg(system, mapper, trace, layout, { diagramViewMode: "optical" }, "all");
-    const elementIndices = new Set(
-      [...stackMarkup.matchAll(/data-element-index="(\d+)"/g)].map((match) => Number(match[1]))
-    );
+    const stackMarkup = renderLensStackSvg(system, mapper, trace, layout, {
+      diagramViewMode: "optical",
+      diagramRenderStyle: "professionalOptical",
+      diagramGeometryDisplayMode: "safe"
+    }, "optical");
     return trace.validRayCount > 0
       && state.lenses.length === 7
-      && elementIndices.size === 7
+      && (stackMarkup.match(/optical-layout-surface/g) || []).length >= 7
+      && !markupHasClass(stackMarkup, "glass-fill")
       && !stackMarkup.includes("is-not-manufacturable")
       && layout.groups.some((group) => group.elements.length === 3)
       && layout.models.filter(Boolean).every((model) => (
@@ -19995,9 +20614,13 @@ const runOpticsSelfCheck = () => {
     const system = calculateSystem(state.lenses);
     const mapper = createSvgPointMapper(system, getSpectralSystems());
     const layout = resolveOpticalLayoutGeometry(system, mapper, []);
-    const glassMarkup = renderLensStackSvg(system, mapper, [], layout, { diagramViewMode: "optical" }, "glass");
+    const glassMarkup = renderLensStackSvg(system, mapper, [], layout, {
+      diagramViewMode: "optical",
+      diagramGeometryDisplayMode: "safe",
+      diagramRenderStyle: "transparentGlass"
+    }, "glass");
     return state.lenses.length === 8
-      && (glassMarkup.match(/class="glass-fill/g) || []).length === state.lenses.length
+      && markupClassCount(glassMarkup, "glass-fill") === state.lenses.length
       && glassMarkup.includes('data-element-index="7"');
   }));
 
@@ -20019,7 +20642,7 @@ const runOpticsSelfCheck = () => {
         return elementIndices.size > 0
           && elementIndices.size <= state.lenses.length
           && (
-            stackMarkup.includes("glass-fill")
+            markupHasClass(stackMarkup, "glass-fill")
             || stackMarkup.includes("patent-line-only-surface")
             || stackMarkup.includes("surface-outline")
           );
@@ -20479,7 +21102,8 @@ const runOpticsSelfCheck = () => {
     });
     const markup = renderOpticalDiagram(system, spectralSystems, trace);
     return shouldUseMechanicalValidation() === false
-      && (markup.match(/class="glass-fill/g) || []).length === state.lenses.length
+      && !markupHasClass(markup, "glass-fill")
+      && (markup.match(/optical-layout-surface/g) || []).length >= state.lenses.length * 2
       && (markup.match(/is-clean-optical-layout/g) || []).length >= state.lenses.length
       && !markup.includes("is-air-gap-constrained")
       && !markup.includes("air-gap-clearance-marker")
@@ -20492,12 +21116,17 @@ const runOpticsSelfCheck = () => {
       loadPresetIntoState(presetKey);
       const system = calculateSystem(state.lenses);
       const mapper = createSvgPointMapper(system, getSpectralSystems());
-      const markup = renderLensStackSvg(system, mapper, [], null, {}, "all");
+      const markup = renderLensStackSvg(system, mapper, [], null, {
+        diagramViewMode: "optical",
+        diagramGeometryDisplayMode: "safe",
+        diagramRenderStyle: "professionalOptical"
+      }, "all");
       return shouldUseMechanicalValidation() === false
         && !markup.includes("is-air-gap-constrained")
         && !markup.includes("is-not-manufacturable")
         && !markup.includes("geometry-warning-marker")
-        && (markup.match(/class="glass-fill/g) || []).length === state.lenses.length;
+        && !markupHasClass(markup, "glass-fill")
+        && (markup.match(/optical-layout-surface/g) || []).length >= state.lenses.length * 2;
     }))
   ));
 
@@ -20898,6 +21527,18 @@ const runOpticsSelfCheck = () => {
   test("undo and redo preserve deleted lens stack from authoritative lens snapshots", () => withTemporaryState(() => {
     loadPresetIntoState(DEFAULT_PRESET_KEY);
     ensurePatentOpticalGeometry();
+    state.collapsedLensCards = { [state.lenses[0].id]: true };
+    state.lensEditStatus = "editing L1";
+    state.diagramAperturePreviewMode = "followSweep";
+    state.diagramAperturePreviewKey = "f4";
+    state.diagramGeometryDisplayMode = "requested";
+    const beforeUi = {
+      collapsedLensCards: { ...state.collapsedLensCards },
+      lensEditStatus: state.lensEditStatus,
+      diagramAperturePreviewMode: state.diagramAperturePreviewMode,
+      diagramAperturePreviewKey: state.diagramAperturePreviewKey,
+      diagramGeometryDisplayMode: state.diagramGeometryDisplayMode
+    };
     const before = state.lenses.map((lens) => ({
       id: lens.id,
       r1: lens.r1,
@@ -20909,6 +21550,11 @@ const runOpticsSelfCheck = () => {
     rememberState();
     state.lenses = state.lenses.filter((lens) => lens.id !== deleteId);
     state.lenses[state.lenses.length - 1].gapAfter = 0;
+    state.collapsedLensCards = {};
+    state.lensEditStatus = "deleted";
+    state.diagramAperturePreviewMode = "design";
+    state.diagramAperturePreviewKey = "wideOpen";
+    state.diagramGeometryDisplayMode = "safe";
     const deletedCount = state.lenses.length;
     state.future.push(snapshotState());
     restoreSnapshot(state.history.pop());
@@ -20919,10 +21565,22 @@ const runOpticsSelfCheck = () => {
       thickness: lens.thickness,
       gapAfter: lens.gapAfter
     }));
+    const restoredUi = {
+      collapsedLensCards: { ...state.collapsedLensCards },
+      lensEditStatus: state.lensEditStatus,
+      diagramAperturePreviewMode: state.diagramAperturePreviewMode,
+      diagramAperturePreviewKey: state.diagramAperturePreviewKey,
+      diagramGeometryDisplayMode: state.diagramGeometryDisplayMode
+    };
     state.history.push(snapshotState());
     restoreSnapshot(state.future.pop());
     return deletedCount === before.length - 1
       && JSON.stringify(restored) === JSON.stringify(before)
+      && JSON.stringify(restoredUi.collapsedLensCards) === JSON.stringify(beforeUi.collapsedLensCards)
+      && restoredUi.lensEditStatus === beforeUi.lensEditStatus
+      && restoredUi.diagramAperturePreviewMode === beforeUi.diagramAperturePreviewMode
+      && restoredUi.diagramAperturePreviewKey === beforeUi.diagramAperturePreviewKey
+      && restoredUi.diagramGeometryDisplayMode === beforeUi.diagramGeometryDisplayMode
       && state.lenses.length === deletedCount
       && !state.lenses.some((lens) => lens.id === deleteId);
   }));
@@ -20948,6 +21606,10 @@ const runOpticsSelfCheck = () => {
       thickness: duplicate.thickness,
       gapAfter: duplicate.gapAfter,
       duplicatedFromLensId: duplicate.duplicatedFromLensId,
+      apertureSource: duplicate.apertureSource,
+      diameterSource: duplicate.diameterSource,
+      manufacturingGeometrySource: duplicate.manufacturingGeometrySource,
+      sourceNote: duplicate.sourceNote,
       patentSurfaceStart: duplicate.patentSurfaceStart
     };
     state.future.push(snapshotState());
@@ -20963,7 +21625,15 @@ const runOpticsSelfCheck = () => {
       && restoredDuplicate.thickness === sourceBefore.thickness
       && restoredDuplicate.gapAfter === sourceBefore.gapAfter
       && restoredDuplicate.duplicatedFromLensId === sourceBefore.id
+      && restoredDuplicate.apertureSource === "manual"
+      && restoredDuplicate.diameterSource === "duplicated"
+      && restoredDuplicate.manufacturingGeometrySource === "duplicated"
+      && restoredDuplicate.sourceNote === `Duplicated from ${sourceBefore.id}`
       && restoredDuplicate.patentSurfaceStart === undefined
+      && duplicateSnapshot.apertureSource === "manual"
+      && duplicateSnapshot.diameterSource === "duplicated"
+      && duplicateSnapshot.manufacturingGeometrySource === "duplicated"
+      && duplicateSnapshot.sourceNote === `Duplicated from ${sourceBefore.id}`
       && duplicateSnapshot.patentSurfaceStart === undefined;
   }));
 
@@ -20996,6 +21666,81 @@ const runOpticsSelfCheck = () => {
       && Math.abs(preview.apertureDiameter - designAperture) > 1e-3
       && Math.abs(previewStop - preview.apertureDiameter) < 1e-9
       && Math.abs(designStop - designAperture) < 1e-9;
+  }));
+
+  test("aperture sweep link toggles diagram preview without changing design aperture", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    const designAperture = state.apertureDiameter;
+    state.diagramAperturePreviewMode = "followSweep";
+    state.mtfApertureFieldChartKey = "f4";
+    const system = calculateSystem(state.lenses);
+    const preview = resolveDiagramAperturePreview(state.lenses, system);
+    state.diagramAperturePreviewMode = "design";
+    const designPreview = resolveDiagramAperturePreview(state.lenses, system);
+    return preview.active
+      && preview.apertureKey === "f4"
+      && Math.abs(state.apertureDiameter - designAperture) < 1e-9
+      && !designPreview.active;
+  }));
+
+  test("geometry display modes render safe, requested and invalid profiles distinctly", () => withTemporaryState(() => {
+    const oversizedLens = normalizeLens({
+      id: "oversized-test",
+      type: "biconvex",
+      r1: 50,
+      r2: -50,
+      thickness: 2,
+      gapAfter: 0,
+      diameter: 10,
+      clearApertureDiameter: 10,
+      mechanicalDiameter: 14,
+      visualDiameter: 14,
+      requestedMechanicalDiameterMm: 70,
+      refractiveIndex: 1.5168,
+      vd: 64.17,
+      apertureSource: "manual",
+      manufacturingGeometrySource: "manual"
+    });
+    state.lenses = [oversizedLens];
+    state.prescription = normalizePrescription({ prescriptionType: "element", lenses: state.lenses });
+    const system = calculateSystem(state.lenses);
+    const spectral = { d: system };
+    const safeMapper = createSvgPointMapper(system, spectral, { geometryDisplayMode: "safe" });
+    const requestedMapper = createSvgPointMapper(system, spectral, { geometryDisplayMode: "requested" });
+    const safeModel = buildPrescriptionLensRenderModel(
+      safeMapper.positions[0],
+      safeMapper,
+      system.results[0],
+      state.lenses[0],
+      0,
+      [],
+      { geometryDisplayMode: "safe" }
+    );
+    const requestedModel = buildPrescriptionLensRenderModel(
+      requestedMapper.positions[0],
+      requestedMapper,
+      system.results[0],
+      state.lenses[0],
+      0,
+      [],
+      { geometryDisplayMode: "requested" }
+    );
+    const invalidMarkup = renderIndividualLensSvg(system, requestedMapper, [], 0, {
+      prebuiltModel: requestedModel,
+      annotationLanes: { diagramViewMode: "optical", diagramGeometryDisplayMode: "invalidLines" }
+    });
+    const info = lensGeometryLimitInfo(state.lenses[0], safeModel);
+    return safeModel
+      && requestedModel
+      && safeModel.safeSemiDiameter < requestedModel.requestedSemiDiameter
+      && Math.abs(requestedModel.semiDiameter * 2 - 70) < 1e-9
+      && requestedMapper.verticalHalfRange > safeMapper.verticalHalfRange
+      && !markupHasClass(invalidMarkup, "glass-fill")
+      && invalidMarkup.includes("Invalid geometry display")
+      && Math.abs(info.requestedMechanicalDiameterMm - 70) < 1e-9
+      && info.safeMechanicalDiameterMm < info.requestedMechanicalDiameterMm
+      && info.appliedMechanicalDiameterMm < info.requestedMechanicalDiameterMm;
   }));
 
   test("manual lens diameter edit updates clear, mechanical and visual diameters only", () => withTemporaryState(() => {
@@ -21199,14 +21944,18 @@ const runOpticsSelfCheck = () => {
         || constraint.warning.includes("selected minimum clearance exceeds")
       ))
       && resolution.models.filter(Boolean).some((model) => model.lineOnlyOpticalFallback || model.renderFilledGlass === false)
-      && markup.includes("patent-line-only-surface")
+      && markup.includes("optical-layout-surface")
+      && !markup.includes("optical-layout-fill")
+      && !markup.includes("patent-line-only-surface")
       && !markup.includes("Mechanical data not supplied by patent")
       && diagnosticsMarkup.includes("Mechanical data not supplied by patent");
   }));
 
-  test("Sonnar 50 optical view shows fallback clear-aperture fill for unsafe patent geometry", () => withTemporaryState(() => {
+  test("Sonnar 50 professional optical view shows surface-only fallback for unsafe patent geometry", () => withTemporaryState(() => {
     loadPresetIntoState("zeissSonnar50F15Us2186621Ex1");
     state.diagramViewMode = "optical";
+    state.diagramRenderStyle = "professionalOptical";
+    state.diagramLensFill = false;
     ensurePatentOpticalGeometry();
     const system = calculateSystem(state.lenses);
     const trace = traceSystemRealRays(state.lenses, system, {
@@ -21218,11 +21967,128 @@ const runOpticsSelfCheck = () => {
     const resolution = resolveOpticalLayoutGeometry(system, mapper, trace);
     const glassMarkup = renderLensStackSvg(system, mapper, trace, resolution, {
       ...diagramAnnotationLanes(mapper, FULL_FRAME_SENSOR.diagonal / 2),
-      diagramViewMode: "optical"
+      diagramViewMode: "optical",
+      diagramGeometryDisplayMode: "safe",
+      diagramRenderStyle: "professionalOptical"
     }, "glass");
+    const surfaceMarkup = renderLensStackSvg(system, mapper, trace, resolution, {
+      ...diagramAnnotationLanes(mapper, FULL_FRAME_SENSOR.diagonal / 2),
+      diagramViewMode: "optical",
+      diagramGeometryDisplayMode: "safe",
+      diagramRenderStyle: "professionalOptical"
+    }, "optical");
     return resolution.models.filter(Boolean).some((model) => model.renderFilledGlass === false || model.lineOnlyOpticalFallback)
-      && glassMarkup.includes("optical-fill-fallback")
-      && glassMarkup.includes(OPTICAL_FILL_FALLBACK_NOTE);
+      && !markupHasClass(glassMarkup, "glass-fill")
+      && !glassMarkup.includes("optical-layout-fill")
+      && surfaceMarkup.includes("optical-layout-surface")
+      && !surfaceMarkup.includes("optical-aperture-edge");
+  }));
+
+  test("professional optical layout uses surface-only profiles without fill caps or bevel edges", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    state.diagramViewMode = "optical";
+    state.diagramRenderStyle = "professionalOptical";
+    state.diagramLensFill = false;
+    state.diagramGeometryDisplayMode = "safe";
+    state.cementedGroupDisplayMode = "individualManufacturing";
+    const system = calculateSystem(state.lenses);
+    const trace = traceSystemRealRays(state.lenses, system, {
+      ...rayTraceApertureOptions(state),
+      rayCount: 9,
+      fieldAngleDegrees: 0
+    });
+    const mapper = createSvgPointMapper(system, getSpectralSystems(), { geometryDisplayMode: "safe" });
+    const resolution = resolveOpticalLayoutGeometry(system, mapper, trace, {
+      geometryDisplayMode: "safe",
+      minimumAirGapClearanceMm: 0
+    });
+    const markup = renderLensStackSvg(system, mapper, trace, resolution, {
+      ...diagramAnnotationLanes(mapper, FULL_FRAME_SENSOR.diagonal / 2),
+      diagramViewMode: "optical",
+      diagramGeometryDisplayMode: "safe",
+      diagramRenderStyle: "professionalOptical"
+    }, "all");
+    const before = calculateSystem(state.lenses);
+    renderLensStackSvg(system, mapper, trace, resolution, {
+      diagramViewMode: "optical",
+      diagramGeometryDisplayMode: "manufacturing"
+    }, "all");
+    const after = calculateSystem(state.lenses);
+    return DEFAULT_ANALYSIS_SETTINGS.diagramRenderStyle === "professionalOptical"
+      && !markupHasClass(markup, "glass-fill")
+      && !markup.includes("optical-layout-fill")
+      && !markup.includes("optical-aperture-edge")
+      && markup.includes("optical-layout-surface")
+      && !markup.includes("bevel-edge")
+      && !markup.includes("mechanical-edge")
+      && Math.abs(before.effectiveFocalLength - after.effectiveFocalLength) < 1e-12
+      && Math.abs(before.backFocalLength - after.backFocalLength) < 1e-12;
+  }));
+
+  test("diagram render styles do not change optical calculations", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    state.mtfChartMode = "frequency";
+    state.mtfApertureSweepStops = ["wideOpen", "f4"];
+    state.diagramViewMode = "optical";
+    state.diagramRayDisplayMode = "selected";
+    const round = (value, digits = 10) => (
+      Number.isFinite(value) ? Number(value.toFixed(digits)) : value
+    );
+    const signature = () => {
+      const system = calculateSystem(state.lenses);
+      const spectralSystems = getSpectralSystems();
+      const trace = traceSystemRealRays(state.lenses, system, {
+        ...rayTraceApertureOptions(state),
+        rayCount: 7,
+        fieldAngleDegrees: 0
+      });
+      const mtf = calculateApproximateMTF(trace, { minRayCount: 3 });
+      const sagittalTangential = calculateSagittalTangentialGeometricMTF(state.lenses, system, {
+        ...rayTraceApertureOptions(state),
+        fieldAngleDegrees: 0,
+        rayCount: 5,
+        maxFrequencyLpMm: 50,
+        frequencyStepLpMm: 10
+      });
+      const sweep = calculateMtfApertureSweepPreview(state.lenses, system, { maxFrequencyLpMm: 50 });
+      return JSON.stringify({
+        efl: round(system.effectiveFocalLength),
+        bfl: round(system.backFocalLength),
+        spot: round(trace.rmsSpotRadius),
+        rays: (trace.rays || []).map((ray) => ({
+          status: ray.status,
+          y: round(ray.sensorPoint?.y),
+          x: round(ray.sensorPoint?.x)
+        })),
+        mtf40: round(mtf.readouts?.[40]),
+        stSag30: round(sagittalTangential.sagittal?.readouts?.[30]),
+        stTan30: round(sagittalTangential.tangential?.readouts?.[30]),
+        sweep: sweep.map((item) => ({
+          key: item.key,
+          stop: round(item.physicalStopDiameter),
+          sag30: round(item.result?.sagittal?.readouts?.[30]),
+          tan30: round(item.result?.tangential?.readouts?.[30])
+        }))
+      });
+    };
+    state.diagramRenderStyle = "professionalOptical";
+    state.diagramLensFill = false;
+    state.diagramGeometryDisplayMode = "safe";
+    const baseline = signature();
+    ["transparentGlass", "manufacturingEnvelope", "requestedInvalid", "professionalOptical"].forEach((style) => {
+      state.diagramRenderStyle = style;
+      state.diagramGeometryDisplayMode = diagramGeometryModeForRenderStyle(style, state.diagramGeometryDisplayMode);
+      const system = calculateSystem(state.lenses);
+      const trace = traceSystemRealRays(state.lenses, system, {
+        ...rayTraceApertureOptions(state),
+        rayCount: 7,
+        fieldAngleDegrees: 0
+      });
+      renderOpticalDiagram(system, getSpectralSystems(), trace);
+    });
+    return signature() === baseline;
   }));
 
   test("mechanical view does not draw optical fallback fill for unsafe patent geometry", () => withTemporaryState(() => {
@@ -21303,7 +22169,11 @@ const runOpticsSelfCheck = () => {
     const system = calculateSystem(state.lenses);
     const trace = traceSystemRealRays(state.lenses, system, { ...rayTraceApertureOptions(state), rayCount: 9 });
     const mapper = createSvgPointMapper(system, getSpectralSystems());
-    const markup = renderLensStackSvg(system, mapper, trace);
+    const markup = renderLensStackSvg(system, mapper, trace, null, {
+      diagramViewMode: "optical",
+      diagramGeometryDisplayMode: "safe",
+      diagramRenderStyle: "transparentGlass"
+    }, "glass");
     return (markup.match(/data-element-index="1"/g) || []).length === 1
       && (markup.match(/data-element-index="2"/g) || []).length === 1
       && (markup.match(/data-element-index="3"/g) || []).length === 1

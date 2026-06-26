@@ -734,6 +734,14 @@ select:focus-visible {
   color: #ffcc45;
 }
 
+.lens-source-note {
+  grid-column: 1 / -1;
+  margin: 6px 0 0;
+  color: #d7e5ee;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
 .lens-control-section .lens-title {
   gap: 7px;
 }
@@ -3289,7 +3297,8 @@ select {
   grid-template-columns: auto minmax(0, 1fr);
   grid-template-areas:
     "title focus"
-    "chips chips";
+    "chips chips"
+    "link link";
   align-items: center;
   gap: 8px;
   margin: 10px 0;
@@ -3326,6 +3335,20 @@ select {
 .mtf-aperture-focus-select {
   grid-area: focus;
   justify-self: end;
+}
+
+.mtf-diagram-link-toggle {
+  grid-area: link;
+  justify-self: start;
+  margin-top: 2px;
+}
+
+.mtf-diagram-link-status {
+  grid-area: link;
+  justify-self: end;
+  color: #f8f6f2;
+  font-size: 0.68rem;
+  font-weight: 800;
 }
 
 .mtf-aperture-chip {
@@ -3963,6 +3986,64 @@ select {
   fill: rgba(91, 168, 151, 0.12);
 }
 
+.optical-layout-fill {
+  fill: rgba(81, 156, 169, 0.18);
+  stroke: none;
+}
+
+.optical-layout-fill.glass-tone-1 {
+  fill: rgba(74, 139, 169, 0.16);
+}
+
+.optical-layout-fill.glass-tone-2 {
+  fill: rgba(91, 168, 151, 0.16);
+}
+
+.optical-layout-surface,
+.optical-aperture-edge {
+  fill: none;
+  stroke: #2f6470;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.optical-aperture-edge {
+  stroke-width: 1.15;
+  opacity: 0.64;
+}
+
+.requested-profile-fill {
+  fill: rgba(255, 183, 3, 0.14);
+  stroke: none;
+  pointer-events: none;
+}
+
+.requested-profile-outline {
+  fill: none;
+  stroke: #ffb703;
+  stroke-width: 1.8;
+  stroke-dasharray: 6 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.invalid-geometry-reference {
+  stroke: #d83a3a;
+  stroke-dasharray: 4 3;
+}
+
+.invalid-geometry-display-label {
+  fill: #d83a3a;
+  font-size: 8px;
+  font-weight: 900;
+  paint-order: stroke;
+  stroke: #f8f6f2;
+  stroke-width: 3px;
+}
+
 .lens-shape .glass-fill.glass-tone-1 {
   fill: rgba(74, 139, 169, 0.14);
 }
@@ -4420,6 +4501,118 @@ select {
   stroke: #0a3556;
   stroke-width: 1.2;
   vector-effect: non-scaling-stroke;
+}
+
+.real-ray-secondary {
+  opacity: 0.25;
+  stroke-width: 0.55;
+}
+
+.real-ray-diagnostic {
+  opacity: 0.34;
+  stroke-width: 0.62;
+}
+
+.ray-diagram.render-professionalOptical .layer-glass-fill {
+  display: none;
+}
+
+.ray-diagram.render-professionalOptical.has-lens-fill .layer-glass-fill {
+  display: block;
+}
+
+.ray-diagram.render-professionalOptical .optical-layout-fill {
+  fill: rgba(81, 156, 169, 0.04);
+}
+
+.ray-diagram.render-professionalOptical .optical-layout-fill.glass-tone-1 {
+  fill: rgba(74, 139, 169, 0.035);
+}
+
+.ray-diagram.render-professionalOptical .optical-layout-fill.glass-tone-2 {
+  fill: rgba(91, 168, 151, 0.035);
+}
+
+.ray-diagram.render-professionalOptical .optical-layout-surface,
+.ray-diagram.render-professionalOptical .surface-outline,
+.ray-diagram.render-professionalOptical .cemented-shared-interface {
+  stroke: #17242a;
+  stroke-width: 1.25;
+  opacity: 0.95;
+}
+
+.ray-diagram.render-professionalOptical .optical-aperture-edge,
+.ray-diagram.render-professionalOptical .mechanical-edge,
+.ray-diagram.render-professionalOptical .bevel-edge,
+.ray-diagram.render-professionalOptical .cemented-group-outer-outline {
+  display: none;
+}
+
+.ray-diagram.render-professionalOptical .aperture-stop-bar,
+.ray-diagram.render-professionalOptical .aperture-stop-marker line {
+  stroke: #17242a;
+  stroke-width: 1.5;
+}
+
+.ray-diagram.render-professionalOptical .sensor-line,
+.ray-diagram.render-professionalOptical .bfd-guide-line,
+.ray-diagram.render-professionalOptical .sony-flange-line {
+  stroke: #7d8b91;
+  stroke-width: 1;
+  opacity: 0.72;
+}
+
+.ray-diagram.render-professionalOptical .axis-line {
+  stroke: #aebbc0;
+  opacity: 0.55;
+}
+
+.ray-diagram.render-professionalOptical .real-ray {
+  stroke: #0a6cf1;
+  stroke-width: 0.85;
+  opacity: 0.68;
+}
+
+.ray-diagram.render-professionalOptical .real-ray-chief {
+  stroke-width: 1.25;
+  opacity: 0.9;
+}
+
+.ray-diagram.render-professionalOptical .real-ray-marginal {
+  stroke-width: 0.95;
+  opacity: 0.78;
+}
+
+.ray-diagram.render-professionalOptical .real-ray-secondary {
+  stroke-width: 0.55;
+  opacity: 0.25;
+}
+
+.ray-diagram.render-professionalOptical .real-ray-diagnostic {
+  stroke-width: 0.55;
+  opacity: 0.36;
+}
+
+.ray-diagram.render-professionalOptical .individual-lens-label,
+.ray-diagram.render-professionalOptical .cemented-group-label {
+  fill: #50656f;
+  opacity: 0.72;
+  font-size: 7px;
+}
+
+.diagram-mode-badge {
+  align-self: end;
+  color: var(--light-surface-muted);
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.diagram-fill-toggle {
+  display: inline-flex;
+  align-items: end;
+  gap: 6px;
 }
 
 .focus-dot {
@@ -6396,4 +6589,48 @@ textarea,
       height: 100dvh;
     }
   }
+}
+
+.top-diagram .ray-diagram.render-professionalOptical .layer-glass-fill {
+  display: none;
+}
+
+.top-diagram .ray-diagram.render-professionalOptical.has-lens-fill .layer-glass-fill {
+  display: block;
+}
+
+.top-diagram .ray-diagram.render-professionalOptical .optical-layout-surface,
+.top-diagram .ray-diagram.render-professionalOptical .surface-outline,
+.top-diagram .ray-diagram.render-professionalOptical .cemented-shared-interface {
+  stroke: #17242a;
+  stroke-width: 1.25;
+  opacity: 0.95;
+}
+
+.top-diagram .ray-diagram.render-professionalOptical .optical-aperture-edge,
+.top-diagram .ray-diagram.render-professionalOptical .mechanical-edge,
+.top-diagram .ray-diagram.render-professionalOptical .bevel-edge,
+.top-diagram .ray-diagram.render-professionalOptical .cemented-group-outer-outline {
+  display: none;
+}
+
+.top-diagram .ray-diagram.render-professionalOptical .real-ray {
+  stroke: #0a6cf1;
+  stroke-width: 0.85;
+  opacity: 0.68;
+}
+
+.top-diagram .ray-diagram.render-professionalOptical .real-ray-chief {
+  stroke-width: 1.25;
+  opacity: 0.9;
+}
+
+.top-diagram .ray-diagram.render-professionalOptical .real-ray-marginal {
+  stroke-width: 0.95;
+  opacity: 0.78;
+}
+
+.top-diagram .ray-diagram.render-professionalOptical .real-ray-secondary {
+  stroke-width: 0.55;
+  opacity: 0.25;
 }

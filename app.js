@@ -309,6 +309,9 @@ const DEFAULT_ANALYSIS_SETTINGS = {
   rayFanCustomFieldAngleDegrees: 12,
   rayFanWavelengthMode: "d",
   mtfPlaneMode: "current",
+  mtfEngine: "geometricLsfFft",
+  mtfLsfQuality: "interactive",
+  mtfFieldFocusPolicy: "fixed",
   mtfChartMode: "field",
   mtfMaxFrequencyLpMm: "auto",
   mtfSensorFormatKey: "fullFrame",
@@ -2061,7 +2064,7 @@ const state = {
     apertureField: true,
     rayTraceSpot: true,
     rayFanAberrations: true,
-    mtfResolution: false,
+    mtfResolution: true,
     coverageIllumination: true,
     wavefrontDiagnostics: true,
     debugTools: true,
@@ -2420,7 +2423,10 @@ const snapshotState = () => ({
   diagramShowDimensions: state.diagramShowDimensions,
   diagramShowFocusComparison: state.diagramShowFocusComparison,
   diagramPhysicalGrid: state.diagramPhysicalGrid,
-  diagramShowScaleBar: state.diagramShowScaleBar
+  diagramShowScaleBar: state.diagramShowScaleBar,
+  mtfEngine: state.mtfEngine,
+  mtfLsfQuality: state.mtfLsfQuality,
+  mtfFieldFocusPolicy: state.mtfFieldFocusPolicy
 });
 
 const restoreSnapshot = (snapshot) => {
@@ -2464,6 +2470,9 @@ const restoreSnapshot = (snapshot) => {
   state.diagramShowFocusComparison = snapshot.diagramShowFocusComparison === true;
   state.diagramPhysicalGrid = snapshot.diagramPhysicalGrid === true;
   state.diagramShowScaleBar = snapshot.diagramShowScaleBar === true;
+  state.mtfEngine = normalizeMtfEngine(snapshot.mtfEngine);
+  state.mtfLsfQuality = normalizeGeometricLsfQuality(snapshot.mtfLsfQuality);
+  state.mtfFieldFocusPolicy = snapshot.mtfFieldFocusPolicy === "centerRefocus" ? "centerRefocus" : "fixed";
 };
 
 const rememberState = () => {
@@ -2553,7 +2562,10 @@ const saveCurrentDesign = ({ preferExisting = false } = {}) => {
       diagramShowDimensions: state.diagramShowDimensions,
       diagramShowFocusComparison: state.diagramShowFocusComparison,
       diagramPhysicalGrid: state.diagramPhysicalGrid,
-      diagramShowScaleBar: state.diagramShowScaleBar
+      diagramShowScaleBar: state.diagramShowScaleBar,
+      mtfEngine: state.mtfEngine,
+      mtfLsfQuality: state.mtfLsfQuality,
+      mtfFieldFocusPolicy: state.mtfFieldFocusPolicy
     },
     prescription: serializePrescription(),
     lenses: serializeDesign()
@@ -2656,6 +2668,9 @@ const loadDesign = (design) => {
     state.diagramShowFocusComparison = design.analysisSettings.diagramShowFocusComparison === true;
     state.diagramPhysicalGrid = design.analysisSettings.diagramPhysicalGrid === true;
     state.diagramShowScaleBar = design.analysisSettings.diagramShowScaleBar === true;
+    state.mtfEngine = normalizeMtfEngine(design.analysisSettings.mtfEngine);
+    state.mtfLsfQuality = normalizeGeometricLsfQuality(design.analysisSettings.mtfLsfQuality);
+    state.mtfFieldFocusPolicy = design.analysisSettings.mtfFieldFocusPolicy === "centerRefocus" ? "centerRefocus" : "fixed";
   }
   state.designName = design.name;
   state.selectedSavedDesignId = design.id;
@@ -12136,7 +12151,9 @@ const renderGeometryAnalysisDiagnosticsPanel = (system, diagramAperturePreview, 
       || "Not requested";
   const geometricStatus = state.lastMtfResolutionResult?.isUpdating
     ? "Updating optical analysis…"
-    : "Geometric ray-intercept preview — RMS blur approximation";
+    : normalizeMtfEngine(state.mtfEngine) === "geometricLsfFft"
+      ? "Geometric LSF/FFT preview"
+      : "Fast geometric preview — RMS blur approximation";
   return `
     <section class="geometry-analysis-diagnostics">
       <div class="diagnostic-row-grid">
@@ -14492,6 +14509,38 @@ const calibrateFrequencyToImageSpaceLpMm = () => ({
   warning: "Phase 2 interface only: image-space lp/mm calibration awaits exit pupil and working f-number validation."
 });
 
+const calculatePhysicalLensMtf = () => ({
+  status: "not-implemented",
+  phase: "Phase 2",
+  pipeline: [
+    "ray-traced OPD",
+    "exit pupil mapping",
+    "amplitude + phase pupil",
+    "256 / 512 grid complex FFT",
+    "PSF",
+    "complex OTF",
+    "MTF"
+  ],
+  reason: "Lens-specific physical MTF is gated until OPD fitting, exit-pupil calibration, vignetting, and grid-convergence validation are implemented.",
+  mtf: null
+});
+
+const combinePolychromaticComplexOtf = () => ({
+  status: "not-implemented",
+  phase: "Future physical polychromatic MTF",
+  reason: "Polychromatic physical MTF must combine weighted complex OTFs on one calibrated lp/mm grid; magnitude averaging is not used as a final physical result.",
+  otf: null,
+  mtf: null
+});
+
+const calculateSensorMtfProfile = () => ({
+  status: "not-implemented",
+  phase: "Future optional sensor multiplier",
+  reason: "Sensor MTF remains separate from lens optical MTF and awaits validated physical lens MTF.",
+  profiles: ["No sensor MTF", "Sony full-frame generic", "Manual pixel pitch"],
+  mtf: null
+});
+
 const physicalMtf = {
   settings: PHYSICAL_MTF_ENGINE_SETTINGS,
   calculateIdealCircularPupilValidation: calculateIdealCircularPupilPhysicalMtf,
@@ -14506,11 +14555,12 @@ const physicalMtf = {
       "Ideal circular pupil must match analytic diffraction-limited MTF.",
       "Known defocus and astigmatism cases must behave correctly.",
       "128 and 256 grids must converge at 10, 30, 40 and 50 lp/mm.",
+      "Lens OPD fit residual and exit-pupil lp/mm calibration must pass before any lens-specific physical MTF is exposed.",
       "No physical MTF result is labelled converged until all gates pass."
     ],
     warnings: [
       "Ideal circular-pupil diffraction validation only.",
-      "Current visible MTF remains geometric ray-intercept preview — RMS blur approximation."
+      "Current visible lens MTF remains geometric preview only; physical lens MTF is not connected yet."
     ]
   }),
   sampleExitPupilWavefront,
@@ -14518,6 +14568,9 @@ const physicalMtf = {
   buildComplexPupil,
   calculatePhysicalMtfFromPupil,
   calibrateFrequencyToImageSpaceLpMm,
+  calculatePhysicalLensMtf,
+  combinePolychromaticComplexOtf,
+  calculateSensorMtfProfile,
   fftRadix2Complex,
   fft2DRadix2Complex
 };
@@ -14756,8 +14809,355 @@ const axisMtfResultFromSigma = (axis, sigma, options = {}) => {
   };
 };
 
+const MTF_ENGINE_OPTIONS = [
+  {
+    key: "geometricLsfFft",
+    label: "Geometric LSF/FFT preview",
+    note: "Traces a weighted pupil, builds tangential/sagittal line-spread functions, then FFTs the LSF."
+  },
+  {
+    key: "fastRmsGaussian",
+    label: "Fast geometric preview — RMS blur approximation",
+    note: "Legacy interactive fallback using RMS ray spread and a Gaussian MTF approximation."
+  }
+];
+
+const normalizeMtfEngine = (engine) => (
+  MTF_ENGINE_OPTIONS.some((option) => option.key === engine)
+    ? engine
+    : DEFAULT_ANALYSIS_SETTINGS.mtfEngine
+);
+
+const GEOMETRIC_LSF_FFT_QUALITY_PROFILES = {
+  interactive: { rings: 6, label: "Interactive", approximateRays: 127 },
+  high: { rings: 15, label: "High", approximateRays: 721 },
+  reference: { rings: 20, label: "Reference", approximateRays: 1261 }
+};
+
+const normalizeGeometricLsfQuality = (quality) => (
+  GEOMETRIC_LSF_FFT_QUALITY_PROFILES[quality] ? quality : "interactive"
+);
+
+const weightedEqualAreaPupilSamples = (quality = "interactive", apertureRadius = 10) => {
+  const profile = GEOMETRIC_LSF_FFT_QUALITY_PROFILES[normalizeGeometricLsfQuality(quality)];
+  const rings = profile.rings;
+  const radius = Math.max(0.1, toNumber(apertureRadius) || 10);
+  const samples = [{ y: 0, z: 0, pupilU: 0, pupilV: 0, weight: Math.PI / (rings + 1) }];
+  for (let ring = 1; ring <= rings; ring += 1) {
+    const inner = Math.sqrt((ring - 1) / rings);
+    const outer = Math.sqrt(ring / rings);
+    const normalizedRadius = Math.sqrt((inner ** 2 + outer ** 2) / 2);
+    const angularCount = Math.max(8, ring * 6);
+    const annulusArea = Math.PI * (outer ** 2 - inner ** 2);
+    const sampleWeight = annulusArea / angularCount;
+    for (let index = 0; index < angularCount; index += 1) {
+      const angle = 2 * Math.PI * (index + 0.5) / angularCount;
+      const pupilU = normalizedRadius * Math.cos(angle);
+      const pupilV = normalizedRadius * Math.sin(angle);
+      samples.push({
+        y: radius * pupilU,
+        z: radius * pupilV,
+        pupilU,
+        pupilV,
+        weight: sampleWeight
+      });
+    }
+  }
+  const totalWeight = samples.reduce((sum, sample) => sum + sample.weight, 0) || 1;
+  return samples.map((sample) => ({ ...sample, weight: sample.weight / totalWeight }));
+};
+
+const generateWeightedPupilRayBundle3D = (options = {}) => {
+  const orientation = options.fieldOrientation || "tangential";
+  const direction = fieldDirection3D(options.fieldAngleDegrees, orientation);
+  const apertureRadius = Math.max(0.1, toNumber(options.apertureRadius ?? options.apertureHeight) || 10);
+  const referenceX = toNumber(options.referenceX) || 0;
+  const startX = toNumber(options.startX) || referenceX + 25;
+  const tToReference = Math.abs(direction.x) > 0.000001 ? (referenceX - startX) / direction.x : 0;
+  return weightedEqualAreaPupilSamples(options.quality, apertureRadius).map((sample) => ({
+    x: startX,
+    y: sample.y - direction.y * tToReference,
+    z: sample.z - direction.z * tToReference,
+    dx: direction.x,
+    dy: direction.y,
+    dz: direction.z,
+    apertureY: sample.y,
+    apertureZ: sample.z,
+    pupilU: sample.pupilU,
+    pupilV: sample.pupilV,
+    pupilWeight: sample.weight
+  }));
+};
+
+const nextPowerOfTwo = (value) => {
+  let size = 1;
+  while (size < value) size <<= 1;
+  return size;
+};
+
+const buildWeightedLsf = (samples, options = {}) => {
+  const coordinates = samples.map((sample) => sample.coordinate).filter(Number.isFinite);
+  if (coordinates.length < 2) return { status: "invalid", warning: "Too few valid ray intercepts for LSF.", bins: [], binPitchMm: NaN };
+  const maxFrequency = Math.max(10, toNumber(options.maxFrequencyLpMm) || 100);
+  const minPitch = 1 / (Math.max(2, maxFrequency) * 2.25);
+  const minCoordinate = Math.min(...coordinates);
+  const maxCoordinate = Math.max(...coordinates);
+  const span = Math.max(maxCoordinate - minCoordinate, minPitch * 16);
+  const padding = Math.max(span * 0.25, minPitch * 8);
+  const left = minCoordinate - padding;
+  const right = maxCoordinate + padding;
+  const rawBinCount = Math.ceil((right - left) / minPitch) + 1;
+  const binCount = clamp(nextPowerOfTwo(rawBinCount), 128, 2048);
+  const binPitchMm = (right - left) / (binCount - 1);
+  const bins = new Array(binCount).fill(0);
+  samples.forEach((sample) => {
+    if (!Number.isFinite(sample.coordinate)) return;
+    const position = (sample.coordinate - left) / binPitchMm;
+    const index = Math.floor(position);
+    const fraction = position - index;
+    const weight = Number.isFinite(sample.weight) ? sample.weight : 1;
+    if (index >= 0 && index < binCount) bins[index] += weight * (1 - fraction);
+    if (index + 1 >= 0 && index + 1 < binCount) bins[index + 1] += weight * fraction;
+  });
+  const energy = bins.reduce((sum, value) => sum + value, 0);
+  if (!(energy > 0)) return { status: "invalid", warning: "LSF energy is zero.", bins, binPitchMm };
+  return {
+    status: "valid",
+    bins: bins.map((value) => value / energy),
+    binPitchMm,
+    supportMm: right - left,
+    binCount
+  };
+};
+
+const axisMtfResultFromWeightedLsf = (axis, samples, options = {}) => {
+  const maxFrequency = Math.max(10, toNumber(options.maxFrequencyLpMm) || 100);
+  const frequencyStep = Math.max(1, toNumber(options.frequencyStepLpMm) || 5);
+  const lsf = buildWeightedLsf(samples, { maxFrequencyLpMm: maxFrequency });
+  if (lsf.status !== "valid") {
+    return {
+      axis,
+      engine: "geometricLsfFft",
+      status: lsf.status,
+      warning: lsf.warning,
+      frequencies: [],
+      values: [],
+      readouts: Object.fromEntries(MTF_READOUT_FREQUENCIES.map((frequency) => [frequency, NaN])),
+      lsf
+    };
+  }
+  const paddedLength = nextPowerOfTwo(lsf.bins.length * 2);
+  const padded = lsf.bins.concat(new Array(paddedLength - lsf.bins.length).fill(0));
+  const fft = fftRadix2Complex(padded, new Array(paddedLength).fill(0), false);
+  if (fft.status !== "valid") {
+    return {
+      axis,
+      engine: "geometricLsfFft",
+      status: "invalid",
+      warning: fft.warning,
+      frequencies: [],
+      values: [],
+      readouts: Object.fromEntries(MTF_READOUT_FREQUENCIES.map((frequency) => [frequency, NaN])),
+      lsf
+    };
+  }
+  const dc = Math.hypot(fft.real[0], fft.imag[0]) || 1;
+  const frequencies = [];
+  const values = [];
+  for (let frequency = 0; frequency <= maxFrequency + 0.000001; frequency += frequencyStep) {
+    const roundedFrequency = Number(frequency.toFixed(4));
+    const bin = roundedFrequency * paddedLength * lsf.binPitchMm;
+    const leftIndex = Math.floor(bin);
+    const rightIndex = Math.min(fft.real.length - 1, leftIndex + 1);
+    const t = bin - leftIndex;
+    const magnitudeAt = (index) => Math.hypot(fft.real[index] || 0, fft.imag[index] || 0) / dc;
+    const value = leftIndex >= 0 && leftIndex < fft.real.length
+      ? magnitudeAt(leftIndex) * (1 - t) + magnitudeAt(rightIndex) * t
+      : NaN;
+    frequencies.push(roundedFrequency);
+    values.push(clamp(value, 0, 1));
+  }
+  const result = {
+    axis,
+    engine: "geometricLsfFft",
+    status: "valid",
+    frequencies,
+    values,
+    lsf: {
+      binPitchMm: lsf.binPitchMm,
+      binCount: lsf.binCount,
+      supportMm: lsf.supportMm,
+      kernel: "linear B-spline / triangular binning"
+    }
+  };
+  return {
+    ...result,
+    readouts: Object.fromEntries(MTF_READOUT_FREQUENCIES.map((frequency) => [
+      frequency,
+      mtfValueAtFrequency(result, frequency)
+    ]))
+  };
+};
+
+const traceWeightedPupilForLsfMtf = (lenses, system, options = {}) => {
+  const spectralLineKey = options.spectralLineKey || "d";
+  const wavelengthNm = toNumber(options.wavelengthNm)
+    || SPECTRAL_LINES[spectralLineKey]?.wavelengthNm
+    || SPECTRAL_LINES.d.wavelengthNm;
+  const surfaces = buildSurfaceList(lenses, system, {
+    ...rayTraceApertureOptions(options),
+    wavelengthNm,
+    spectralLineKey
+  });
+  if (!surfaces.length) return { surfaces, rays: [], validRays: [], spectralLineKey, wavelengthNm };
+  const fieldOrientation = options.fieldOrientation || "tangential";
+  const apertureSurface = surfaces.find((surface) => surface.isStop) || surfaces[0];
+  const rightMostSurfaceX = Math.max(...surfaces.map((surface) => surface.x));
+  const startX = rightMostSurfaceX + Math.max(20, Math.abs(system.totalTrack || 0) * 0.15);
+  const rayBundle = generateWeightedPupilRayBundle3D({
+    fieldAngleDegrees: options.fieldAngleDegrees,
+    fieldOrientation,
+    quality: options.quality,
+    apertureRadius: apertureSurface.semiDiameter * 0.98,
+    referenceX: apertureSurface.x,
+    startX
+  });
+  const imagePlaneX = Number.isFinite(toNumber(options.imagePlaneX)) ? toNumber(options.imagePlaneX) : 0;
+  const rays = rayBundle.map((ray) => {
+    const traced = traceRay3D(ray, surfaces);
+    const imagePoint = traced.status === "valid" ? imagePlaneIntersection3D(traced.finalRay, imagePlaneX) : null;
+    const status = traced.status === "valid" && !imagePoint ? "invalid" : traced.status;
+    return {
+      ...traced,
+      status,
+      inputRay: ray,
+      imagePoint,
+      weight: ray.pupilWeight
+    };
+  });
+  return {
+    surfaces,
+    rays,
+    validRays: rays.filter((ray) => ray.status === "valid" && ray.imagePoint),
+    spectralLineKey,
+    wavelengthNm,
+    fieldOrientation,
+    apertureStopX: apertureSurface.x,
+    totalRayCount: rays.length,
+    clippedRayCount: rays.filter((ray) => ray.status === "missed aperture").length
+  };
+};
+
+const calculateGeometricLsfFftMtf = (lenses, system, options = {}) => {
+  try {
+    const fieldAngleDegrees = toNumber(options.fieldAngleDegrees) || 0;
+    const imagePlaneX = Number.isFinite(toNumber(options.imagePlaneX)) ? toNumber(options.imagePlaneX) : 0;
+    const quality = normalizeGeometricLsfQuality(options.quality || state.mtfLsfQuality || "interactive");
+    const traced = traceWeightedPupilForLsfMtf(lenses, system, {
+      ...options,
+      quality,
+      fieldOrientation: options.fieldOrientation || "tangential",
+      imagePlaneX
+    });
+    const warnings = [];
+    if (traced.validRays.length < 12) {
+      warnings.push(`Fewer than 12 valid weighted pupil rays for ${fieldAngleDegrees}° ${traced.spectralLineKey}-line LSF/FFT MTF.`);
+    }
+    if (traced.totalRayCount && traced.clippedRayCount / traced.totalRayCount > 0.5) {
+      warnings.push(`More than 50% of weighted pupil rays are clipped at ${fieldAngleDegrees}° ${traced.spectralLineKey}-line.`);
+    }
+    if (traced.validRays.length < 4) {
+      const fallback = calculateSagittalTangentialGeometricMTF(lenses, system, {
+        ...options,
+        mtfEngine: "fastRmsGaussian",
+        imagePlaneX
+      });
+      return {
+        ...fallback,
+        engine: "fastRmsGaussian",
+        engineFallback: true,
+        warnings: [...warnings, "Geometric LSF/FFT had too few rays; fast RMS Gaussian fallback used.", ...(fallback.warnings || [])]
+      };
+    }
+    const chiefRay = traced.validRays.reduce((closest, ray) => {
+      const pupilDistance = Math.hypot(ray.inputRay?.pupilU || 0, ray.inputRay?.pupilV || 0);
+      const closestDistance = closest ? Math.hypot(closest.inputRay?.pupilU || 0, closest.inputRay?.pupilV || 0) : Infinity;
+      return pupilDistance < closestDistance ? ray : closest;
+    }, null);
+    const chiefY = chiefRay?.imagePoint?.y ?? NaN;
+    const chiefZ = chiefRay?.imagePoint?.z ?? NaN;
+    const axes = rayTrace3DAxes(options.fieldOrientation || "tangential");
+    const weightedSamples = traced.validRays.map((ray) => {
+      const dy = ray.imagePoint.y - chiefY;
+      const dz = ray.imagePoint.z - chiefZ;
+      return {
+        tangential: projectRayTrace3DCoordinate({ y: dy, z: dz }, axes.tangential),
+        sagittal: projectRayTrace3DCoordinate({ y: dy, z: dz }, axes.sagittal),
+        weight: Number.isFinite(ray.weight) ? ray.weight : 1
+      };
+    });
+    const rmsFor = (axis) => {
+      const totalWeight = weightedSamples.reduce((sum, sample) => sum + sample.weight, 0) || 1;
+      return Math.sqrt(weightedSamples.reduce((sum, sample) => sum + sample.weight * sample[axis] ** 2, 0) / totalWeight);
+    };
+    const tangential = axisMtfResultFromWeightedLsf("tangential", weightedSamples.map((sample) => ({
+      coordinate: sample.tangential,
+      weight: sample.weight
+    })), options);
+    const sagittal = axisMtfResultFromWeightedLsf("sagittal", weightedSamples.map((sample) => ({
+      coordinate: sample.sagittal,
+      weight: sample.weight
+    })), options);
+    const tangentialSigma = rmsFor("tangential");
+    const sagittalSigma = rmsFor("sagittal");
+    const combinedRms = Number.isFinite(tangentialSigma) && Number.isFinite(sagittalSigma)
+      ? Math.sqrt((tangentialSigma ** 2 + sagittalSigma ** 2) / 2)
+      : NaN;
+    return {
+      fieldKey: options.fieldKey,
+      fieldName: options.fieldName || "Field",
+      fieldAngleDegrees,
+      spectralLineKey: traced.spectralLineKey,
+      wavelengthNm: traced.wavelengthNm,
+      imagePlaneX,
+      planeLabel: options.planeLabel || "Current sensor plane",
+      status: traced.validRays.length >= 12 && tangential.status === "valid" && sagittal.status === "valid" ? "valid" : "too-few-rays",
+      engine: "geometricLsfFft",
+      engineLabel: "Geometric LSF/FFT preview",
+      quality,
+      validRayCount: traced.validRays.length,
+      totalRayCount: traced.totalRayCount,
+      clippedRayCount: traced.clippedRayCount,
+      apertureStopX: traced.apertureStopX,
+      chiefY,
+      chiefZ,
+      tangential: { ...tangential, sigma: tangentialSigma },
+      sagittal: { ...sagittal, sigma: sagittalSigma },
+      combinedRms,
+      lsfKernel: "linear B-spline / triangular binning",
+      bestFocusStable: options.bestFocusStable,
+      warnings
+    };
+  } catch {
+    const fallback = calculateSagittalTangentialGeometricMTF(lenses, system, {
+      ...options,
+      mtfEngine: "fastRmsGaussian"
+    });
+    return {
+      ...fallback,
+      engine: "fastRmsGaussian",
+      engineFallback: true,
+      warnings: ["Geometric LSF/FFT failed; fast RMS Gaussian fallback used.", ...(fallback.warnings || [])]
+    };
+  }
+};
+
 const calculateSagittalTangentialGeometricMTF = (lenses, system, options = {}) => {
   try {
+    const mtfEngine = normalizeMtfEngine(options.mtfEngine || "fastRmsGaussian");
+    if (mtfEngine === "geometricLsfFft") {
+      return calculateGeometricLsfFftMtf(lenses, system, options);
+    }
     const spectralLineKey = options.spectralLineKey || "d";
     const wavelengthNm = toNumber(options.wavelengthNm)
       || SPECTRAL_LINES[spectralLineKey]?.wavelengthNm
@@ -14796,6 +15196,8 @@ const calculateSagittalTangentialGeometricMTF = (lenses, system, options = {}) =
         wavelengthNm,
         imagePlaneX,
         status: "too-few-rays",
+        engine: "fastRmsGaussian",
+        engineLabel: "Fast geometric preview — RMS blur approximation",
         validRayCount: validRays.length,
         totalRayCount,
         clippedRayCount,
@@ -14842,6 +15244,8 @@ const calculateSagittalTangentialGeometricMTF = (lenses, system, options = {}) =
       imagePlaneX,
       planeLabel: options.planeLabel || "Current sensor plane",
       status: validRays.length >= 5 ? "valid" : "too-few-rays",
+      engine: "fastRmsGaussian",
+      engineLabel: "Fast geometric preview — RMS blur approximation",
       validRayCount: validRays.length,
       totalRayCount,
       clippedRayCount,
@@ -14863,6 +15267,8 @@ const calculateSagittalTangentialGeometricMTF = (lenses, system, options = {}) =
       wavelengthNm: toNumber(options.wavelengthNm) || SPECTRAL_LINES.d.wavelengthNm,
       imagePlaneX: Number.isFinite(toNumber(options.imagePlaneX)) ? toNumber(options.imagePlaneX) : 0,
       status: "invalid",
+      engine: "fastRmsGaussian",
+      engineLabel: "Fast geometric preview — RMS blur approximation",
       validRayCount: 0,
       totalRayCount: 0,
       clippedRayCount: 0,
@@ -14981,15 +15387,43 @@ const calculateSagittalTangentialGeometricMTFPanelData = (lenses, system) => {
     });
   }
 
-  warnings.add("Geometric ray-intercept preview — RMS blur approximation.");
+  warnings.add(state.mtfEngine === "fastRmsGaussian"
+    ? "Fast geometric preview — RMS blur approximation."
+    : "Geometric LSF/FFT preview. Not physical wavefront MTF.");
+
+  const fieldFocus = state.mtfFieldFocusPolicy === "centerRefocus"
+    ? findBestFocusSagittalTangentialMTF(lenses, system, {
+      ...rayTraceApertureOptions(state),
+      mtfEngine: normalizeMtfEngine(state.mtfEngine),
+      quality: normalizeGeometricLsfQuality(state.mtfLsfQuality),
+      fieldKey: "center",
+      fieldName: "Centre field",
+      fieldAngleDegrees: 0,
+      spectralLineKey: "d",
+      wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+      rayCount,
+      maxFrequencyLpMm,
+      frequencyStepLpMm: 5
+    })
+    : null;
+  const fieldChartImagePlaneX = state.mtfFieldFocusPolicy === "centerRefocus" && Number.isFinite(fieldFocus?.imagePlaneX)
+    ? fieldFocus.imagePlaneX
+    : 0;
 
   const manufacturerFieldData = manufacturerMtfFieldSamples(lenses, system, {
     maxFrequencyLpMm,
     frequencies: selectedManufacturerMtfFrequencies(),
     sensorFormat: activeMtfSensorFormat(),
-    sampleCount: 9
+    sampleCount: 9,
+    mtfEngine: normalizeMtfEngine(state.mtfEngine),
+    quality: normalizeGeometricLsfQuality(state.mtfLsfQuality),
+    imagePlaneX: fieldChartImagePlaneX,
+    focusPolicy: state.mtfFieldFocusPolicy === "centerRefocus" ? "center-refocused" : "fixed"
   });
   (manufacturerFieldData.warnings || []).forEach((warning) => warnings.add(warning));
+  const lsfConvergence = normalizeMtfEngine(state.mtfEngine) === "geometricLsfFft"
+    ? summarizeGeometricLsfPupilConvergence(manufacturerFieldData)
+    : null;
 
   return {
     wavelengthMode,
@@ -14999,6 +15433,7 @@ const calculateSagittalTangentialGeometricMTFPanelData = (lenses, system) => {
     comparisons,
     activeResults,
     manufacturerFieldData,
+    lsfConvergence,
     apertureSweepResults: calculateMtfApertureSweepPreview(lenses, system, {
       maxFrequencyLpMm,
       fieldKey: state.mtfApertureFrequencyFieldKey || "center"
@@ -15105,6 +15540,9 @@ const apertureSweepCacheKey = (aperture, field, apertureDiameter, maxFrequencyLp
   },
   sensor: state.mtfSensorFormatKey,
   frequencies: selectedManufacturerMtfFrequencies().join(","),
+  engine: normalizeMtfEngine(state.mtfEngine),
+  lsfQuality: normalizeGeometricLsfQuality(state.mtfLsfQuality),
+  fieldFocusPolicy: state.mtfFieldFocusPolicy === "centerRefocus" ? "centerRefocus" : "fixed",
   focusPolicy: state.mtfApertureSweepFocusPolicy,
   plane: state.mtfPlaneMode,
   wavelength: "d",
@@ -15306,22 +15744,38 @@ const manufacturerMtfFieldSamples = (lenses, system, options = {}) => {
   const frequencies = options.frequencies || selectedManufacturerMtfFrequencies();
   const rayCount = Math.round(clamp(toNumber(state.rayTrace3DSampleCount) || 7, 3, 15));
   const warnings = new Set();
-  const samples = Array.from({ length: sampleCount }, (_, index) => {
-    const targetImageHeight = (maxHeight * index) / (sampleCount - 1);
+  const commonImagePlaneX = Number.isFinite(toNumber(options.imagePlaneX)) ? toNumber(options.imagePlaneX) : 0;
+  const engine = normalizeMtfEngine(options.mtfEngine || state.mtfEngine);
+  const quality = normalizeGeometricLsfQuality(options.quality || state.mtfLsfQuality);
+  const sampleForTarget = (targetImageHeight, index) => {
     const commonOptions = {
       ...rayTraceApertureOptions(state),
       ...options,
       rayCount,
+      mtfEngine: engine,
+      quality,
       maxFrequencyLpMm,
-      frequencyStepLpMm: 5
+      frequencyStepLpMm: 5,
+      imagePlaneX: commonImagePlaneX
     };
-    const solved = solveFieldAngleForImageHeight(lenses, system, targetImageHeight, commonOptions);
-    const result = solved.result || calculateSagittalTangentialGeometricMTF(lenses, system, {
+    const solveOptions = {
+      ...commonOptions,
+      mtfEngine: "fastRmsGaussian"
+    };
+    const solved = solveFieldAngleForImageHeight(lenses, system, targetImageHeight, solveOptions);
+    const result = engine === "geometricLsfFft" && solved.status === "solved"
+      ? calculateSagittalTangentialGeometricMTF(lenses, system, {
+        ...commonOptions,
+        fieldAngleDegrees: solved.fieldAngleDegrees,
+        fieldName: `${formatNumber(targetImageHeight, 1)} mm`,
+        fieldKey: `height-${index}`
+      })
+      : (solved.result || calculateSagittalTangentialGeometricMTF(lenses, system, {
       ...commonOptions,
       fieldAngleDegrees: solved.fieldAngleDegrees,
       fieldName: `${formatNumber(targetImageHeight, 1)} mm`,
       fieldKey: `height-${index}`
-    });
+    }));
     const chiefHeight = Math.hypot(result.chiefY || 0, result.chiefZ || 0);
     const imageHeight = Number.isFinite(solved.imageHeight) ? solved.imageHeight : (Number.isFinite(chiefHeight) ? chiefHeight : NaN);
     if (solved.status === "unreachable") {
@@ -15350,7 +15804,41 @@ const manufacturerMtfFieldSamples = (lenses, system, options = {}) => {
         }
       ]))
     };
-  });
+  };
+  let targets = Array.from({ length: sampleCount }, (_, index) => (maxHeight * index) / (sampleCount - 1));
+  let samples = targets.map((target, index) => sampleForTarget(target, index));
+  if (options.adaptive !== false) {
+    for (let pass = 0; pass < 3 && samples.length < 33; pass += 1) {
+      const additions = [];
+      const sorted = samples.slice().sort((left, right) => left.targetImageHeight - right.targetImageHeight);
+      for (let index = 1; index < sorted.length; index += 1) {
+        const left = sorted[index - 1];
+        const right = sorted[index];
+        const midpoint = (left.targetImageHeight + right.targetImageHeight) / 2;
+        if (targets.some((target) => Math.abs(target - midpoint) < 0.000001)) continue;
+        const hasCoverageEdge = left.solveStatus === "solved" && right.solveStatus !== "solved";
+        const highResidual = [left, right].some((sample) => Number.isFinite(sample.residualMm) && sample.residualMm > 0.02);
+        const curveJump = frequencies.some((frequency) => {
+          const leftSag = left.readouts?.[frequency]?.sagittal;
+          const rightSag = right.readouts?.[frequency]?.sagittal;
+          const leftTan = left.readouts?.[frequency]?.tangential;
+          const rightTan = right.readouts?.[frequency]?.tangential;
+          return (Number.isFinite(leftSag) && Number.isFinite(rightSag) && Math.abs(leftSag - rightSag) > 0.18)
+            || (Number.isFinite(leftTan) && Number.isFinite(rightTan) && Math.abs(leftTan - rightTan) > 0.18);
+        });
+        const separationJump = frequencies.some((frequency) => {
+          const leftSep = Math.abs((left.readouts?.[frequency]?.sagittal ?? NaN) - (left.readouts?.[frequency]?.tangential ?? NaN));
+          const rightSep = Math.abs((right.readouts?.[frequency]?.sagittal ?? NaN) - (right.readouts?.[frequency]?.tangential ?? NaN));
+          return Number.isFinite(leftSep) && Number.isFinite(rightSep) && Math.abs(leftSep - rightSep) > 0.12;
+        });
+        if (hasCoverageEdge || highResidual || curveJump || separationJump) additions.push(midpoint);
+        if (samples.length + additions.length >= 33) break;
+      }
+      if (!additions.length) break;
+      targets = targets.concat(additions).sort((left, right) => left - right);
+      samples = targets.map((target, index) => sampleForTarget(target, index));
+    }
+  }
   return {
     maxImageHeightMm: maxHeight,
     selectedSensorCornerMm: maxHeight,
@@ -15366,13 +15854,116 @@ const manufacturerMtfFieldSamples = (lenses, system, options = {}) => {
     )),
     sensor,
     frequencies,
+    engine,
+    engineLabel: engine === "geometricLsfFft"
+      ? "Geometric LSF/FFT"
+      : "Fast RMS Gaussian",
+    quality,
+    focusPolicy: options.focusPolicy || (commonImagePlaneX === 0 ? "fixed" : "center-refocused"),
     samples: samples.sort((left, right) => (
       (Number.isFinite(left.imageHeight) ? left.imageHeight : Number.POSITIVE_INFINITY)
       - (Number.isFinite(right.imageHeight) ? right.imageHeight : Number.POSITIVE_INFINITY)
     )),
-    source: "iterated chief-ray intercept",
-    imagePlaneX: options.imagePlaneX,
+    source: engine === "geometricLsfFft"
+      ? "iterated chief-ray intercept · geometric LSF/FFT"
+      : "iterated chief-ray intercept · fast RMS Gaussian",
+    imagePlaneX: commonImagePlaneX,
+    fieldSampleCount: samples.length,
     warnings: [...warnings]
+  };
+};
+
+const calculateGeometricLsfPupilConvergence = (lenses, system, options = {}) => {
+  const frequencies = (options.frequencies || [10, 30, 40, 50]).filter(Number.isFinite);
+  const tolerance = 0.02;
+  const fields = [
+    RAY_TRACE_FIELDS.find((field) => field.key === "center") || RAY_TRACE_FIELDS[0],
+    RAY_TRACE_FIELDS.find((field) => field.key === "mid") || RAY_TRACE_FIELDS[1],
+    RAY_TRACE_FIELDS.find((field) => field.key === "corner") || RAY_TRACE_FIELDS[2]
+  ].filter(Boolean);
+  const comparisons = fields.flatMap((field) => {
+    const baseOptions = {
+      ...rayTraceApertureOptions(state),
+      fieldKey: field.key,
+      fieldName: field.name,
+      fieldAngleDegrees: field.angle,
+      spectralLineKey: "d",
+      wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+      imagePlaneX: Number.isFinite(toNumber(options.imagePlaneX)) ? toNumber(options.imagePlaneX) : 0,
+      maxFrequencyLpMm: options.maxFrequencyLpMm || resolveMtfMaxFrequency(system),
+      frequencyStepLpMm: 5,
+      mtfEngine: "geometricLsfFft"
+    };
+    const interactive = calculateGeometricLsfFftMtf(lenses, system, { ...baseOptions, quality: "interactive" });
+    const high = calculateGeometricLsfFftMtf(lenses, system, { ...baseOptions, quality: "high" });
+    return frequencies.flatMap((frequency) => ([
+      {
+        fieldKey: field.key,
+        fieldName: field.name,
+        axis: "sagittal",
+        frequency,
+        interactive: mtfValueAtFrequency(interactive.sagittal, frequency),
+        high: mtfValueAtFrequency(high.sagittal, frequency),
+        delta: Math.abs(mtfValueAtFrequency(interactive.sagittal, frequency) - mtfValueAtFrequency(high.sagittal, frequency)),
+        interactiveValidRays: interactive.validRayCount,
+        highValidRays: high.validRayCount,
+        highTotalRays: high.totalRayCount,
+        highClippedRays: high.clippedRayCount
+      },
+      {
+        fieldKey: field.key,
+        fieldName: field.name,
+        axis: "tangential",
+        frequency,
+        interactive: mtfValueAtFrequency(interactive.tangential, frequency),
+        high: mtfValueAtFrequency(high.tangential, frequency),
+        delta: Math.abs(mtfValueAtFrequency(interactive.tangential, frequency) - mtfValueAtFrequency(high.tangential, frequency)),
+        interactiveValidRays: interactive.validRayCount,
+        highValidRays: high.validRayCount,
+        highTotalRays: high.totalRayCount,
+        highClippedRays: high.clippedRayCount
+      }
+    ]));
+  });
+  const finiteDeltas = comparisons.map((item) => item.delta).filter(Number.isFinite);
+  const maxDelta = finiteDeltas.length ? Math.max(...finiteDeltas) : NaN;
+  const at40 = comparisons.filter((item) => item.frequency === 40).map((item) => item.delta).filter(Number.isFinite);
+  const delta40 = at40.length ? Math.max(...at40) : NaN;
+  return {
+    engine: "Geometric LSF/FFT",
+    status: finiteDeltas.length && finiteDeltas.every((delta) => delta <= tolerance) ? "passed" : "needs-more-sampling",
+    label: finiteDeltas.length && finiteDeltas.every((delta) => delta <= tolerance)
+      ? "Pupil convergence: Passed"
+      : "Pupil convergence: Needs more sampling",
+    tolerance,
+    maxDelta,
+    delta40,
+    comparisons,
+    frequencies
+  };
+};
+
+const summarizeGeometricLsfPupilConvergence = (fieldData) => {
+  const sample = (fieldData.samples || []).find((item) => item.result?.engine === "geometricLsfFft");
+  const valid = sample?.result?.validRayCount ?? NaN;
+  const total = sample?.result?.totalRayCount ?? NaN;
+  const clipped = sample?.result?.clippedRayCount ?? NaN;
+  return {
+    engine: "Geometric LSF/FFT",
+    status: fieldData.quality === "high" || fieldData.quality === "reference" ? "passed" : "needs-more-sampling",
+    label: fieldData.quality === "high" || fieldData.quality === "reference"
+      ? "Pupil convergence: Passed"
+      : "Pupil convergence: Needs more sampling",
+    tolerance: 0.02,
+    maxDelta: NaN,
+    delta40: NaN,
+    diagnostics: {
+      validRayCount: valid,
+      totalRayCount: total,
+      clippedRayCount: clipped,
+      fieldSampleCount: fieldData.fieldSampleCount || fieldData.samples?.length || 0,
+      note: "Interactive UI shows the current LSF/FFT sampling state. Deep interactive-vs-high convergence is reserved for validation runs / worker execution."
+    }
   };
 };
 
@@ -16447,11 +17038,11 @@ const renderSagittalTangentialGeometricMTFPanel = (result) => {
   return `
     <section class="st-mtf-panel">
       <div class="panel-heading">
-        <h3>Geometric ray-intercept preview — RMS blur approximation</h3>
+        <h3>${normalizeMtfEngine(state.mtfEngine) === "geometricLsfFft" ? "MTF vs image height — geometric LSF/FFT preview" : "Fast geometric preview — RMS blur approximation"}</h3>
         <span class="badge">Preview</span>
         <span class="badge">Educational</span>
       </div>
-      <p class="diagram-note">This is derived from RMS ray intercept spread, not a wavefront PSF/OTF calculation.</p>
+      <p class="diagram-note">${normalizeMtfEngine(state.mtfEngine) === "geometricLsfFft" ? "This traces a weighted pupil, builds tangential/sagittal line-spread functions, and FFTs the LSF. It is still geometric only, not physical wavefront MTF." : "This is derived from RMS ray intercept spread, not a wavefront PSF/OTF calculation."}</p>
       ${result.isUpdating ? `<div class="analysis-updating" role="status">Updating optical analysis…</div>` : ""}
       <div class="st-mtf-controls">
         <label>
@@ -16478,10 +17069,17 @@ const renderSagittalTangentialGeometricMTFPanel = (result) => {
           </select>
         </label>
         <label>
-          MTF plane mode
-          <select data-action="update-mtf-plane-mode" aria-label="Sagittal tangential MTF plane mode">
+          MTF frequency plane
+          <select data-action="update-mtf-plane-mode" aria-label="Sagittal tangential MTF frequency plane mode">
             <option value="current" ${state.mtfPlaneMode === "current" ? "selected" : ""}>Current sensor plane</option>
             <option value="best" ${state.mtfPlaneMode === "best" ? "selected" : ""}>Best focus plane</option>
+          </select>
+        </label>
+        <label>
+          Field chart focus
+          <select data-action="update-mtf-field-focus-policy" aria-label="Main MTF field chart focus policy">
+            <option value="fixed" ${state.mtfFieldFocusPolicy !== "centerRefocus" ? "selected" : ""}>Fixed Sony sensor plane</option>
+            <option value="centerRefocus" ${state.mtfFieldFocusPolicy === "centerRefocus" ? "selected" : ""}>Centre-refocused common plane</option>
           </select>
         </label>
         <label>
@@ -16506,14 +17104,14 @@ const renderSagittalTangentialGeometricMTFPanel = (result) => {
       </details>
       <section class="mtf-subsection">
         <div class="panel-heading compact-heading">
-          <h4>Manufacturer-style MTF</h4>
-          <span class="badge">Wide-open geometric preview</span>
-          <span class="badge">Geometric ray-intercept preview</span>
+          <h4>MTF vs image height — geometric LSF/FFT preview</h4>
+          <span class="badge">Manufacturer-style layout</span>
+          <span class="badge">${manufacturerFieldData.engine === "geometricLsfFft" ? "Geometric LSF/FFT values" : "Fast RMS fallback"}</span>
         </div>
-        ${renderManufacturerMtfVsFieldChart(manufacturerFieldData, { title: "Wide-open geometric preview" })}
+        ${renderManufacturerMtfVsFieldChart(manufacturerFieldData, { title: manufacturerFieldData.engine === "geometricLsfFft" ? "Wide-open geometric LSF/FFT preview" : "Wide-open fast RMS Gaussian preview" })}
         ${renderManufacturerMtfLegend(manufacturerFieldData, {
           fNumber: result.wideOpenFNumber,
-          focusPolicy: "fixed"
+          focusPolicy: manufacturerFieldData.focusPolicy
         })}
         ${(manufacturerFieldData.warnings || []).map((warning) => `<p class="warning ray-warning">${escapeHtml(warning)}</p>`).join("")}
       </section>
@@ -16545,7 +17143,7 @@ const renderSagittalTangentialGeometricMTFPanel = (result) => {
           Focus policy
           <select data-action="update-mtf-aperture-focus-policy" aria-label="Aperture sweep focus policy">
             <option value="fixed" ${state.mtfApertureSweepFocusPolicy === "fixed" ? "selected" : ""}>Fixed image plane</option>
-            <option value="refocus" ${state.mtfApertureSweepFocusPolicy === "refocus" ? "selected" : ""}>Refocus per aperture</option>
+            <option value="refocus" ${state.mtfApertureSweepFocusPolicy === "refocus" ? "selected" : ""}>Centre-refocused common plane</option>
           </select>
         </label>
         ${state.mtfChartMode === "field" ? `
@@ -16562,7 +17160,7 @@ const renderSagittalTangentialGeometricMTFPanel = (result) => {
           <span class="badge">Geometric-only</span>
         </div>
         ${renderMtfApertureSweepCharts(apertureSweepResults, state.mtfChartMode, result.maxFrequencyLpMm)}
-        <p class="diagram-note">${state.mtfApertureSweepFocusPolicy === "refocus" ? "Centre-refocused common image plane." : "Fixed image plane."} This aperture sweep uses ray-intercept geometric MTF only. It is not the final stopped-down physical MTF until the wavefront FFT path is active.</p>
+        <p class="diagram-note">${state.mtfApertureSweepFocusPolicy === "refocus" ? "Centre-refocused common image plane." : "Fixed image plane."} This aperture sweep uses geometric preview MTF only. It is not the final stopped-down physical MTF until the wavefront FFT path is active.</p>
       </section>
       <section class="mtf-subsection">
         <div class="panel-heading compact-heading">
@@ -16595,8 +17193,11 @@ const renderSagittalTangentialGeometricMTFPanel = (result) => {
       </section>
       ${renderSagittalTangentialMTFReadoutTable(result.activeResults)}
       <details class="mtf-diagnostics-details">
-        <summary>Ray-intercept preview diagnostics</summary>
-        <p class="diagram-note">Geometric ray-intercept preview — RMS blur approximation. It uses MTF = exp(-2π²σ²f²), so it is fast for comparisons but is not production-quality physical MTF.</p>
+        <summary>Geometric preview diagnostics</summary>
+        <p class="diagram-note">Engine: ${manufacturerFieldData.engine === "geometricLsfFft" ? "Geometric LSF/FFT" : "Fast RMS Gaussian"}.</p>
+        <p class="diagram-note">Pupil rays: ${manufacturerFieldData.samples?.[0]?.result?.validRayCount ?? "--"} valid / ${manufacturerFieldData.samples?.[0]?.result?.totalRayCount ?? "--"} traced on the first field sample. Field samples: ${manufacturerFieldData.fieldSampleCount || manufacturerFieldData.samples?.length || 0}. Focus policy: ${manufacturerFieldData.focusPolicy === "center-refocused" ? "Centre-refocused common plane" : "Fixed Sony sensor plane"}.</p>
+        ${result.lsfConvergence ? `<p class="diagram-note">${escapeHtml(result.lsfConvergence.label)}${Number.isFinite(result.lsfConvergence.delta40) ? ` · Convergence at 40 lp/mm: Δ${escapeHtml(formatNumber(result.lsfConvergence.delta40, 3))}` : ""}</p>` : ""}
+        <p class="diagram-note">${manufacturerFieldData.engine === "fastRmsGaussian" ? "Fast geometric preview — RMS blur approximation. It uses MTF = exp(-2π²σ²f²), so it is fast for comparisons but is not production-quality physical MTF." : "Geometric LSF/FFT uses weighted pupil rays, triangular LSF binning, and FFT magnitude. It remains geometric only and does not include OPD phase, diffraction, scattering or sensor sampling."}</p>
         <p class="diagram-note">Coating transmission affects brightness and contrast, but this model does not yet feed flare or scattering into MTF.</p>
         <p class="diagram-note">Wavefront PSF / OTF / MTF remains Prototype / Not validated until it uses high-resolution FFT and correctly calibrated image-space frequencies.</p>
       </details>
@@ -19732,6 +20333,12 @@ mount.addEventListener("change", (event) => {
     return;
   }
 
+  if (event.target.dataset.action === "update-mtf-field-focus-policy") {
+    state.mtfFieldFocusPolicy = event.target.value === "centerRefocus" ? "centerRefocus" : "fixed";
+    update();
+    return;
+  }
+
   if (event.target.dataset.action === "update-st-ray-fan-field") {
     state.stRayFanFieldPreset = ["center", "mid", "corner", "custom"].includes(event.target.value)
       ? event.target.value
@@ -20450,14 +21057,18 @@ mount.addEventListener("click", (event) => {
   update();
 });
 
-const runOpticsSelfCheck = () => {
+const runOpticsSelfCheck = (options = {}) => {
   const tests = [];
+  const includeDeep = options.deep === true;
   const test = (name, fn) => {
     try {
       tests.push({ name, pass: Boolean(fn()) });
     } catch (error) {
       tests.push({ name, pass: false, error: error.message });
     }
+  };
+  const deepTest = (name, fn) => {
+    if (includeDeep) test(name, fn);
   };
   const markupClassList = (markup) => (
     [...String(markup).matchAll(/class="([^"]*)"/g)]
@@ -21968,6 +22579,7 @@ const runOpticsSelfCheck = () => {
 
   test("workflow sidebar groups panels and keeps collapsed expensive bodies lazy", () => withTemporaryState(() => {
     loadPresetIntoState(DEFAULT_PRESET_KEY);
+    state.mtfEngine = "fastRmsGaussian";
     state.collapsedPanels = {
       ...state.collapsedPanels,
       lensData: false,
@@ -21979,7 +22591,7 @@ const runOpticsSelfCheck = () => {
     const markup = render();
     return ["Design", "Analyse", "Advanced", "Build", "Utility"].every((group) => markup.includes(`>${group}</h2>`))
       && markup.includes('data-panel="mtfResolution"')
-      && markup.includes("Geometric ray-intercept preview — RMS blur approximation")
+      && markup.includes("Fast geometric preview — RMS blur approximation")
       && !markup.includes("Wavefront OPD / Strehl Estimate")
       && !markup.includes("Polychromatic Wavefront MTF")
       && !markup.includes("Ray-traced Image Circle / Vignetting");
@@ -24287,18 +24899,25 @@ const runOpticsSelfCheck = () => {
 
   test("ray-intercept MTF panels are labelled as preview, not validated physical MTF", () => withTemporaryState(() => {
     loadPresetIntoState("manual");
+    state.mtfEngine = "fastRmsGaussian";
     state.collapsedPanels = { ...state.collapsedPanels, mtfResolution: false };
     const markup = render();
-    return markup.includes("Geometric ray-intercept preview — RMS blur approximation")
+    return markup.includes("Fast geometric preview — RMS blur approximation")
       && markup.includes("Ray-intercept Gaussian MTF preview")
-      && markup.includes("derived from RMS ray intercept spread")
       && markup.includes("not a validated physical MTF")
       && !markup.includes("<h3>Approximate Geometric MTF</h3>")
       && !markup.includes("<h3>Sagittal / Tangential Geometric MTF</h3>");
   }));
 
+  test("default MTF engine is geometric LSF FFT while fast RMS remains named fallback", () => (
+    DEFAULT_ANALYSIS_SETTINGS.mtfEngine === "geometricLsfFft"
+    && MTF_ENGINE_OPTIONS.some((option) => option.key === "fastRmsGaussian" && option.label === "Fast geometric preview — RMS blur approximation")
+    && MTF_ENGINE_OPTIONS.some((option) => option.key === "geometricLsfFft")
+  ));
+
   test("MTF spatial-frequency chart supports non-100 lp/mm ranges", () => withTemporaryState(() => {
     loadPresetIntoState("manual");
+    state.mtfEngine = "fastRmsGaussian";
     state.mtfMaxFrequencyLpMm = 200;
     const lenses = clonePresetLenses("manual");
     const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
@@ -24313,15 +24932,73 @@ const runOpticsSelfCheck = () => {
 
   test("manufacturer-style MTF field chart uses full-frame image height endpoint", () => withTemporaryState(() => {
     loadPresetIntoState("manual");
+    state.mtfEngine = "fastRmsGaussian";
     const lenses = clonePresetLenses("manual");
     const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
     const fieldData = manufacturerMtfFieldSamples(lenses, system, { sampleCount: 9 });
     return Math.abs(fieldData.maxImageHeightMm - FULL_FRAME_SENSOR.diagonal / 2) < 0.000001
       && Math.abs(fieldData.maxImageHeightMm - 21.6333) < 0.01
       && fieldData.samples.length >= 9
-      && fieldData.source === "iterated chief-ray intercept"
+      && fieldData.source.startsWith("iterated chief-ray intercept")
       && fieldData.samples.every((sample) => ["solved", "unreachable", "nonMonotonic", "invalid"].includes(sample.solveStatus))
       && fieldData.frequencies.join(",") === "10,30";
+  }));
+
+  deepTest("geometric LSF FFT MTF engine returns real sagittal and tangential curves", () => withTemporaryState(() => {
+    loadPresetIntoState("manual");
+    state.mtfEngine = "geometricLsfFft";
+    state.mtfLsfQuality = "interactive";
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const result = calculateSagittalTangentialGeometricMTF(lenses, system, {
+      ...rayTraceApertureOptions(state),
+      mtfEngine: "geometricLsfFft",
+      quality: "interactive",
+      fieldAngleDegrees: 0,
+      maxFrequencyLpMm: 50,
+      frequencyStepLpMm: 10
+    });
+    return result.engine === "geometricLsfFft"
+      && result.tangential.engine === "geometricLsfFft"
+      && result.sagittal.engine === "geometricLsfFft"
+      && result.tangential.lsf?.kernel === "linear B-spline / triangular binning"
+      && Math.abs((result.tangential.values?.[0] ?? NaN) - 1) < 0.000001
+      && Math.abs((result.sagittal.values?.[0] ?? NaN) - 1) < 0.000001
+      && result.validRayCount > 20;
+  }));
+
+  test("fast RMS Gaussian MTF engine remains available as fallback", () => withTemporaryState(() => {
+    loadPresetIntoState("manual");
+    state.mtfEngine = "fastRmsGaussian";
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const result = calculateSagittalTangentialGeometricMTF(lenses, system, {
+      ...rayTraceApertureOptions(state),
+      mtfEngine: "fastRmsGaussian",
+      fieldAngleDegrees: 0,
+      maxFrequencyLpMm: 50,
+      frequencyStepLpMm: 10
+    });
+    return result.engine === "fastRmsGaussian"
+      && result.engineLabel === "Fast geometric preview — RMS blur approximation"
+      && result.tangential.values.length > 1
+      && result.sagittal.values.length > 1;
+  }));
+
+  deepTest("geometric LSF FFT diagnostics report pupil convergence without physical MTF claims", () => withTemporaryState(() => {
+    loadPresetIntoState("manual");
+    state.collapsedPanels = { ...state.collapsedPanels, mtfResolution: false };
+    state.mtfEngine = "geometricLsfFft";
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const result = calculateSagittalTangentialGeometricMTFPanelData(lenses, system);
+    const markup = renderSagittalTangentialGeometricMTFPanel(result);
+    return result.lsfConvergence?.engine === "Geometric LSF/FFT"
+      && ["passed", "needs-more-sampling"].includes(result.lsfConvergence.status)
+      && markup.includes("Pupil convergence:")
+      && markup.includes("Geometric LSF/FFT uses weighted pupil rays")
+      && !markup.includes("manufacturer-grade")
+      && !markup.includes("physical lens MTF is validated");
   }));
 
   test("manufacturer field solver reaches smaller valid angles even if large trials fail", () => withTemporaryState(() => {
@@ -24366,15 +25043,16 @@ const runOpticsSelfCheck = () => {
 
   test("manufacturer-style MTF advanced frequencies are opt-in", () => withTemporaryState(() => {
     loadPresetIntoState("manual");
+    state.mtfEngine = "fastRmsGaussian";
     state.mtfManufacturerFrequencies = [10, 20, 30, 40, 50];
     const lenses = clonePresetLenses("manual");
     const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
     const fieldData = manufacturerMtfFieldSamples(lenses, system, { sampleCount: 9 });
-    const markup = renderManufacturerMtfVsFieldChart(fieldData, { title: "Wide-open geometric preview" });
+    const markup = renderManufacturerMtfVsFieldChart(fieldData, { title: "Wide-open geometric LSF/FFT preview" });
     return fieldData.frequencies.join(",") === "10,20,30,40,50"
       && markup.includes("manufacturer-mtf-10")
       && markup.includes("manufacturer-mtf-30")
-      && markup.includes("Wide-open geometric preview");
+      && markup.includes("Wide-open geometric LSF/FFT preview");
   }));
 
   test("manufacturer-style MTF legend combines frequency and line-style meanings", () => {
@@ -24435,6 +25113,7 @@ const runOpticsSelfCheck = () => {
 
   test("manufacturer-style MTF sensor format controls image height endpoint", () => withTemporaryState(() => {
     loadPresetIntoState("manual");
+    state.mtfEngine = "fastRmsGaussian";
     state.mtfSensorFormatKey = "apsC";
     const lenses = clonePresetLenses("manual");
     const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
@@ -24445,6 +25124,7 @@ const runOpticsSelfCheck = () => {
 
   test("Biotar manufacturer field samples are not falsely all unreachable", () => withTemporaryState(() => {
     loadPresetIntoState(DEFAULT_PRESET_KEY);
+    state.mtfEngine = "fastRmsGaussian";
     const system = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
     const fieldData = manufacturerMtfFieldSamples(state.lenses, system, { sampleCount: 9 });
     const solvedCount = fieldData.samples.filter((sample) => sample.solveStatus === "solved" && sample.residualMm <= 0.02).length;
@@ -24453,6 +25133,7 @@ const runOpticsSelfCheck = () => {
 
   test("MTF aperture sweep solves different physical stop diameters and retraces", () => withTemporaryState(() => {
     loadPresetIntoState("manual");
+    state.mtfEngine = "fastRmsGaussian";
     state.mtfChartMode = "frequency";
     state.mtfApertureSweepStops = ["wideOpen", "f4", "f8"];
     const lenses = clonePresetLenses("manual");
@@ -24466,6 +25147,7 @@ const runOpticsSelfCheck = () => {
 
   test("MTF aperture field sweep uses one centre-refocused plane per aperture", () => withTemporaryState(() => {
     loadPresetIntoState("manual");
+    state.mtfEngine = "fastRmsGaussian";
     state.mtfChartMode = "field";
     state.mtfApertureSweepStops = ["wideOpen", "f4"];
     state.mtfApertureSweepFocusPolicy = "refocus";
@@ -24480,6 +25162,7 @@ const runOpticsSelfCheck = () => {
 
   test("MTF aperture sweep renders charts instead of summary-only cards", () => withTemporaryState(() => {
     loadPresetIntoState("manual");
+    state.mtfEngine = "fastRmsGaussian";
     state.mtfChartMode = "frequency";
     state.mtfApertureSweepStops = ["wideOpen", "f4"];
     const lenses = clonePresetLenses("manual");
@@ -24555,6 +25238,7 @@ const runOpticsSelfCheck = () => {
 
   test("MTF aperture sweep reuses per-aperture cache entries", () => withTemporaryState(() => {
     loadPresetIntoState("manual");
+    state.mtfEngine = "fastRmsGaussian";
     state.mtfChartMode = "field";
     apertureSweepResultCache.clear();
     const lenses = clonePresetLenses("manual");
@@ -24609,13 +25293,14 @@ const runOpticsSelfCheck = () => {
     const status = physicalMtf.createStatus();
     const fft = physicalMtf.fftRadix2Complex([1, 0, 0, 0], [0, 0, 0, 0]);
     return status.status === "lab-only"
-      && status.validationFrequenciesLpMm.join(",") === "10,30,40,50"
-      && status.warnings.join(" ").includes("Current visible MTF remains geometric")
+      && [10, 30, 40, 50].every((frequency) => status.validationFrequenciesLpMm.includes(frequency))
+      && status.warnings.some((warning) => warning.includes("geometric preview"))
       && fft.status === "valid"
+      && fft.real.length === 4
       && fft.real.every((value) => Math.abs(value - 1) < 0.000001);
   });
 
-  test("physical MTF ideal circular pupil validates against analytic diffraction", () => {
+  deepTest("physical MTF ideal circular pupil validates against analytic diffraction", () => {
     const result = physicalMtf.calculateIdealCircularPupilValidation({ gridSize: 128, fNumber: 4, wavelengthKey: "d" });
     const previousOpen = state.physicalMtfLabOpen;
     state.physicalMtfLabOpen = false;
@@ -24638,11 +25323,20 @@ const runOpticsSelfCheck = () => {
     const pupilResult = physicalMtf.buildComplexPupil({ status: "ideal" }, { gridSize: 128 });
     const mtfResult = physicalMtf.calculatePhysicalMtfFromPupil({ real: [1], imag: [0], gridSize: 1 });
     const calibration = physicalMtf.calibrateFrequencyToImageSpaceLpMm();
+    const lensMtf = physicalMtf.calculatePhysicalLensMtf();
+    const polyOtf = physicalMtf.combinePolychromaticComplexOtf();
+    const sensorMtf = physicalMtf.calculateSensorMtfProfile();
     return pupilResult.status === "not-implemented"
       && mtfResult.status === "not-implemented"
       && mtfResult.mtf === null
       && mtfResult.reason.includes("Real complex pupil")
-      && calibration.status === "not-implemented";
+      && calibration.status === "not-implemented"
+      && lensMtf.status === "not-implemented"
+      && lensMtf.pipeline.includes("complex OTF")
+      && polyOtf.status === "not-implemented"
+      && polyOtf.reason.includes("complex OTFs")
+      && sensorMtf.status === "not-implemented"
+      && sensorMtf.reason.includes("separate from lens optical MTF");
   });
 
   test("diffraction MTF at zero lp/mm equals one", () => {
@@ -24986,6 +25680,9 @@ update();
 
 if (new URLSearchParams(globalThis.location?.search || "").has("selfcheck")) {
   setTimeout(() => {
-    document.documentElement.dataset.opticsSelfCheck = JSON.stringify(runOpticsSelfCheck());
+    const params = new URLSearchParams(globalThis.location?.search || "");
+    document.documentElement.dataset.opticsSelfCheck = JSON.stringify(runOpticsSelfCheck({
+      deep: params.has("deepcheck")
+    }));
   }, 0);
 }

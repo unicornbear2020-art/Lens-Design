@@ -275,11 +275,18 @@ const PANEL_FIELD_STEPS = {
 
 const DEFAULT_ANALYSIS_SETTINGS = {
   diagramViewMode: "optical",
-  diagramRenderStyle: "professionalOptical",
-  diagramLensFill: false,
+  diagramRenderStyle: "patentIllustration",
+  diagramLensFill: true,
   diagramRayDisplayMode: "selected",
   diagramRayFieldKey: "center",
   diagramCustomFieldAngleDegrees: 20,
+  diagramTargetReferenceMode: "sonyEFullFrame",
+  diagramMountReferenceMode: "sonyE",
+  diagramManualMountDistanceMm: SONY_E_FLANGE_DISTANCE,
+  diagramShowDimensions: true,
+  diagramShowFocusComparison: false,
+  diagramPhysicalGrid: false,
+  diagramShowScaleBar: false,
   productionSilhouetteSource: "generated",
   showSvgReferenceOverlay: false,
   patentDiameterSource: "auto",
@@ -757,6 +764,10 @@ const normalizePatentSurface = (surface = {}, index = 0) => ({
   spaceLabel: surface.spaceLabel || null,
   interfaceType: surface.interfaceType || null,
   isStop: surface.isStop === true,
+  isImagePlane: surface.isImagePlane === true,
+  type: surface.type || null,
+  role: surface.role || null,
+  comment: surface.comment || surface.note || "",
   clearAperture: normalizePatentSurfaceValue(surface.clearAperture),
   apertureEstimated: surface.apertureEstimated !== false,
   asphere: normalizePatentAsphere(surface.asphere)
@@ -959,6 +970,9 @@ const PATENT_SURFACE_PRESCRIPTION_DATA = {
     example: "Fig. 2 complete optical data",
     focalLength: 50,
     apertureRatio: "1:1.5",
+    explicitImagePlaneSurfaceNumber: null,
+    imagePlaneSource: "Calculated paraxial BFL",
+    finalSurfaceRole: "opticalSurface",
     note: "The patent gives the Fig. 2 optical data for focal length 100 mm; this preset scales all radii and axial distances by 0.5 for the labelled 50 mm example. Clear apertures and mechanical diameters are not supplied by the patent and remain estimated.",
     surfaces: [
       { no: 1, radius: 32.58, distanceToNext: 4.65, nAfter: 1.6689, vdAfter: 48.8 },
@@ -1082,6 +1096,9 @@ const PATENT_SURFACE_PRESCRIPTION_DATA = {
     focalLength: 53.61,
     apertureRatio: "1:1.86",
     fieldAngleDeg: 22.15,
+    explicitImagePlaneSurfaceNumber: 16,
+    imagePlaneSource: "Patent image plane",
+    finalSurfaceRole: "imagePlane",
     note: "US20150092100 Numerical Example 1 is entered directly from Tables 1, 2 and 3. D7 and D9 use the infinite-focus values from Table 2. The sixth and eighth to eleventh surfaces are aspherical. Clear apertures and mechanical diameters are not supplied by the patent and remain estimated.",
     surfaces: [
       { no: 1, radius: -46.604, distanceToNext: 3.78, nAfter: 1.58144, vdAfter: 40.9 },
@@ -1128,7 +1145,7 @@ const PATENT_SURFACE_PRESCRIPTION_DATA = {
       { no: 13, radius: -39.016, distanceToNext: 11.78 },
       { no: 14, radius: Infinity, distanceToNext: 2, nAfter: 1.516798, vdAfter: 64.2 },
       { no: 15, radius: Infinity, distanceToNext: 1 },
-      { no: 16, radius: Infinity, distanceToNext: null }
+      { no: 16, radius: Infinity, distanceToNext: null, role: "imagePlane" }
     ]
   },
   sonyFe24F14Wo2019073744Ex1: { patentDataStatus: "needsManualVerification", surfaces: createPatentPlaceholderSurfaces(1) },
@@ -1891,6 +1908,11 @@ const normalizePrescription = (prescription = {}) => {
       sourcePatent: prescription.sourcePatent ?? null,
       example: prescription.example ?? null,
       patentDataStatus: prescription.patentDataStatus ?? null,
+      explicitImagePlaneSurfaceNumber: Number.isFinite(numericValue(prescription.explicitImagePlaneSurfaceNumber))
+        ? Math.round(numericValue(prescription.explicitImagePlaneSurfaceNumber))
+        : null,
+      imagePlaneSource: prescription.imagePlaneSource || null,
+      finalSurfaceRole: prescription.finalSurfaceRole || null,
       diameterSource: prescription.diameterSource || null,
       diameterReference: prescription.diameterReference || null,
       diameterNote: prescription.diameterNote || "",
@@ -1969,6 +1991,9 @@ const clonePresetPrescription = (presetKey) => {
       sourcePatent: preset.sourcePatent,
       example: preset.example,
       patentDataStatus: preset.patentDataStatus,
+      explicitImagePlaneSurfaceNumber: preset.explicitImagePlaneSurfaceNumber ?? null,
+      imagePlaneSource: preset.imagePlaneSource || null,
+      finalSurfaceRole: preset.finalSurfaceRole || null,
       diameterSource: preset.diameterSource || null,
       diameterReference: preset.diameterReference || null,
       diameterNote: preset.diameterNote || "",
@@ -2050,6 +2075,7 @@ const state = {
     mechanicalDiagnostics: true
   },
   diagramExpanded: false,
+  diagramOptionsOpen: false,
   diagramZoom: 1,
   diagramViewX: null,
   diagramViewY: null,
@@ -2135,8 +2161,9 @@ const DIAGRAM_GEOMETRY_DISPLAY_OPTIONS = [
 ];
 
 const DIAGRAM_RENDER_STYLE_OPTIONS = [
-  { value: "professionalOptical", label: "Professional Optical" },
+  { value: "patentIllustration", label: "Patent illustration" },
   { value: "transparentGlass", label: "Transparent glass" },
+  { value: "professionalOptical", label: "Professional Optical" },
   { value: "manufacturingEnvelope", label: "Manufacturing envelope" },
   { value: "requestedInvalid", label: "Requested / invalid" }
 ];
@@ -2155,9 +2182,15 @@ const diagramGeometryModeForRenderStyle = (style, fallback = state.diagramGeomet
 };
 
 const isProfessionalOpticalRenderStyle = (style) => normalizeDiagramRenderStyle(style) === "professionalOptical";
+const isPatentIllustrationRenderStyle = (style) => normalizeDiagramRenderStyle(style) === "patentIllustration";
 const isTransparentGlassRenderStyle = (style) => normalizeDiagramRenderStyle(style) === "transparentGlass";
 const shouldRenderOpticalStyleFill = (style) => (
-  isTransparentGlassRenderStyle(style) || (isProfessionalOpticalRenderStyle(style) && state.diagramLensFill === true)
+  isPatentIllustrationRenderStyle(style)
+    || isTransparentGlassRenderStyle(style)
+    || (isProfessionalOpticalRenderStyle(style) && state.diagramLensFill === true)
+);
+const shouldRenderOpticalStyleCaps = (style) => (
+  isPatentIllustrationRenderStyle(style) || isTransparentGlassRenderStyle(style)
 );
 
 const DIAGRAM_RAY_DISPLAY_OPTIONS = [
@@ -2173,6 +2206,17 @@ const DIAGRAM_RAY_FIELD_OPTIONS = [
   { value: "custom", label: "Custom" }
 ];
 
+const DIAGRAM_MOUNT_REFERENCE_OPTIONS = [
+  { value: "off", label: "Off" },
+  { value: "sonyE", label: "Sony E 18 mm" },
+  { value: "manual", label: "Manual" }
+];
+
+const DIAGRAM_TARGET_REFERENCE_OPTIONS = [
+  { value: "sonyEFullFrame", label: "Sony E full-frame" },
+  { value: "generic", label: "Generic image plane" }
+];
+
 const normalizeDiagramRayDisplayMode = (mode) => (
   DIAGRAM_RAY_DISPLAY_OPTIONS.some((option) => option.value === mode)
     ? mode
@@ -2184,6 +2228,40 @@ const normalizeDiagramRayFieldKey = (fieldKey) => (
     ? fieldKey
     : DEFAULT_ANALYSIS_SETTINGS.diagramRayFieldKey
 );
+
+const normalizeDiagramMountReferenceMode = (mode) => (
+  DIAGRAM_MOUNT_REFERENCE_OPTIONS.some((option) => option.value === mode)
+    ? mode
+    : DEFAULT_ANALYSIS_SETTINGS.diagramMountReferenceMode
+);
+
+const normalizeDiagramTargetReferenceMode = (mode) => (
+  DIAGRAM_TARGET_REFERENCE_OPTIONS.some((option) => option.value === mode)
+    ? mode
+    : DEFAULT_ANALYSIS_SETTINGS.diagramTargetReferenceMode
+);
+
+const isSonyFullFrameTargetReference = () => (
+  normalizeDiagramTargetReferenceMode(state.diagramTargetReferenceMode) === "sonyEFullFrame"
+);
+
+const resetDiagramAppearanceState = () => {
+  state.diagramRenderStyle = DEFAULT_ANALYSIS_SETTINGS.diagramRenderStyle;
+  state.diagramLensFill = DEFAULT_ANALYSIS_SETTINGS.diagramLensFill;
+  state.diagramRayDisplayMode = DEFAULT_ANALYSIS_SETTINGS.diagramRayDisplayMode;
+  state.diagramRayFieldKey = DEFAULT_ANALYSIS_SETTINGS.diagramRayFieldKey;
+  state.diagramCustomFieldAngleDegrees = DEFAULT_ANALYSIS_SETTINGS.diagramCustomFieldAngleDegrees;
+  state.diagramTargetReferenceMode = DEFAULT_ANALYSIS_SETTINGS.diagramTargetReferenceMode;
+  state.diagramMountReferenceMode = DEFAULT_ANALYSIS_SETTINGS.diagramMountReferenceMode;
+  state.diagramManualMountDistanceMm = DEFAULT_ANALYSIS_SETTINGS.diagramManualMountDistanceMm;
+  state.diagramShowDimensions = DEFAULT_ANALYSIS_SETTINGS.diagramShowDimensions;
+  state.diagramShowFocusComparison = DEFAULT_ANALYSIS_SETTINGS.diagramShowFocusComparison;
+  state.diagramPhysicalGrid = DEFAULT_ANALYSIS_SETTINGS.diagramPhysicalGrid;
+  state.diagramShowScaleBar = DEFAULT_ANALYSIS_SETTINGS.diagramShowScaleBar;
+  state.diagramAperturePreviewMode = DEFAULT_ANALYSIS_SETTINGS.diagramAperturePreviewMode;
+  state.diagramAperturePreviewKey = DEFAULT_ANALYSIS_SETTINGS.diagramAperturePreviewKey;
+  state.diagramGeometryDisplayMode = DEFAULT_ANALYSIS_SETTINGS.diagramGeometryDisplayMode;
+};
 
 const normalizeDiagramGeometryDisplayMode = (mode) => (
   DIAGRAM_GEOMETRY_DISPLAY_OPTIONS.some((option) => option.value === mode)
@@ -2335,7 +2413,14 @@ const snapshotState = () => ({
   diagramLensFill: state.diagramLensFill,
   diagramRayDisplayMode: state.diagramRayDisplayMode,
   diagramRayFieldKey: state.diagramRayFieldKey,
-  diagramCustomFieldAngleDegrees: state.diagramCustomFieldAngleDegrees
+  diagramCustomFieldAngleDegrees: state.diagramCustomFieldAngleDegrees,
+  diagramTargetReferenceMode: state.diagramTargetReferenceMode,
+  diagramMountReferenceMode: state.diagramMountReferenceMode,
+  diagramManualMountDistanceMm: state.diagramManualMountDistanceMm,
+  diagramShowDimensions: state.diagramShowDimensions,
+  diagramShowFocusComparison: state.diagramShowFocusComparison,
+  diagramPhysicalGrid: state.diagramPhysicalGrid,
+  diagramShowScaleBar: state.diagramShowScaleBar
 });
 
 const restoreSnapshot = (snapshot) => {
@@ -2362,12 +2447,23 @@ const restoreSnapshot = (snapshot) => {
   state.diagramAperturePreviewKey = apertureOptionByKey(snapshot.diagramAperturePreviewKey).key;
   state.diagramGeometryDisplayMode = normalizeDiagramGeometryDisplayMode(snapshot.diagramGeometryDisplayMode);
   state.diagramRenderStyle = normalizeDiagramRenderStyle(snapshot.diagramRenderStyle);
-  state.diagramLensFill = snapshot.diagramLensFill === true;
+  state.diagramLensFill = snapshot.diagramLensFill === undefined
+    ? DEFAULT_ANALYSIS_SETTINGS.diagramLensFill
+    : snapshot.diagramLensFill === true;
   state.diagramRayDisplayMode = normalizeDiagramRayDisplayMode(snapshot.diagramRayDisplayMode);
   state.diagramRayFieldKey = normalizeDiagramRayFieldKey(snapshot.diagramRayFieldKey);
   state.diagramCustomFieldAngleDegrees = Number.isFinite(toNumber(snapshot.diagramCustomFieldAngleDegrees))
     ? toNumber(snapshot.diagramCustomFieldAngleDegrees)
     : DEFAULT_ANALYSIS_SETTINGS.diagramCustomFieldAngleDegrees;
+  state.diagramTargetReferenceMode = normalizeDiagramTargetReferenceMode(snapshot.diagramTargetReferenceMode);
+  state.diagramMountReferenceMode = normalizeDiagramMountReferenceMode(snapshot.diagramMountReferenceMode);
+  state.diagramManualMountDistanceMm = Number.isFinite(toNumber(snapshot.diagramManualMountDistanceMm))
+    ? toNumber(snapshot.diagramManualMountDistanceMm)
+    : DEFAULT_ANALYSIS_SETTINGS.diagramManualMountDistanceMm;
+  state.diagramShowDimensions = snapshot.diagramShowDimensions === true;
+  state.diagramShowFocusComparison = snapshot.diagramShowFocusComparison === true;
+  state.diagramPhysicalGrid = snapshot.diagramPhysicalGrid === true;
+  state.diagramShowScaleBar = snapshot.diagramShowScaleBar === true;
 };
 
 const rememberState = () => {
@@ -2393,6 +2489,9 @@ const serializePrescription = () => {
       sourcePatent: state.prescription.sourcePatent,
       example: state.prescription.example,
       patentDataStatus: state.prescription.patentDataStatus,
+      explicitImagePlaneSurfaceNumber: state.prescription.explicitImagePlaneSurfaceNumber ?? null,
+      imagePlaneSource: state.prescription.imagePlaneSource || null,
+      finalSurfaceRole: state.prescription.finalSurfaceRole || null,
       diameterSource: state.prescription.diameterSource || null,
       diameterReference: state.prescription.diameterReference || null,
       diameterNote: state.prescription.diameterNote || "",
@@ -2442,7 +2541,19 @@ const saveCurrentDesign = ({ preferExisting = false } = {}) => {
       minimumAirGapClearanceMm: state.minimumAirGapClearanceMm,
       diagramAperturePreviewMode: state.diagramAperturePreviewMode,
       diagramAperturePreviewKey: state.diagramAperturePreviewKey,
-      diagramGeometryDisplayMode: state.diagramGeometryDisplayMode
+      diagramGeometryDisplayMode: state.diagramGeometryDisplayMode,
+      diagramRenderStyle: state.diagramRenderStyle,
+      diagramLensFill: state.diagramLensFill,
+      diagramRayDisplayMode: state.diagramRayDisplayMode,
+      diagramRayFieldKey: state.diagramRayFieldKey,
+      diagramCustomFieldAngleDegrees: state.diagramCustomFieldAngleDegrees,
+      diagramTargetReferenceMode: state.diagramTargetReferenceMode,
+      diagramMountReferenceMode: state.diagramMountReferenceMode,
+      diagramManualMountDistanceMm: state.diagramManualMountDistanceMm,
+      diagramShowDimensions: state.diagramShowDimensions,
+      diagramShowFocusComparison: state.diagramShowFocusComparison,
+      diagramPhysicalGrid: state.diagramPhysicalGrid,
+      diagramShowScaleBar: state.diagramShowScaleBar
     },
     prescription: serializePrescription(),
     lenses: serializeDesign()
@@ -2464,6 +2575,13 @@ const saveCurrentDesign = ({ preferExisting = false } = {}) => {
 const loadDesign = (design) => {
   state.preset = "custom";
   state.diagramViewMode = DEFAULT_ANALYSIS_SETTINGS.diagramViewMode;
+  state.diagramTargetReferenceMode = DEFAULT_ANALYSIS_SETTINGS.diagramTargetReferenceMode;
+  state.diagramMountReferenceMode = DEFAULT_ANALYSIS_SETTINGS.diagramMountReferenceMode;
+  state.diagramManualMountDistanceMm = DEFAULT_ANALYSIS_SETTINGS.diagramManualMountDistanceMm;
+  state.diagramShowDimensions = DEFAULT_ANALYSIS_SETTINGS.diagramShowDimensions;
+  state.diagramShowFocusComparison = DEFAULT_ANALYSIS_SETTINGS.diagramShowFocusComparison;
+  state.diagramPhysicalGrid = DEFAULT_ANALYSIS_SETTINGS.diagramPhysicalGrid;
+  state.diagramShowScaleBar = DEFAULT_ANALYSIS_SETTINGS.diagramShowScaleBar;
   state.prescription = design.prescription
     ? normalizePrescription(design.prescription)
     : normalizePrescription({
@@ -2518,6 +2636,26 @@ const loadDesign = (design) => {
     state.diagramAperturePreviewMode = normalizeDiagramAperturePreviewMode(design.analysisSettings.diagramAperturePreviewMode);
     state.diagramAperturePreviewKey = apertureOptionByKey(design.analysisSettings.diagramAperturePreviewKey).key;
     state.diagramGeometryDisplayMode = normalizeDiagramGeometryDisplayMode(design.analysisSettings.diagramGeometryDisplayMode);
+    state.diagramRenderStyle = design.analysisSettings.diagramRenderStyle === undefined
+      ? DEFAULT_ANALYSIS_SETTINGS.diagramRenderStyle
+      : normalizeDiagramRenderStyle(design.analysisSettings.diagramRenderStyle);
+    state.diagramLensFill = design.analysisSettings.diagramLensFill === undefined
+      ? DEFAULT_ANALYSIS_SETTINGS.diagramLensFill
+      : design.analysisSettings.diagramLensFill === true;
+    state.diagramRayDisplayMode = normalizeDiagramRayDisplayMode(design.analysisSettings.diagramRayDisplayMode);
+    state.diagramRayFieldKey = normalizeDiagramRayFieldKey(design.analysisSettings.diagramRayFieldKey);
+    state.diagramCustomFieldAngleDegrees = Number.isFinite(toNumber(design.analysisSettings.diagramCustomFieldAngleDegrees))
+      ? toNumber(design.analysisSettings.diagramCustomFieldAngleDegrees)
+      : DEFAULT_ANALYSIS_SETTINGS.diagramCustomFieldAngleDegrees;
+    state.diagramTargetReferenceMode = normalizeDiagramTargetReferenceMode(design.analysisSettings.diagramTargetReferenceMode);
+    state.diagramMountReferenceMode = normalizeDiagramMountReferenceMode(design.analysisSettings.diagramMountReferenceMode);
+    state.diagramManualMountDistanceMm = Number.isFinite(toNumber(design.analysisSettings.diagramManualMountDistanceMm))
+      ? toNumber(design.analysisSettings.diagramManualMountDistanceMm)
+      : DEFAULT_ANALYSIS_SETTINGS.diagramManualMountDistanceMm;
+    state.diagramShowDimensions = design.analysisSettings.diagramShowDimensions === true;
+    state.diagramShowFocusComparison = design.analysisSettings.diagramShowFocusComparison === true;
+    state.diagramPhysicalGrid = design.analysisSettings.diagramPhysicalGrid === true;
+    state.diagramShowScaleBar = design.analysisSettings.diagramShowScaleBar === true;
   }
   state.designName = design.name;
   state.selectedSavedDesignId = design.id;
@@ -2741,6 +2879,14 @@ const formatNumber = (value, digits = 3) => {
   return new Intl.NumberFormat("en-US", {
     maximumFractionDigits: decimals,
     minimumFractionDigits: 0
+  }).format(value);
+};
+
+const formatFixedNumber = (value, digits = 2) => {
+  if (!Number.isFinite(value)) return "--";
+  return new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits
   }).format(value);
 };
 
@@ -3759,7 +3905,16 @@ const createSvgPointMapper = (system, chromaticSystems, options = {}) => {
   const lensStackCenter = (stackMinX + stackMaxX) / 2;
   const stackWidth = Math.max(1, stackMaxX - stackMinX);
   const rightMostLens = Math.max(stackMaxX, 90);
-  const requiredMinX = Math.min(0, SONY_E_FLANGE_DISTANCE, ...focusOffsets) - 8;
+  const mountReferenceX = normalizeDiagramMountReferenceMode(state.diagramMountReferenceMode) === "off"
+    ? NaN
+    : resolveMountFlangePlaneX();
+  const focusDiagnosticMinX = state.diagramShowFocusComparison ? -10 : 0;
+  const requiredMinX = Math.min(
+    0,
+    focusDiagnosticMinX,
+    Number.isFinite(mountReferenceX) ? mountReferenceX : 0,
+    ...focusOffsets
+  ) - 8;
   const requiredMaxX = rightMostLens + Math.max(35, rightMostLens * 0.18);
   const halfRangeX = Math.max(
     stackWidth / 2 + Math.max(28, stackWidth * 0.42),
@@ -3800,6 +3955,100 @@ const createSvgPointMapper = (system, chromaticSystems, options = {}) => {
     pxPerMmX: mmScale,
     pxPerMmY: mmScale
   };
+};
+
+const PHYSICAL_GRID_STEPS_MM = [1, 2, 5, 10, 20, 50];
+
+const choosePhysicalGridStepMm = (mapper, targetPx = 70) => (
+  PHYSICAL_GRID_STEPS_MM.reduce((best, step) => (
+    Math.abs(step * mapper.mmScale - targetPx) < Math.abs(best * mapper.mmScale - targetPx)
+      ? step
+      : best
+  ), PHYSICAL_GRID_STEPS_MM[0])
+);
+
+const physicalGridModel = (mapper, options = {}) => {
+  const stepMm = options.stepMm || choosePhysicalGridStepMm(mapper);
+  const startX = Math.ceil(mapper.minX / stepMm) * stepMm;
+  const endX = Math.floor(mapper.maxX / stepMm) * stepMm;
+  const startY = Math.ceil(-mapper.verticalHalfRange / stepMm) * stepMm;
+  const endY = Math.floor(mapper.verticalHalfRange / stepMm) * stepMm;
+  const verticalLines = [];
+  const horizontalLines = [];
+  for (let worldX = startX; worldX <= endX + stepMm * 0.001; worldX += stepMm) {
+    verticalLines.push({
+      worldMm: Number(worldX.toFixed(9)),
+      svgX: mapper.x(worldX)
+    });
+  }
+  for (let worldY = startY; worldY <= endY + stepMm * 0.001; worldY += stepMm) {
+    horizontalLines.push({
+      worldMm: Number(worldY.toFixed(9)),
+      svgY: mapper.y(worldY)
+    });
+  }
+  return { stepMm, verticalLines, horizontalLines };
+};
+
+const renderPhysicalGridSvg = (mapper, { showLabels = false } = {}) => {
+  const grid = physicalGridModel(mapper);
+  const labels = showLabels
+    ? `
+      ${grid.verticalLines.map((line) => `
+        <text class="physical-grid-label physical-grid-x-label" x="${line.svgX}" y="${mapper.height - 9}" text-anchor="middle">${formatNumber(line.worldMm, 0)}</text>
+      `).join("")}
+      ${grid.horizontalLines.filter((line) => Math.abs(line.worldMm) > 1e-9).map((line) => `
+        <text class="physical-grid-label physical-grid-y-label" x="10" y="${line.svgY + 2}" text-anchor="start">${formatNumber(line.worldMm, 0)}</text>
+      `).join("")}
+    `
+    : "";
+  return `
+    <g class="physical-mm-grid" data-grid-step-mm="${grid.stepMm}">
+      ${grid.verticalLines.map((line) => `
+        <line class="physical-grid-line physical-grid-x" data-grid-step-mm="${grid.stepMm}" data-grid-world-mm="${line.worldMm}" x1="${line.svgX}" y1="0" x2="${line.svgX}" y2="${mapper.height}" />
+      `).join("")}
+      ${grid.horizontalLines.map((line) => `
+        <line class="physical-grid-line physical-grid-y" data-grid-step-mm="${grid.stepMm}" data-grid-world-mm="${line.worldMm}" x1="0" y1="${line.svgY}" x2="${mapper.width}" y2="${line.svgY}" />
+      `).join("")}
+      ${labels}
+    </g>
+  `;
+};
+
+const renderScaleBarSvg = (mapper) => {
+  const stepMm = choosePhysicalGridStepMm(mapper);
+  const barPx = stepMm * mapper.mmScale;
+  const x1 = 18;
+  const y = mapper.height - 22;
+  const x2 = x1 + barPx;
+  return `
+    <g class="physical-scale-bar" data-scale-mm="${stepMm}" data-scale-px="${barPx}">
+      <line class="physical-scale-bar-line" x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" />
+      <line class="physical-scale-bar-tick" x1="${x1}" y1="${y - 4}" x2="${x1}" y2="${y + 4}" />
+      <line class="physical-scale-bar-tick" x1="${x2}" y1="${y - 4}" x2="${x2}" y2="${y + 4}" />
+      <text class="physical-scale-bar-label" x="${(x1 + x2) / 2}" y="${y - 7}" text-anchor="middle">${formatNumber(stepMm, 0)} mm</text>
+    </g>
+  `;
+};
+
+const renderMountReferenceDimensionSvg = (mapper, referenceImagePlaneXValue, mountFlangePlaneX, mountReferenceMode, y) => {
+  if (!Number.isFinite(mountFlangePlaneX)) return "";
+  const referenceSvgX = mapper.x(referenceImagePlaneXValue);
+  const mountSvgX = mapper.x(mountFlangePlaneX);
+  const leftX = Math.min(referenceSvgX, mountSvgX);
+  const rightX = Math.max(referenceSvgX, mountSvgX);
+  const distanceMm = Math.abs(mountFlangePlaneX - referenceImagePlaneXValue);
+  const label = mountReferenceMode === "sonyE"
+    ? `Sony E flange → sensor: ${formatFixedNumber(distanceMm, 2)} mm`
+    : `Mount-to-image distance: ${formatNumber(distanceMm, 2)} mm`;
+  return `
+    <g class="mount-reference-dimension" data-mount-distance-mm="${distanceMm}">
+      <line class="mount-reference-dimension-line" x1="${leftX}" y1="${y}" x2="${rightX}" y2="${y}" />
+      <line class="mount-reference-dimension-tick" x1="${leftX}" y1="${y - 5}" x2="${leftX}" y2="${y + 5}" />
+      <line class="mount-reference-dimension-tick" x1="${rightX}" y1="${y - 5}" x2="${rightX}" y2="${y + 5}" />
+      <text class="diagram-dimension-label mount-reference-dimension-label" x="${(leftX + rightX) / 2}" y="${y - 7}" text-anchor="middle">${escapeHtml(label)}</text>
+    </g>
+  `;
 };
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
@@ -4016,12 +4265,19 @@ const patentSurfacePositionMap = (lenses, system, positions = lensPositions(syst
   return map;
 };
 
-const isPatentImagePlaneSurface = (surface, index, surfaces) => (
-  index === surfaces.length - 1
-  && surface?.isStop !== true
-  && isPlanoRadius(surface?.radius)
-  && !Number.isFinite(toNumber(surface?.nAfter))
-  && Number.isFinite(toNumber(surfaces[index - 1]?.distanceToNext))
+const isPatentImagePlaneSurface = (surface, index, surfaces, prescription = null) => (
+  surface?.isStop !== true
+  && (
+    surface?.isImagePlane === true
+    || surface?.type === "imagePlane"
+    || surface?.role === "imagePlane"
+    || /\b(image|film|focal plane)\b/i.test(String(surface?.comment || ""))
+    || (
+      Number.isFinite(toNumber(prescription?.explicitImagePlaneSurfaceNumber))
+      && Number.isFinite(toNumber(surface?.no))
+      && Math.round(toNumber(prescription.explicitImagePlaneSurfaceNumber)) === Math.round(toNumber(surface.no))
+    )
+  )
 );
 
 const patentSurfaceIndexAtWavelength = (surface, wavelengthNm) => {
@@ -4040,7 +4296,7 @@ const sequentialPatentSurfaceCoordinates = (prescription, system = null) => {
     : [];
   if (!surfaces.length) return { surfaces, xMap: new Map(), hasExplicitImagePlane: false };
 
-  const hasExplicitImagePlane = surfaces.some((surface, index) => isPatentImagePlaneSurface(surface, index, surfaces));
+  const hasExplicitImagePlane = surfaces.some((surface, index) => isPatentImagePlaneSurface(surface, index, surfaces, prescription));
   const xValues = new Array(surfaces.length).fill(0);
   xValues[surfaces.length - 1] = hasExplicitImagePlane
     ? 0
@@ -4109,7 +4365,7 @@ const buildSequentialPatentTraceSurfaces = (prescription, options = {}) => {
   let previousNAfter = 1;
   const traceSurfaces = patentSurfaces.filter((surface) => !skippedDuplicateSurfaceNos.has(surface.no)).map((surface, index) => {
     const originalIndex = patentSurfaces.findIndex((item) => item.no === surface.no);
-    const isImagePlane = isPatentImagePlaneSurface(surface, originalIndex, patentSurfaces);
+    const isImagePlane = isPatentImagePlaneSurface(surface, originalIndex, patentSurfaces, normalizedPrescription);
     const isStop = surface.isStop === true;
     const duplicateShared = duplicateSharedSurfaceByNo.get(surface.no) || null;
     const nBefore = previousNAfter;
@@ -5029,6 +5285,156 @@ const imagePlaneIntersection = (ray, imagePlaneX = 0) => {
   return { x: imagePlaneX, y: ray.y + ray.dy * t };
 };
 
+const REFERENCE_IMAGE_PLANE_X = 0;
+
+const referenceImagePlaneX = () => REFERENCE_IMAGE_PLANE_X;
+
+const normalizeReferencePlaneSource = (preset = PRESETS[state.preset], prescription = state.prescription) => {
+  if (prescription?.surfaces?.some((surface) => surface.isImagePlane === true || surface.type === "imagePlane")) {
+    return "Patent image plane";
+  }
+  if (prescription?.imagePlaneSource) return prescription.imagePlaneSource;
+  if (preset?.referencePlaneSource) return preset.referencePlaneSource;
+  if (preset?.imagePlaneSource) return preset.imagePlaneSource;
+  return preset?.sourceType === "patent" || prescription?.prescriptionType === "surface"
+    ? "Paraxial BFL placement"
+    : "Paraxial BFL placement";
+};
+
+const referenceImagePlaneLabel = (preset = PRESETS[state.preset], prescription = state.prescription) => {
+  if (isSonyFullFrameTargetReference()) return "Sony full-frame sensor plane";
+  return preset?.imagePlaneLabel || prescription?.imagePlaneLabel || "Reference image plane";
+};
+
+const resolveMountFlangePlaneX = () => {
+  const mode = normalizeDiagramMountReferenceMode(state.diagramMountReferenceMode);
+  if (mode === "sonyE") return SONY_E_FLANGE_DISTANCE;
+  if (mode === "manual") {
+    const distance = toNumber(state.diagramManualMountDistanceMm);
+    return Number.isFinite(distance) ? distance : DEFAULT_ANALYSIS_SETTINGS.diagramManualMountDistanceMm;
+  }
+  return NaN;
+};
+
+const rearMostOpticalVertexX = (system, lenses = state.lenses) => {
+  const positions = lensPositions(system, lenses).filter(Boolean);
+  if (!positions.length) return NaN;
+  return Math.min(...positions.map((position) => position.start));
+};
+
+const focusShiftSeverity = (focusShiftMm) => {
+  const magnitude = Math.abs(toNumber(focusShiftMm));
+  if (!Number.isFinite(magnitude)) return "invalid";
+  if (magnitude <= 0.02) return "aligned";
+  if (magnitude <= 0.10) return "minor";
+  return "significant";
+};
+
+const formatFocusShiftDescription = (focusShiftMm) => {
+  if (!Number.isFinite(toNumber(focusShiftMm))) return "Real-ray focus shift unavailable";
+  const direction = focusShiftMm >= 0 ? "behind" : "in front of";
+  return `Real-ray focus shift: ${focusShiftMm >= 0 ? "+" : ""}${formatNumber(focusShiftMm, 3)} mm ${direction} reference plane`;
+};
+
+const evaluateRayBundleAtPlane = (rays, planeX) => {
+  const hits = (rays || [])
+    .filter((ray) => ray.status === "valid" && ray.finalRay)
+    .map((ray) => ({
+      ray,
+      point: imagePlaneIntersection(ray.finalRay, planeX)
+    }))
+    .filter((hit) => hit.point && Number.isFinite(hit.point.y));
+  if (!hits.length) {
+    return {
+      validRayCount: 0,
+      rmsSpotRadius: NaN,
+      maxRayHeight: NaN,
+      chiefRayHeight: NaN,
+      marginalRaySpread: NaN
+    };
+  }
+  const meanY = hits.reduce((sum, hit) => sum + hit.point.y, 0) / hits.length;
+  const yValues = hits.map((hit) => hit.point.y);
+  const chiefHit = hits.reduce((closest, hit) => (
+    !closest || Math.abs(hit.ray.inputRay?.apertureY || 0) < Math.abs(closest.ray.inputRay?.apertureY || 0)
+      ? hit
+      : closest
+  ), null);
+  return {
+    validRayCount: hits.length,
+    rmsSpotRadius: Math.sqrt(hits.reduce((sum, hit) => sum + (hit.point.y - meanY) ** 2, 0) / hits.length),
+    maxRayHeight: Math.max(...yValues.map((value) => Math.abs(value))),
+    chiefRayHeight: chiefHit?.point?.y ?? NaN,
+    marginalRaySpread: Math.max(...yValues) - Math.min(...yValues)
+  };
+};
+
+const findBestRealRayFocusPlane = (lenses, system, options = {}) => {
+  const referenceX = Number.isFinite(toNumber(options.referenceImagePlaneX))
+    ? toNumber(options.referenceImagePlaneX)
+    : referenceImagePlaneX();
+  const searchRangeMm = Math.max(0.1, toNumber(options.searchRangeMm) || 5);
+  const trace = traceSystemRealRays(lenses, system, {
+    ...options,
+    fieldAngleDegrees: 0,
+    fieldKey: "center",
+    fieldName: "On-axis",
+    rayCount: Math.max(7, toNumber(options.rayCount) || 9),
+    referenceImagePlaneX: referenceX
+  });
+  const validRays = trace.rays.filter((ray) => ray.status === "valid" && ray.finalRay);
+  if (validRays.length < 3) {
+    return {
+      bestRealRayFocusPlaneX: NaN,
+      referenceImagePlaneX: referenceX,
+      focusShiftMm: NaN,
+      rmsSpotAtReferenceMm: trace.rmsSpotRadius,
+      rmsSpotAtBestFocusMm: NaN,
+      maxRayHeight: NaN,
+      chiefRayHeight: NaN,
+      marginalRaySpread: NaN,
+      status: "insufficient-rays"
+    };
+  }
+
+  const evaluate = (planeX) => evaluateRayBundleAtPlane(validRays, planeX);
+  const referenceEvaluation = evaluate(referenceX);
+  const sampleCount = 41;
+  let best = { planeX: referenceX, ...referenceEvaluation };
+  for (let index = 0; index < sampleCount; index += 1) {
+    const fraction = index / (sampleCount - 1);
+    const planeX = referenceX - searchRangeMm + fraction * searchRangeMm * 2;
+    const evaluation = evaluate(planeX);
+    if (Number.isFinite(evaluation.rmsSpotRadius)
+      && (!Number.isFinite(best.rmsSpotRadius) || evaluation.rmsSpotRadius < best.rmsSpotRadius)) {
+      best = { planeX, ...evaluation };
+    }
+  }
+
+  const fineStep = (searchRangeMm * 2) / (sampleCount - 1);
+  const fineMin = Math.max(referenceX - searchRangeMm, best.planeX - fineStep);
+  const fineMax = Math.min(referenceX + searchRangeMm, best.planeX + fineStep);
+  for (let index = 0; index <= 32; index += 1) {
+    const planeX = fineMin + (index / 32) * (fineMax - fineMin);
+    const evaluation = evaluate(planeX);
+    if (Number.isFinite(evaluation.rmsSpotRadius) && evaluation.rmsSpotRadius < best.rmsSpotRadius) {
+      best = { planeX, ...evaluation };
+    }
+  }
+
+  return {
+    bestRealRayFocusPlaneX: best.planeX,
+    referenceImagePlaneX: referenceX,
+    focusShiftMm: referenceX - best.planeX,
+    rmsSpotAtReferenceMm: referenceEvaluation.rmsSpotRadius,
+    rmsSpotAtBestFocusMm: best.rmsSpotRadius,
+    maxRayHeight: best.maxRayHeight,
+    chiefRayHeight: best.chiefRayHeight,
+    marginalRaySpread: best.marginalRaySpread,
+    status: Number.isFinite(best.rmsSpotRadius) ? "valid" : "invalid"
+  };
+};
+
 const rayTraceApertureOptions = (options = {}) => {
   const configuration = resolveApertureStopConfiguration(options, options.prescription || state.prescription);
   return {
@@ -5073,21 +5479,27 @@ const prepareRayTraceBundle = (lenses, system, options = {}) => {
 
 const traceSystemRealRays = (lenses, system, options = {}) => {
   try {
+    const referenceImagePlaneXValue = Number.isFinite(toNumber(options.referenceImagePlaneX))
+      ? toNumber(options.referenceImagePlaneX)
+      : referenceImagePlaneX();
     const { surfaces, rayBundle, wavelengthNm, spectralLineKey } = prepareRayTraceBundle(lenses, system, options);
     if (!surfaces.length) {
-      return { enabled: true, spectralLineKey, wavelengthNm, surfaces, rays: [], validRayCount: 0, totalRayCount: 0, missedRayCount: 0, rmsSpotRadius: NaN, warning: "No valid optical surfaces to trace." };
+      return { enabled: true, spectralLineKey, wavelengthNm, referenceImagePlaneX: referenceImagePlaneXValue, surfaces, rays: [], validRayCount: 0, totalRayCount: 0, missedRayCount: 0, rmsSpotRadius: NaN, warning: "No valid optical surfaces to trace." };
     }
 
     const rays = rayBundle.map((ray) => {
       const traced = traceRay(ray, surfaces);
-      const sensorPoint = traced.status === "valid" ? sensorIntersection(traced.finalRay) : null;
-      const status = traced.status === "valid" && !sensorPoint ? "invalid" : traced.status;
+      const referenceImagePoint = traced.status === "valid"
+        ? imagePlaneIntersection(traced.finalRay, referenceImagePlaneXValue)
+        : null;
+      const status = traced.status === "valid" && !referenceImagePoint ? "invalid" : traced.status;
 
       return {
         ...traced,
         status,
         inputRay: ray,
-        sensorPoint
+        referenceImagePoint,
+        sensorPoint: referenceImagePoint
       };
     });
     const sensorHits = rays.filter((ray) => ray.status === "valid" && ray.sensorPoint);
@@ -5116,6 +5528,7 @@ const traceSystemRealRays = (lenses, system, options = {}) => {
       fieldKey: options.fieldKey || "custom",
       fieldName: options.fieldName || "Custom field",
       fieldAngleDegrees: toNumber(options.fieldAngleDegrees) || 0,
+      referenceImagePlaneX: referenceImagePlaneXValue,
       spectralLineKey,
       wavelengthNm,
       spectralLine: SPECTRAL_LINES[spectralLineKey] || SPECTRAL_LINES.d,
@@ -5147,6 +5560,9 @@ const traceSystemRealRays = (lenses, system, options = {}) => {
       missedRayCount: 0,
       rmsSpotRadius: NaN,
       maxSpotRadius: NaN,
+      referenceImagePlaneX: Number.isFinite(toNumber(options.referenceImagePlaneX))
+        ? toNumber(options.referenceImagePlaneX)
+        : referenceImagePlaneX(),
       warning: "Ray tracing failed for the current lens values."
     };
   }
@@ -9960,7 +10376,7 @@ const renderCementedGroupSvg = (model, mapper, annotationLanes = {}) => {
   const geometryDisplayMode = normalizeDiagramGeometryDisplayMode(annotationLanes.diagramGeometryDisplayMode || model.geometryDisplayMode);
   const opticalLayoutMode = isOpticalLayoutGeometryDisplayMode(geometryDisplayMode) && isOpticalRayViewMode(diagramViewMode);
   const renderOpticalFill = opticalLayoutMode && shouldRenderOpticalStyleFill(renderStyle);
-  const showOpticalCaps = false;
+  const showOpticalCaps = opticalLayoutMode && shouldRenderOpticalStyleCaps(renderStyle);
   const requestedMode = isRequestedGeometryDisplayMode(geometryDisplayMode);
   const invalidLinesMode = isInvalidLinesGeometryDisplayMode(geometryDisplayMode);
   const elementLabel = model.elementIndices.map((index) => `L${index + 1}`).join(" + ");
@@ -10277,7 +10693,7 @@ const renderIndividualLensSvg = (system, mapper, rayTraceResults, index, options
   const opticalLayoutMode = isOpticalLayoutGeometryDisplayMode(geometryDisplayMode)
     && isOpticalRayViewMode(diagramViewMode);
   const renderOpticalFill = opticalLayoutMode && shouldRenderOpticalStyleFill(renderStyle);
-  const showOpticalCaps = false;
+  const showOpticalCaps = opticalLayoutMode && shouldRenderOpticalStyleCaps(renderStyle);
   if (isOpticalRayViewMode(diagramViewMode) && !(model.manufacturable || model.safeInvalidGeometry)) {
     model = buildPrescriptionLensRenderModel(
       position,
@@ -10596,6 +11012,12 @@ const renderLensStackSvg = (
   renderLayer = "all"
 ) => {
   const mechanicalValidation = shouldUseMechanicalValidation();
+  const hasExplicitRenderStyle = annotationLanes.diagramRenderStyle !== undefined;
+  const renderStyle = hasExplicitRenderStyle ? normalizeDiagramRenderStyle(annotationLanes.diagramRenderStyle) : "";
+  const forcePatentIllustrationGroups = hasExplicitRenderStyle
+    && isPatentIllustrationRenderStyle(renderStyle)
+    && isOpticalLayoutGeometryDisplayMode(annotationLanes.diagramGeometryDisplayMode)
+    && isOpticalRayViewMode(annotationLanes.diagramViewMode);
   if (!mechanicalValidation) {
     return mapper.positions.map((position, index) => renderIndividualLensSvg(
       system,
@@ -10611,7 +11033,7 @@ const renderLensStackSvg = (
     )).join("");
   }
 
-  if (state.cementedGroupDisplayMode === "individualManufacturing") {
+  if (state.cementedGroupDisplayMode === "individualManufacturing" && !forcePatentIllustrationGroups) {
     const elements = mapper.positions.map((position, index) => renderIndividualLensSvg(
       system,
       mapper,
@@ -11146,6 +11568,10 @@ const renderRayPathsSvg = (system, spectralSystems, mapper) => {
 const renderRealRayPathsSvg = (rayTraceResults, mapper, options = {}) => {
   const results = Array.isArray(rayTraceResults) ? rayTraceResults : [rayTraceResults].filter(Boolean);
   const diagramViewMode = normalizeDiagramViewMode(options.diagramViewMode);
+  const referenceImagePlaneXValue = Number.isFinite(toNumber(options.referenceImagePlaneX))
+    ? toNumber(options.referenceImagePlaneX)
+    : referenceImagePlaneX();
+  const extendBeyondReferenceMm = Math.max(0, toNumber(options.extendBeyondReferenceMm) || 0);
   const samePoint = (a, b) => a && b
     && Math.abs(a.x - b.x) < 1e-9
     && Math.abs(a.y - b.y) < 1e-9;
@@ -11159,7 +11585,9 @@ const renderRealRayPathsSvg = (rayTraceResults, mapper, options = {}) => {
         .map((point) => ({ x: point.x, y: point.y }))
         .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
       const terminalPoint = isValid
-        ? ray.sensorPoint
+        ? (extendBeyondReferenceMm > 0
+          ? imagePlaneIntersection(ray.finalRay, referenceImagePlaneXValue - extendBeyondReferenceMm) || ray.referenceImagePoint || ray.sensorPoint
+          : ray.referenceImagePoint || ray.sensorPoint)
         : ray.hitPoint || ray.failurePoint || ray.failedPoint || null;
       if (terminalPoint && Number.isFinite(terminalPoint.x) && Number.isFinite(terminalPoint.y)) {
         const terminal2d = { x: terminalPoint.x, y: terminalPoint.y };
@@ -11337,9 +11765,14 @@ const renderOpticalDiagram = (system, spectralSystems, rayTraceResult, diagramAp
     : (isManufacturingGeometryDisplayMode(diagramGeometryDisplayMode) || !suppressInDiagramDiagnostics(diagramViewMode)
       ? state.minimumAirGapClearanceMm
       : 0);
+  const diagramCementedGroupDisplayMode = isOpticalRayView
+    && isPatentIllustrationRenderStyle(diagramRenderStyle)
+    && isOpticalLayoutGeometryDisplayMode(diagramGeometryDisplayMode)
+    ? "opticalLayout"
+    : state.cementedGroupDisplayMode;
   const layoutResolution = mechanicalValidation
     ? resolveOpticalLayoutGeometry(system, mapper, rayTraceResult, {
-      cementedGroupDisplayMode: state.cementedGroupDisplayMode,
+      cementedGroupDisplayMode: diagramCementedGroupDisplayMode,
       cementedInterfaceBevelMode: state.cementedInterfaceBevelMode,
       minimumAirGapClearanceMm: layoutClearanceMm,
       geometryDisplayMode: diagramGeometryDisplayMode
@@ -11371,18 +11804,49 @@ const renderOpticalDiagram = (system, spectralSystems, rayTraceResult, diagramAp
     ? "Possible radius sign convention or prescription error: paraxial back focal distance is on the object side."
     : "";
   const hasValidFocus = Number.isFinite(system.backFocalLength) && system.validCount > 0;
-  const sensorX = mapper.x(0);
-  const sonyFlangeX = mapper.x(SONY_E_FLANGE_DISTANCE);
+  const referenceImagePlaneXValue = referenceImagePlaneX();
+  const referenceImagePlaneSvgX = mapper.x(referenceImagePlaneXValue);
+  const mountReferenceMode = normalizeDiagramMountReferenceMode(state.diagramMountReferenceMode);
+  const mountFlangePlaneX = resolveMountFlangePlaneX();
+  const hasMountFlangeOverlay = mountReferenceMode !== "off" && Number.isFinite(mountFlangePlaneX);
+  const mountFlangeSvgX = Number.isFinite(mountFlangePlaneX) ? mapper.x(mountFlangePlaneX) : NaN;
   const sensorTop = mapper.y(FULL_FRAME_SENSOR.height / 2);
   const sensorBottom = mapper.y(-FULL_FRAME_SENSOR.height / 2);
-  const diagonalTop = mapper.y(FULL_FRAME_SENSOR.diagonal / 2);
-  const diagonalBottom = mapper.y(-FULL_FRAME_SENSOR.diagonal / 2);
-  const diagonalGuideX = sensorX - 13;
-  const bflX = hasValidFocus ? mapper.x(system.backFocalLength) : mapper.x(55);
-  const sonyLineTop = mapper.axisY - Math.min(96, mapper.height * 0.22);
-  const sonyLineBottom = mapper.axisY + Math.min(104, mapper.height * 0.24);
-  const bfdGuideY = mapper.axisY + Math.min(38, mapper.height * 0.11);
+  const rearMostVertexX = rearMostOpticalVertexX(system, state.lenses);
+  const rearMostVertexSvgX = hasValidFocus && Number.isFinite(rearMostVertexX) ? mapper.x(rearMostVertexX) : mapper.x(55);
+  const actualBfdMm = Number.isFinite(rearMostVertexX) ? rearMostVertexX - referenceImagePlaneXValue : NaN;
+  const guideLineTop = mapper.axisY - Math.min(96, mapper.height * 0.22);
+  const guideLineBottom = mapper.axisY + Math.min(104, mapper.height * 0.24);
+  const isSonyTargetReference = isSonyFullFrameTargetReference();
+  const shouldShowBfdGuide = state.diagramShowDimensions || isSonyTargetReference;
+  const mountDimensionY = Math.min(mapper.height - 46, annotationLanes.dimensionY + 8);
+  const bfdGuideY = hasMountFlangeOverlay
+    ? Math.min(mapper.height - 24, mountDimensionY + 18)
+    : Math.min(mapper.height - 32, annotationLanes.dimensionY + 12);
   const zoomPercent = Math.round(clamp(state.diagramZoom, 1, 6) * 100);
+  const referencePlaneSource = normalizeReferencePlaneSource(selectedPreset, state.prescription);
+  const referencePlaneLabel = referenceImagePlaneLabel(selectedPreset, state.prescription);
+  const focusComparisonResult = state.diagramShowFocusComparison && isOpticalRayView
+    ? findBestRealRayFocusPlane(state.lenses, spectralSystems.d || system, {
+      ...rayTraceApertureOptions(state),
+      apertureDiameter: diagramAperturePreview?.apertureDiameter || state.apertureDiameter,
+      rayCount: Math.max(9, state.rayTraceRayCount),
+      referenceImagePlaneX: referenceImagePlaneXValue
+    })
+    : null;
+  const focusComparisonSeverity = focusComparisonResult
+    ? focusShiftSeverity(focusComparisonResult.focusShiftMm)
+    : "";
+  const bestRealRayFocusSvgX = focusComparisonResult?.status === "valid"
+    ? mapper.x(focusComparisonResult.bestRealRayFocusPlaneX)
+    : NaN;
+  const hasEstimatedFocusInputs = selectedPreset?.sourceType === "patent"
+    && (
+      state.lenses.some((lens) => ["estimated", "rayEnvelope", "svgEstimated", "auto"].includes(lens.apertureSource)
+        || ["estimated", "svgEstimated", "duplicated"].includes(lens.diameterSource))
+      || state.apertureStopMode === "auto"
+      || state.apertureStopMode === "patentStop"
+    );
 
   return `
     <section class="diagram-panel ${state.diagramExpanded ? "is-expanded" : ""}">
@@ -11401,44 +11865,6 @@ const renderOpticalDiagram = (system, spectralSystems, rayTraceResult, diagramAp
           </label>
           ${isOpticalRayView ? `
             <label class="diagram-view-mode-control compact-diagram-control">
-              <span>Style</span>
-              <select data-action="update-diagram-render-style" aria-label="Optical ray view render style">
-                ${DIAGRAM_RENDER_STYLE_OPTIONS.map((option) => `
-                  <option value="${option.value}" ${diagramRenderStyle === option.value ? "selected" : ""}>${option.label}</option>
-                `).join("")}
-              </select>
-            </label>
-            ${isProfessionalOpticalRenderStyle(diagramRenderStyle) ? `
-              <label class="diagram-view-mode-control compact-diagram-control diagram-fill-toggle">
-                <input type="checkbox" data-action="toggle-diagram-lens-fill" ${state.diagramLensFill ? "checked" : ""}>
-                <span>Lens fill</span>
-              </label>
-            ` : ""}
-            <label class="diagram-view-mode-control compact-diagram-control">
-              <span>Rays</span>
-              <select data-action="update-diagram-ray-display" aria-label="Optical ray display">
-                ${DIAGRAM_RAY_DISPLAY_OPTIONS.map((option) => `
-                  <option value="${option.value}" ${normalizeDiagramRayDisplayMode(state.diagramRayDisplayMode) === option.value ? "selected" : ""}>${option.label}</option>
-                `).join("")}
-              </select>
-            </label>
-            ${normalizeDiagramRayDisplayMode(state.diagramRayDisplayMode) !== "all" ? `
-              <label class="diagram-view-mode-control compact-diagram-control">
-                <span>Field</span>
-                <select data-action="update-diagram-ray-field" aria-label="Optical ray field">
-                  ${DIAGRAM_RAY_FIELD_OPTIONS.map((option) => `
-                    <option value="${option.value}" ${normalizeDiagramRayFieldKey(state.diagramRayFieldKey) === option.value ? "selected" : ""}>${option.label}</option>
-                  `).join("")}
-                </select>
-              </label>
-              ${normalizeDiagramRayFieldKey(state.diagramRayFieldKey) === "custom" ? `
-                <label class="diagram-view-mode-control compact-diagram-control">
-                  <span>Deg</span>
-                  <input type="number" min="0" max="80" step="0.5" value="${formatNumber(state.diagramCustomFieldAngleDegrees, 2)}" data-action="update-diagram-custom-field" aria-label="Custom ray field angle">
-                </label>
-              ` : ""}
-            ` : `<span class="diagram-mode-badge">Diagnostic ray overlay</span>`}
-            <label class="diagram-view-mode-control compact-diagram-control">
               <span>Aperture</span>
               <select data-action="update-diagram-aperture-preview-mode" aria-label="Diagram aperture preview mode">
                 <option value="design" ${normalizeDiagramAperturePreviewMode(state.diagramAperturePreviewMode) === "design" ? "selected" : ""}>Design aperture</option>
@@ -11446,16 +11872,6 @@ const renderOpticalDiagram = (system, spectralSystems, rayTraceResult, diagramAp
                 <option value="manual" ${normalizeDiagramAperturePreviewMode(state.diagramAperturePreviewMode) === "manual" ? "selected" : ""}>Manual preview aperture</option>
               </select>
             </label>
-            ${normalizeDiagramAperturePreviewMode(state.diagramAperturePreviewMode) === "manual" || (normalizeDiagramAperturePreviewMode(state.diagramAperturePreviewMode) === "followSweep" && state.mtfChartMode !== "field") ? `
-              <label class="diagram-view-mode-control compact-diagram-control">
-                <span>Preview f/</span>
-                <select data-action="update-diagram-aperture-preview-key" aria-label="Diagram preview aperture">
-                  ${MTF_APERTURE_SWEEP_OPTIONS.map((option) => `
-                    <option value="${option.key}" ${state.diagramAperturePreviewKey === option.key ? "selected" : ""}>${escapeHtml(option.label)}</option>
-                  `).join("")}
-                </select>
-              </label>
-            ` : ""}
           ` : ""}
           ${isOpticalRayView && getProductionSvgReferenceForPreset(selectedPreset)?.href ? `
             <button
@@ -11466,23 +11882,131 @@ const renderOpticalDiagram = (system, spectralSystems, rayTraceResult, diagramAp
               title="Toggle semi-transparent SVG reference overlay"
             >SVG</button>
           ` : ""}
-          ${mechanicalValidation && state.prescription?.prescriptionType !== "visualOnly" ? `
-            <label class="diagram-view-mode-control compact-diagram-control">
-              <span>Geometry</span>
-              <select data-action="update-diagram-geometry-display-mode" aria-label="Optical diagram geometry display mode">
-                ${DIAGRAM_GEOMETRY_DISPLAY_OPTIONS.map((option) => `
-                  <option value="${option.value}" ${diagramGeometryDisplayMode === option.value ? "selected" : ""}>${option.label}</option>
-                `).join("")}
-              </select>
-            </label>
+          ${isOpticalRayView ? `
             <button
-              class="diagram-icon-toggle ${state.cementedGroupDisplayMode === "individualManufacturing" ? "is-active" : ""}"
+              class="diagram-icon-toggle ${state.diagramOptionsOpen ? "is-active" : ""}"
               type="button"
-              data-action="toggle-cemented-layout"
-              aria-pressed="${state.cementedGroupDisplayMode === "individualManufacturing" ? "true" : "false"}"
-              aria-label="${state.cementedGroupDisplayMode === "individualManufacturing" ? "Switch to Optical layout" : "Switch to Individual manufacturing"}"
-              title="${state.cementedGroupDisplayMode === "individualManufacturing" ? "Switch to Optical layout" : "Switch to Individual manufacturing"}"
-            >◧</button>
+              data-action="toggle-diagram-options"
+              aria-expanded="${state.diagramOptionsOpen ? "true" : "false"}"
+              title="Diagram options"
+            >⚙</button>
+            ${state.diagramOptionsOpen ? `
+              <div class="diagram-options-popover" role="group" aria-label="Diagram options">
+                <div class="diagram-options-grid">
+                  <label class="diagram-view-mode-control compact-diagram-control">
+                    <span>Style</span>
+                    <select data-action="update-diagram-render-style" aria-label="Optical ray view render style">
+                      ${DIAGRAM_RENDER_STYLE_OPTIONS.map((option) => `
+                        <option value="${option.value}" ${diagramRenderStyle === option.value ? "selected" : ""}>${option.label}</option>
+                      `).join("")}
+                    </select>
+                  </label>
+                  <label class="diagram-view-mode-control compact-diagram-control diagram-fill-toggle">
+                    <input type="checkbox" data-action="toggle-diagram-lens-fill" ${state.diagramLensFill ? "checked" : ""}>
+                    <span>Lens fill</span>
+                  </label>
+                  <label class="diagram-view-mode-control compact-diagram-control">
+                    <span>Target reference</span>
+                    <select data-action="update-diagram-target-reference-mode" aria-label="Diagram target reference">
+                      ${DIAGRAM_TARGET_REFERENCE_OPTIONS.map((option) => `
+                        <option value="${option.value}" ${normalizeDiagramTargetReferenceMode(state.diagramTargetReferenceMode) === option.value ? "selected" : ""}>${option.label}</option>
+                      `).join("")}
+                    </select>
+                  </label>
+                  <span class="diagram-options-caption">Reference plane: ${escapeHtml(referencePlaneSource)}</span>
+                  <label class="diagram-view-mode-control compact-diagram-control">
+                    <span>Rays</span>
+                    <select data-action="update-diagram-ray-display" aria-label="Optical ray display">
+                      ${DIAGRAM_RAY_DISPLAY_OPTIONS.map((option) => `
+                        <option value="${option.value}" ${normalizeDiagramRayDisplayMode(state.diagramRayDisplayMode) === option.value ? "selected" : ""}>${option.label}</option>
+                      `).join("")}
+                    </select>
+                  </label>
+                  ${normalizeDiagramRayDisplayMode(state.diagramRayDisplayMode) !== "all" ? `
+                    <label class="diagram-view-mode-control compact-diagram-control">
+                      <span>Field</span>
+                      <select data-action="update-diagram-ray-field" aria-label="Optical ray field">
+                        ${DIAGRAM_RAY_FIELD_OPTIONS.map((option) => `
+                          <option value="${option.value}" ${normalizeDiagramRayFieldKey(state.diagramRayFieldKey) === option.value ? "selected" : ""}>${option.label}</option>
+                        `).join("")}
+                      </select>
+                    </label>
+                    ${normalizeDiagramRayFieldKey(state.diagramRayFieldKey) === "custom" ? `
+                      <label class="diagram-view-mode-control compact-diagram-control">
+                        <span>Custom field</span>
+                        <input type="number" min="0" max="80" step="0.5" value="${formatNumber(state.diagramCustomFieldAngleDegrees, 2)}" data-action="update-diagram-custom-field" aria-label="Custom ray field angle">
+                      </label>
+                    ` : ""}
+                  ` : `<span class="diagram-mode-badge">Diagnostic ray overlay</span>`}
+                  <label class="diagram-view-mode-control compact-diagram-control">
+                    <span>Mount reference</span>
+                    <select data-action="update-diagram-mount-reference-mode" aria-label="Mount reference overlay">
+                      ${DIAGRAM_MOUNT_REFERENCE_OPTIONS.map((option) => `
+                        <option value="${option.value}" ${mountReferenceMode === option.value ? "selected" : ""}>${option.label}</option>
+                      `).join("")}
+                    </select>
+                  </label>
+                  ${mountReferenceMode === "manual" ? `
+                    <label class="diagram-view-mode-control compact-diagram-control">
+                      <span>Mount distance</span>
+                      <input type="number" min="-100" max="200" step="0.1" value="${formatNumber(state.diagramManualMountDistanceMm, 2)}" data-action="update-diagram-manual-mount-distance" aria-label="Manual mount reference distance from image plane in millimetres">
+                    </label>
+                  ` : ""}
+                  <label class="diagram-view-mode-control compact-diagram-control diagram-fill-toggle">
+                    <input type="checkbox" data-action="toggle-diagram-dimensions" ${state.diagramShowDimensions ? "checked" : ""}>
+                    <span>Show dimensions</span>
+                  </label>
+                  <label class="diagram-view-mode-control compact-diagram-control diagram-fill-toggle">
+                    <input type="checkbox" data-action="toggle-diagram-physical-grid" ${state.diagramPhysicalGrid ? "checked" : ""}>
+                    <span>Physical mm grid</span>
+                  </label>
+                  <label class="diagram-view-mode-control compact-diagram-control diagram-fill-toggle">
+                    <input type="checkbox" data-action="toggle-diagram-scale-bar" ${state.diagramShowScaleBar ? "checked" : ""}>
+                    <span>Show scale bar</span>
+                  </label>
+                  <label class="diagram-view-mode-control compact-diagram-control diagram-fill-toggle">
+                    <input type="checkbox" data-action="toggle-diagram-focus-comparison" ${state.diagramShowFocusComparison ? "checked" : ""}>
+                    <span>Show focus comparison</span>
+                  </label>
+                  <span class="diagram-options-caption">Full frame 36 × 24 mm</span>
+                  ${normalizeDiagramAperturePreviewMode(state.diagramAperturePreviewMode) === "manual" || (normalizeDiagramAperturePreviewMode(state.diagramAperturePreviewMode) === "followSweep" && state.mtfChartMode !== "field") ? `
+                    <label class="diagram-view-mode-control compact-diagram-control">
+                      <span>Preview f/</span>
+                      <select data-action="update-diagram-aperture-preview-key" aria-label="Diagram preview aperture">
+                        ${MTF_APERTURE_SWEEP_OPTIONS.map((option) => `
+                          <option value="${option.key}" ${state.diagramAperturePreviewKey === option.key ? "selected" : ""}>${escapeHtml(option.label)}</option>
+                        `).join("")}
+                      </select>
+                    </label>
+                  ` : ""}
+                  ${mechanicalValidation && state.prescription?.prescriptionType !== "visualOnly" ? `
+                    <label class="diagram-view-mode-control compact-diagram-control">
+                      <span>Geometry</span>
+                      <select data-action="update-diagram-geometry-display-mode" aria-label="Optical diagram geometry display mode">
+                        ${DIAGRAM_GEOMETRY_DISPLAY_OPTIONS.map((option) => `
+                          <option value="${option.value}" ${diagramGeometryDisplayMode === option.value ? "selected" : ""}>${option.label}</option>
+                        `).join("")}
+                      </select>
+                    </label>
+                    <button
+                      class="diagram-icon-toggle ${state.cementedGroupDisplayMode === "individualManufacturing" ? "is-active" : ""}"
+                      type="button"
+                      data-action="toggle-cemented-layout"
+                      aria-pressed="${state.cementedGroupDisplayMode === "individualManufacturing" ? "true" : "false"}"
+                      aria-label="${state.cementedGroupDisplayMode === "individualManufacturing" ? "Switch to Optical layout" : "Switch to Individual manufacturing"}"
+                      title="${state.cementedGroupDisplayMode === "individualManufacturing" ? "Switch to Optical layout" : "Switch to Individual manufacturing"}"
+                    >◧</button>
+                  ` : ""}
+                  ${getProductionSvgReferenceForPreset(selectedPreset)?.href ? `
+                    <label class="diagram-view-mode-control compact-diagram-control diagram-fill-toggle">
+                      <input type="checkbox" data-action="toggle-svg-reference-overlay-input" ${state.showSvgReferenceOverlay ? "checked" : ""}>
+                      <span>SVG overlay</span>
+                    </label>
+                  ` : ""}
+                </div>
+                <button class="diagram-reset-button" type="button" data-action="reset-diagram-appearance">Reset diagram appearance</button>
+              </div>
+            ` : ""}
           ` : ""}
           ${isProductionCutawayView ? renderProductionSilhouetteSourceControl(selectedPreset) : ""}
           ${state.diagramExpanded || state.diagramZoom > 1.001 ? `<span class="zoom-badge">${zoomPercent}%</span>` : ""}
@@ -11490,9 +12014,6 @@ const renderOpticalDiagram = (system, spectralSystems, rayTraceResult, diagramAp
       </div>
       <svg class="ray-diagram view-${diagramViewMode} geometry-${diagramGeometryDisplayMode} render-${diagramRenderStyle} ray-display-${normalizeDiagramRayDisplayMode(state.diagramRayDisplayMode)} ${state.diagramLensFill ? "has-lens-fill" : "no-lens-fill"}" viewBox="${diagramViewBox(mapper, diagramViewMode)}" role="img" aria-label="RGB ray path side view with full-frame sensor and focus markers">
         <defs>
-          <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#dfe8e8" stroke-width="1" />
-          </pattern>
           <linearGradient id="sensorGradient" x1="0" x2="1">
             <stop offset="0%" stop-color="#263238" />
             <stop offset="100%" stop-color="#48626a" />
@@ -11501,13 +12022,13 @@ const renderOpticalDiagram = (system, spectralSystems, rayTraceResult, diagramAp
 
         <g class="layer-background">
           <rect class="diagram-bg" x="0" y="0" width="${mapper.width}" height="${mapper.height}" />
-          ${isProductionCutawayView || isPatentLineView ? "" : `<rect x="0" y="0" width="${mapper.width}" height="${mapper.height}" fill="url(#grid)" opacity="0.55" />`}
+          ${isOpticalRayView && state.diagramPhysicalGrid ? renderPhysicalGridSvg(mapper, { showLabels: state.diagramShowDimensions }) : ""}
           <line class="axis-line" x1="${mapper.x(mapper.minX)}" y1="${mapper.axisY}" x2="${mapper.x(mapper.maxX)}" y2="${mapper.axisY}" />
           ${isProductionCutawayView ? "" : `
-            <line class="sensor-line" x1="${sensorX}" y1="${sensorTop}" x2="${sensorX}" y2="${sensorBottom}" />
-            <line class="sensor-diagonal" x1="${diagonalGuideX}" y1="${diagonalTop}" x2="${diagonalGuideX}" y2="${diagonalBottom}" />
-            <line class="sony-flange-line" x1="${sonyFlangeX}" y1="${sonyLineTop}" x2="${sonyFlangeX}" y2="${sonyLineBottom}" />
-            ${hasValidFocus ? `<line class="bfd-guide-line" x1="${Math.min(sensorX, bflX)}" y1="${bfdGuideY}" x2="${Math.max(sensorX, bflX)}" y2="${bfdGuideY}" />` : ""}
+            <line class="reference-image-plane-line" x1="${referenceImagePlaneSvgX}" y1="${sensorTop}" x2="${referenceImagePlaneSvgX}" y2="${sensorBottom}" />
+            ${hasMountFlangeOverlay ? `<line class="mount-flange-line" x1="${mountFlangeSvgX}" y1="${guideLineTop}" x2="${mountFlangeSvgX}" y2="${guideLineBottom}" />` : ""}
+            ${shouldShowBfdGuide && hasValidFocus && Number.isFinite(actualBfdMm) ? `<line class="bfd-guide-line" data-bfd-start-x="${rearMostVertexX}" data-bfd-end-x="${referenceImagePlaneXValue}" x1="${Math.min(referenceImagePlaneSvgX, rearMostVertexSvgX)}" y1="${bfdGuideY}" x2="${Math.max(referenceImagePlaneSvgX, rearMostVertexSvgX)}" y2="${bfdGuideY}" />` : ""}
+            ${focusComparisonResult?.status === "valid" ? `<line class="best-real-ray-focus-line focus-${focusComparisonSeverity}" x1="${bestRealRayFocusSvgX}" y1="${guideLineTop + 8}" x2="${bestRealRayFocusSvgX}" y2="${guideLineBottom - 8}" />` : ""}
           `}
         </g>
         <g class="layer-glass-fill">${
@@ -11521,7 +12042,11 @@ const renderOpticalDiagram = (system, spectralSystems, rayTraceResult, diagramAp
           ${isProductionCutawayView || isPatentLineView
             ? ""
             : state.showRealRays
-            ? renderRealRayPathsSvg(rayTraceResult, mapper, { diagramViewMode })
+            ? renderRealRayPathsSvg(rayTraceResult, mapper, {
+              diagramViewMode,
+              referenceImagePlaneX: referenceImagePlaneXValue,
+              extendBeyondReferenceMm: state.diagramShowFocusComparison ? 9 : 0
+            })
             : renderRayPathsSvg(system, spectralSystems, mapper)}
         </g>
         <g class="layer-optical-surfaces">
@@ -11538,13 +12063,20 @@ const renderOpticalDiagram = (system, spectralSystems, rayTraceResult, diagramAp
           ${isProductionCutawayView ? "" : renderApertureStopMarkerSvg(rayTraceResult, mapper, annotationLanes, "annotations")}
           ${isOpticalRayView ? "" : renderGapGuidesSvg(mapper, annotationLanes)}
           ${isProductionCutawayView ? "" : `
-            <text class="diagram-label sony-e-label" x="${sonyFlangeX}" y="${sonyLineTop - 8}" text-anchor="middle">Sony E</text>
+            <text class="diagram-label reference-image-plane-label" x="${referenceImagePlaneSvgX}" y="${guideLineTop - 8}" text-anchor="middle">${escapeHtml(referencePlaneLabel)}</text>
+            ${hasMountFlangeOverlay ? `<text class="diagram-label mount-flange-label" x="${mountFlangeSvgX}" y="${guideLineTop - 22}" text-anchor="middle">${mountReferenceMode === "sonyE" ? "Sony E flange plane" : "Mount reference"}</text>` : ""}
+            ${hasMountFlangeOverlay ? renderMountReferenceDimensionSvg(mapper, referenceImagePlaneXValue, mountFlangePlaneX, mountReferenceMode, mountDimensionY) : ""}
+            ${focusComparisonResult?.status === "valid" ? `<text class="diagram-label best-real-ray-focus-label" x="${bestRealRayFocusSvgX}" y="${guideLineBottom + 18}" text-anchor="middle">Best real-ray focus</text>` : ""}
+            ${shouldShowBfdGuide && Number.isFinite(actualBfdMm) ? `<text class="diagram-dimension-label bfd-guide-label" x="${(referenceImagePlaneSvgX + rearMostVertexSvgX) / 2}" y="${bfdGuideY - 6}" text-anchor="middle">BFD: ${formatNumber(actualBfdMm, 2)} mm</text>` : ""}
+            ${isOpticalRayView && state.diagramShowScaleBar ? renderScaleBarSvg(mapper) : ""}
           `}
         </g>
         <g class="layer-warnings">${renderLensStackSvg(system, mapper, rayTraceResult, layoutResolution, annotationLanes, "warnings")}</g>
       </svg>
       ${state.prescription?.prescriptionType === "visualOnly" ? `<p class="diagram-note visual-reference-note">Visual reference only / no full optical prescription. Production layout is not used for ray tracing accuracy.</p>` : ""}
       ${diagramAperturePreview?.active ? `<p class="diagram-note aperture-preview-note">${escapeHtml(diagramAperturePreview.label)}</p>` : ""}
+      ${focusComparisonResult ? `<p class="diagram-note focus-comparison-note focus-${focusComparisonSeverity}">${escapeHtml(formatFocusShiftDescription(focusComparisonResult.focusShiftMm))}${Number.isFinite(focusComparisonResult.rmsSpotAtReferenceMm) && Number.isFinite(focusComparisonResult.rmsSpotAtBestFocusMm) ? ` · RMS ${escapeHtml(formatNumber(focusComparisonResult.rmsSpotAtReferenceMm, 4))} → ${escapeHtml(formatNumber(focusComparisonResult.rmsSpotAtBestFocusMm, 4))} mm` : ""}</p>` : ""}
+      ${state.diagramShowFocusComparison && hasEstimatedFocusInputs ? `<p class="diagram-note focus-fidelity-note">Focus agreement depends on prescription and glass-data fidelity.</p>` : ""}
       ${focusWarning ? `<p class="warning manufacturing-warning">${escapeHtml(focusWarning)}</p>` : ""}
       ${displayValidation.warnings.map((warning) => `<p class="warning manufacturing-warning">${escapeHtml(warning)}</p>`).join("")}
     </section>
@@ -15410,31 +15942,47 @@ const renderManufacturerMtfVsFieldChart = (fieldData, options = {}) => {
 };
 
 const renderManufacturerMtfLegend = (fieldData, apertureInfo = {}) => {
-  const frequencyItems = fieldData.frequencies.map((frequency) => `
-    <span class="mtf-swatch-item">
-      <span class="mtf-line-swatch manufacturer-mtf-${frequency} manufacturer-mtf-sagittal"></span>
-      ${frequency} lp/mm
-    </span>
-  `).join("");
   const modeLabel = apertureInfo.focusPolicy === "center-refocused"
     ? "centre-refocused common image plane"
     : "fixed image plane";
   const fNumberText = Number.isFinite(apertureInfo.fNumber)
     ? `f/${formatNumber(apertureInfo.fNumber, 2)}`
     : "f/--";
+  const legendItems = fieldData.frequencies.flatMap((frequency) => [
+    {
+      frequency,
+      axis: "sagittal",
+      label: `${frequency} lp/mm · Sagittal`
+    },
+    {
+      frequency,
+      axis: "tangential",
+      label: `${frequency} lp/mm · Tangential / meridional`
+    }
+  ]);
   return `
-    <div class="mtf-swatch-legend">
-      ${frequencyItems}
-      <span class="mtf-swatch-item">
-        <span class="mtf-line-swatch manufacturer-mtf-30 manufacturer-mtf-sagittal"></span>
-        Sagittal
-      </span>
-      <span class="mtf-swatch-item">
-        <span class="mtf-line-swatch manufacturer-mtf-30 manufacturer-mtf-tangential"></span>
-        Tangential / meridional
-      </span>
-      <span class="mtf-swatch-note">Wide open · ${fNumberText} · d-line · ${modeLabel}</span>
-      <span class="mtf-swatch-note">${escapeHtml(fieldData.sensor?.name || "Sensor")} · image height from ${escapeHtml(fieldData.source)}</span>
+    <div class="mtf-swatch-legend manufacturer-combined-legend" aria-label="Manufacturer-style MTF legend">
+      <div class="mtf-legend-combined-items">
+        ${legendItems.map((item) => `
+          <span class="mtf-swatch-item manufacturer-combined-legend-item">
+            <span class="mtf-line-swatch manufacturer-mtf-${item.frequency} manufacturer-mtf-${item.axis}" aria-hidden="true"></span>
+            ${escapeHtml(item.label)}
+          </span>
+        `).join("")}
+      </div>
+      <div class="mtf-legend-explain">
+        <span>Colour = spatial frequency</span>
+        <span>Solid = sagittal</span>
+        <span>Dashed = tangential / meridional</span>
+      </div>
+      <div class="mtf-chart-footer-chips">
+        <span class="mtf-footer-chip"><strong>Aperture</strong> Wide open</span>
+        <span class="mtf-footer-chip"><strong>${escapeHtml(fNumberText)}</strong></span>
+        <span class="mtf-footer-chip"><strong>Plane</strong> ${escapeHtml(modeLabel)}</span>
+        <span class="mtf-footer-chip"><strong>Wavelength</strong> d-line</span>
+        <span class="mtf-footer-chip"><strong>Field limit</strong> ${escapeHtml(fieldData.sensor?.name || "Sensor")} ${formatNumber(fieldData.maxImageHeightMm, 2)} mm</span>
+        <span class="mtf-footer-chip is-secondary"><strong>Source</strong> ${escapeHtml(fieldData.source)}</span>
+      </div>
     </div>
   `;
 };
@@ -18779,6 +19327,12 @@ mount.addEventListener("change", (event) => {
     return;
   }
 
+  if (event.target.dataset.action === "toggle-svg-reference-overlay-input") {
+    state.showSvgReferenceOverlay = event.target.checked;
+    update();
+    return;
+  }
+
   if (event.target.dataset.action === "update-diagram-ray-display") {
     state.diagramRayDisplayMode = normalizeDiagramRayDisplayMode(event.target.value);
     update();
@@ -18797,6 +19351,61 @@ mount.addEventListener("change", (event) => {
     return;
   }
 
+  if (event.target.dataset.action === "update-diagram-mount-reference-mode") {
+    state.diagramMountReferenceMode = normalizeDiagramMountReferenceMode(event.target.value);
+    if (state.diagramMountReferenceMode === "sonyE") {
+      state.diagramTargetReferenceMode = "sonyEFullFrame";
+      state.diagramShowDimensions = true;
+    }
+    if (state.diagramMountReferenceMode === "off") {
+      state.diagramTargetReferenceMode = "generic";
+    }
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-diagram-target-reference-mode") {
+    state.diagramTargetReferenceMode = normalizeDiagramTargetReferenceMode(event.target.value);
+    if (isSonyFullFrameTargetReference()) {
+      state.diagramMountReferenceMode = "sonyE";
+      state.diagramShowDimensions = true;
+    } else {
+      state.diagramMountReferenceMode = "off";
+    }
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-diagram-manual-mount-distance") {
+    state.diagramManualMountDistanceMm = clamp(toNumber(event.target.value) || 0, -100, 200);
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "toggle-diagram-dimensions") {
+    state.diagramShowDimensions = event.target.checked;
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "toggle-diagram-physical-grid") {
+    state.diagramPhysicalGrid = event.target.checked;
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "toggle-diagram-scale-bar") {
+    state.diagramShowScaleBar = event.target.checked;
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "toggle-diagram-focus-comparison") {
+    state.diagramShowFocusComparison = event.target.checked;
+    update();
+    return;
+  }
+
   if (event.target.dataset.action === "update-diagram-geometry-display-mode") {
     state.diagramGeometryDisplayMode = normalizeDiagramGeometryDisplayMode(event.target.value);
     if (isOpticalRayViewMode(state.diagramViewMode)) {
@@ -18804,7 +19413,7 @@ mount.addEventListener("change", (event) => {
         ? "manufacturingEnvelope"
         : usesRequestedGeometryDisplay(state.diagramGeometryDisplayMode)
           ? "requestedInvalid"
-          : "professionalOptical";
+          : "patentIllustration";
     }
     update();
     return;
@@ -19823,6 +20432,15 @@ mount.addEventListener("click", (event) => {
     state.showSvgReferenceOverlay = !state.showSvgReferenceOverlay;
   }
 
+  if (action === "toggle-diagram-options") {
+    state.diagramOptionsOpen = !state.diagramOptionsOpen;
+  }
+
+  if (action === "reset-diagram-appearance") {
+    resetDiagramAppearanceState();
+    state.diagramOptionsOpen = false;
+  }
+
   if (action === "toggle-cemented-layout") {
     state.cementedGroupDisplayMode = state.cementedGroupDisplayMode === "individualManufacturing"
       ? "opticalLayout"
@@ -20365,6 +20983,76 @@ const runOpticsSelfCheck = () => {
       && Math.abs(preset.surfaces[1].distanceToNext - 0.115) < 1e-9
       && lenses.length === 8
       && system.totalTrack > 30;
+  });
+
+  test("US2186621 Fig. 2 final plano R12 remains a refracting glass-to-air surface", () => {
+    const prescription = clonePresetPrescription("zeissSonnar50F15Us2186621Ex1");
+    const lenses = prescriptionToLenses(prescription);
+    const system = calculateSystem(lenses);
+    const surfaces = buildSurfaceList(lenses, system, {
+      prescription,
+      apertureStopMode: "patentStop",
+      apertureDiameter: 50 / 1.5,
+      wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+      spectralLineKey: "d"
+    });
+    const s12 = surfaces.find((surface) => surface.patentSurfaceNumber === 12);
+    return prescription.explicitImagePlaneSurfaceNumber === null
+      && prescription.imagePlaneSource === "Calculated paraxial BFL"
+      && prescription.finalSurfaceRole === "opticalSurface"
+      && s12
+      && s12.isImagePlane === false
+      && s12.nBefore > 1
+      && Math.abs(s12.nAfter - 1) < 1e-12
+      && s12.isRefracting === true
+      && s12.x > referenceImagePlaneX();
+  });
+
+  test("US2186621 Fig. 2 focus stays near calculated reference plane", () => withTemporaryState(() => {
+    loadPresetIntoState("zeissSonnar50F15Us2186621Ex1");
+    ensurePatentOpticalGeometry();
+    const system = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const apertureOptions = {
+      ...rayTraceApertureOptions(state),
+      apertureDiameter: Math.abs(system.effectiveFocalLength || 50) / 1.5,
+      wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+      spectralLineKey: "d"
+    };
+    const trace = traceSystemRealRays(state.lenses, system, {
+      ...apertureOptions,
+      fieldAngleDegrees: 0,
+      rayCount: 9
+    });
+    const focus = findBestRealRayFocusPlane(state.lenses, system, {
+      ...apertureOptions,
+      rayCount: 9
+    });
+    return trace.validRayCount >= 7
+      && trace.rmsSpotRadius < 0.05
+      && Math.abs(focus.bestRealRayFocusPlaneX - focus.referenceImagePlaneX) < 0.25
+      && Math.abs(trace.rmsSpotRadius - 2.67) > 1;
+  }));
+
+  test("generic final plano patent surfaces are not image planes without explicit metadata", () => {
+    const prescription = normalizePrescription({
+      prescriptionType: "surface",
+      focalLength: 50,
+      surfaces: [
+        { no: 1, radius: 40, distanceToNext: 5, nAfter: 1.6, vdAfter: 50 },
+        { no: 2, radius: Infinity, distanceToNext: null }
+      ]
+    });
+    const explicitPrescription = normalizePrescription({
+      prescriptionType: "surface",
+      focalLength: 50,
+      explicitImagePlaneSurfaceNumber: 2,
+      surfaces: [
+        { no: 1, radius: 40, distanceToNext: 5, nAfter: 1.6, vdAfter: 50 },
+        { no: 2, radius: Infinity, distanceToNext: null }
+      ]
+    });
+    return isPatentImagePlaneSurface(prescription.surfaces[1], 1, prescription.surfaces, prescription) === false
+      && isPatentImagePlaneSurface(explicitPrescription.surfaces[1], 1, explicitPrescription.surfaces, explicitPrescription) === true;
   });
 
   test("Bertele Sonnar-type 50mm f/1.4 US2600610 Example III preset derives seven elements and patent-confirmed stop gap", () => {
@@ -21092,7 +21780,7 @@ const runOpticsSelfCheck = () => {
       && 600 < 620;
   }));
 
-  test("Double Gauss uses clean educational glass rendering", () => withTemporaryState(() => {
+  test("Double Gauss uses clean educational patent-illustration rendering", () => withTemporaryState(() => {
     loadPresetIntoState("doubleGauss");
     const system = calculateSystem(state.lenses);
     const spectralSystems = getSpectralSystems();
@@ -21102,9 +21790,13 @@ const runOpticsSelfCheck = () => {
     });
     const markup = renderOpticalDiagram(system, spectralSystems, trace);
     return shouldUseMechanicalValidation() === false
-      && !markupHasClass(markup, "glass-fill")
+      && DEFAULT_ANALYSIS_SETTINGS.diagramRenderStyle === "patentIllustration"
+      && DEFAULT_ANALYSIS_SETTINGS.diagramLensFill === true
+      && markupHasClass(markup, "glass-fill")
       && (markup.match(/optical-layout-surface/g) || []).length >= state.lenses.length * 2
       && (markup.match(/is-clean-optical-layout/g) || []).length >= state.lenses.length
+      && !markup.includes("bevel-edge")
+      && !markupHasClass(markup, "mechanical-edge")
       && !markup.includes("is-air-gap-constrained")
       && !markup.includes("air-gap-clearance-marker")
       && !markup.includes("AIR GAP !")
@@ -21119,13 +21811,13 @@ const runOpticsSelfCheck = () => {
       const markup = renderLensStackSvg(system, mapper, [], null, {
         diagramViewMode: "optical",
         diagramGeometryDisplayMode: "safe",
-        diagramRenderStyle: "professionalOptical"
+        diagramRenderStyle: "patentIllustration"
       }, "all");
       return shouldUseMechanicalValidation() === false
         && !markup.includes("is-air-gap-constrained")
         && !markup.includes("is-not-manufacturable")
         && !markup.includes("geometry-warning-marker")
-        && !markupHasClass(markup, "glass-fill")
+        && markupHasClass(markup, "glass-fill")
         && (markup.match(/optical-layout-surface/g) || []).length >= state.lenses.length * 2;
     }))
   ));
@@ -21239,7 +21931,7 @@ const runOpticsSelfCheck = () => {
       && markup.includes("system-detail-grid");
   }));
 
-  test("individual manufacturing is the default side-view drawing mode", () => withTemporaryState(() => {
+  test("patent illustration is the default side-view drawing style with advanced controls hidden", () => withTemporaryState(() => {
     loadPresetIntoState(DEFAULT_PRESET_KEY);
     ensurePatentOpticalGeometry();
     const system = calculateSystem(state.lenses);
@@ -21248,12 +21940,23 @@ const runOpticsSelfCheck = () => {
       ...rayTraceApertureOptions(state),
       rayCount: 9
     });
-    const markup = renderOpticalDiagram(system, spectralSystems, trace);
-    return DEFAULT_ANALYSIS_SETTINGS.cementedGroupDisplayMode === "individualManufacturing"
+    state.diagramOptionsOpen = false;
+    const compactMarkup = renderOpticalDiagram(system, spectralSystems, trace);
+    state.diagramOptionsOpen = true;
+    const optionsMarkup = renderOpticalDiagram(system, spectralSystems, trace);
+    return DEFAULT_ANALYSIS_SETTINGS.diagramRenderStyle === "patentIllustration"
+      && DEFAULT_ANALYSIS_SETTINGS.diagramLensFill === true
+      && DEFAULT_ANALYSIS_SETTINGS.cementedGroupDisplayMode === "individualManufacturing"
       && state.cementedGroupDisplayMode === "individualManufacturing"
-      && markup.includes('data-action="toggle-cemented-layout"')
-      && markup.includes('title="Switch to Optical layout"')
-      && !markup.includes('data-field="cementedGroupDisplayMode"');
+      && compactMarkup.includes('render-patentIllustration')
+      && compactMarkup.includes('data-action="update-diagram-view-mode"')
+      && compactMarkup.includes('data-action="update-diagram-aperture-preview-mode"')
+      && compactMarkup.includes('data-action="toggle-diagram-options"')
+      && !compactMarkup.includes('data-action="update-diagram-render-style"')
+      && optionsMarkup.includes('data-action="update-diagram-render-style"')
+      && optionsMarkup.includes('data-action="toggle-cemented-layout"')
+      && optionsMarkup.includes('title="Switch to Optical layout"')
+      && !optionsMarkup.includes('data-field="cementedGroupDisplayMode"');
   }));
 
   test("visual-only C Sonnar and Biotar SVG presets are removed from preset menu", () => (
@@ -21789,21 +22492,179 @@ const runOpticsSelfCheck = () => {
       rayCount: 9
     });
     const markup = renderOpticalDiagram(system, spectralSystems, trace);
-    return ![
-      "Full-frame reference",
-      "36 x 24 mm",
-      "43.3 mm diag.",
-      "18 mm from sensor",
-      "Rear focal plane",
-      "Back focal distance:",
-      "Object side / incoming rays",
-      "STOP"
-    ].some((label) => markup.includes(label))
-      && markup.includes(">Sony E<")
+    return markup.includes("Sony full-frame sensor plane")
+      && markup.includes("Sony E flange plane")
+      && markup.includes("Sony E flange → sensor: 18.00 mm")
+      && markup.includes("BFD:")
+      && !markup.includes("Sony E sensor")
+      && !markup.includes("Sony E 18 mm position")
+      && !markup.includes("Back focal distance:")
+      && !markup.includes("sensor-diagonal")
+      && !markup.includes("diagonalGuideX")
+      && !markup.includes("Sony E mount reference")
       && !markup.includes("Lens group length:")
       && !markup.includes("Optical Side View")
       && markup.includes("aperture-stop-bar")
       && markup.includes("bfd-guide-line");
+  }));
+
+  test("diagram plane semantics separate reference image plane, mount overlay and BFD guide", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    const system = calculateSystem(state.lenses);
+    const spectralSystems = getSpectralSystems();
+    const trace = traceSystemRealRays(state.lenses, spectralSystems.d || system, {
+      ...rayTraceApertureOptions(state),
+      rayCount: 9
+    });
+    const defaultMarkup = renderOpticalDiagram(system, spectralSystems, trace);
+    const defaultMountPlaneX = resolveMountFlangePlaneX();
+    const bfdStart = Number((defaultMarkup.match(/data-bfd-start-x="([^"]+)"/) || [])[1]);
+    const bfdEnd = Number((defaultMarkup.match(/data-bfd-end-x="([^"]+)"/) || [])[1]);
+    state.diagramTargetReferenceMode = "generic";
+    state.diagramMountReferenceMode = "off";
+    const genericMarkup = renderOpticalDiagram(system, spectralSystems, trace);
+    return referenceImagePlaneX() === 0
+      && normalizeDiagramTargetReferenceMode(DEFAULT_ANALYSIS_SETTINGS.diagramTargetReferenceMode) === "sonyEFullFrame"
+      && normalizeDiagramMountReferenceMode(DEFAULT_ANALYSIS_SETTINGS.diagramMountReferenceMode) === "sonyE"
+      && DEFAULT_ANALYSIS_SETTINGS.diagramShowDimensions === true
+      && defaultMarkup.includes("mount-flange-line")
+      && defaultMarkup.includes("bfd-guide-line")
+      && defaultMarkup.includes("Sony full-frame sensor plane")
+      && defaultMarkup.includes("Sony E flange plane")
+      && defaultMarkup.includes("Sony E flange → sensor: 18.00 mm")
+      && genericMarkup.includes("Reference image plane")
+      && !genericMarkup.includes("Sony E flange plane")
+      && Math.abs(defaultMountPlaneX - SONY_E_FLANGE_DISTANCE) < 1e-12
+      && Number.isFinite(bfdStart)
+      && Number.isFinite(bfdEnd)
+      && Math.abs(bfdStart - rearMostOpticalVertexX(system, state.lenses)) < 1e-6
+      && Math.abs(bfdEnd - referenceImagePlaneX()) < 1e-12;
+  }));
+
+  test("Sony E overlay uses physical millimetre mapper distance for every optical preset", () => (
+    Object.keys(PRESETS).every((presetKey) => withTemporaryState(() => {
+      loadPresetIntoState(presetKey);
+      if (state.prescription?.prescriptionType === "visualOnly" || !state.lenses.length) return true;
+      ensurePatentOpticalGeometry();
+      state.diagramMountReferenceMode = "sonyE";
+      const system = calculateSystem(state.lenses);
+      const mapper = createSvgPointMapper(system, getSpectralSystems());
+      return Math.abs(Math.abs(mapper.x(SONY_E_FLANGE_DISTANCE) - mapper.x(0)) - SONY_E_FLANGE_DISTANCE * mapper.mmScale) < 1e-6;
+    }))
+  ));
+
+  test("Sony E default diagram annotations use real sensor, flange and BFD coordinates for every optical preset", () => (
+    Object.keys(PRESETS).every((presetKey) => withTemporaryState(() => {
+      loadPresetIntoState(presetKey);
+      if (state.prescription?.prescriptionType === "visualOnly" || !state.lenses.length) return true;
+      ensurePatentOpticalGeometry();
+      state.diagramTargetReferenceMode = "sonyEFullFrame";
+      state.diagramMountReferenceMode = "sonyE";
+      state.diagramShowDimensions = true;
+      const system = calculateSystem(state.lenses);
+      const bfd = rearMostOpticalVertexX(system, state.lenses) - referenceImagePlaneX();
+      if (!Number.isFinite(bfd) || system.validCount <= 0) return true;
+      const spectralSystems = getSpectralSystems();
+      const trace = traceSystemRealRays(state.lenses, spectralSystems.d || system, {
+        ...rayTraceApertureOptions(state),
+        rayCount: 9
+      });
+      const mapper = createSvgPointMapper(system, spectralSystems);
+      const markup = renderOpticalDiagram(system, spectralSystems, trace);
+      const bfdStart = Number((markup.match(/data-bfd-start-x="([^"]+)"/) || [])[1]);
+      const bfdEnd = Number((markup.match(/data-bfd-end-x="([^"]+)"/) || [])[1]);
+      return markup.includes("Sony full-frame sensor plane")
+        && markup.includes("Sony E flange plane")
+        && markup.includes("Sony E flange → sensor: 18.00 mm")
+        && markup.includes(`BFD: ${formatNumber(bfd, 2)} mm`)
+        && Math.abs(Math.abs(mapper.x(SONY_E_FLANGE_DISTANCE) - mapper.x(0)) - SONY_E_FLANGE_DISTANCE * mapper.mmScale) < 1e-6
+        && Number.isFinite(bfdStart)
+        && Number.isFinite(bfdEnd)
+        && Math.abs(bfdStart - rearMostOpticalVertexX(system, state.lenses)) < 1e-6
+        && Math.abs(bfdEnd - referenceImagePlaneX()) < 1e-12;
+    }))
+  ));
+
+  test("physical millimetre grid uses mapper scale on both axes", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    const system = calculateSystem(state.lenses);
+    const mapper = createSvgPointMapper(system, getSpectralSystems());
+    const grid = physicalGridModel(mapper);
+    const xSpacing = Math.abs(grid.verticalLines[1].svgX - grid.verticalLines[0].svgX);
+    const ySpacing = Math.abs(grid.horizontalLines[1].svgY - grid.horizontalLines[0].svgY);
+    return grid.verticalLines.length > 2
+      && grid.horizontalLines.length > 2
+      && Math.abs(xSpacing - grid.stepMm * mapper.mmScale) < 1e-9
+      && Math.abs(ySpacing - grid.stepMm * mapper.mmScale) < 1e-9
+      && Math.abs(mapper.pxPerMmX - mapper.pxPerMmY) < 1e-12;
+  }));
+
+  test("diagram overlays do not change optical calculations", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    state.diagramTargetReferenceMode = "generic";
+    state.diagramMountReferenceMode = "off";
+    state.diagramPhysicalGrid = false;
+    state.diagramShowScaleBar = false;
+    const systemBefore = calculateSystem(state.lenses);
+    const traceBefore = traceSystemRealRays(state.lenses, systemBefore, { ...rayTraceApertureOptions(state), rayCount: 9 });
+    const focusBefore = findBestRealRayFocusPlane(state.lenses, systemBefore, { ...rayTraceApertureOptions(state), rayCount: 9 });
+    const mtfBefore = calculateSagittalTangentialGeometricMTF(state.lenses, systemBefore, {
+      ...rayTraceApertureOptions(state),
+      fieldAngleDegrees: 0,
+      rayCount: 9,
+      wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+      maxFrequencyLpMm: 40,
+      frequencyStepLpMm: 40
+    });
+    state.diagramTargetReferenceMode = "sonyEFullFrame";
+    state.diagramMountReferenceMode = "sonyE";
+    state.diagramPhysicalGrid = true;
+    state.diagramShowScaleBar = true;
+    const systemAfter = calculateSystem(state.lenses);
+    const traceAfter = traceSystemRealRays(state.lenses, systemAfter, { ...rayTraceApertureOptions(state), rayCount: 9 });
+    const focusAfter = findBestRealRayFocusPlane(state.lenses, systemAfter, { ...rayTraceApertureOptions(state), rayCount: 9 });
+    const mtfAfter = calculateSagittalTangentialGeometricMTF(state.lenses, systemAfter, {
+      ...rayTraceApertureOptions(state),
+      fieldAngleDegrees: 0,
+      rayCount: 9,
+      wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+      maxFrequencyLpMm: 40,
+      frequencyStepLpMm: 40
+    });
+    return Math.abs(systemBefore.effectiveFocalLength - systemAfter.effectiveFocalLength) < 1e-12
+      && Math.abs(systemBefore.backFocalLength - systemAfter.backFocalLength) < 1e-12
+      && referenceImagePlaneX() === 0
+      && Math.abs(traceBefore.rmsSpotRadius - traceAfter.rmsSpotRadius) < 1e-12
+      && traceBefore.validRayCount === traceAfter.validRayCount
+      && Math.abs((focusBefore.bestRealRayFocusPlaneX || 0) - (focusAfter.bestRealRayFocusPlaneX || 0)) < 1e-12
+      && Math.abs((mtfBefore.tangential?.values?.[1] || 0) - (mtfAfter.tangential?.values?.[1] || 0)) < 1e-12;
+  }));
+
+  test("real-ray focus diagnostic reports an independent best-focus plane", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    state.diagramShowFocusComparison = true;
+    const system = calculateSystem(state.lenses);
+    const spectralSystems = getSpectralSystems();
+    const focus = findBestRealRayFocusPlane(state.lenses, spectralSystems.d || system, {
+      ...rayTraceApertureOptions(state),
+      rayCount: 9
+    });
+    const trace = traceSystemRealRays(state.lenses, spectralSystems.d || system, {
+      ...rayTraceApertureOptions(state),
+      rayCount: 9
+    });
+    const markup = renderOpticalDiagram(system, spectralSystems, trace);
+    return focus.referenceImagePlaneX === 0
+      && focus.status === "valid"
+      && Number.isFinite(focus.bestRealRayFocusPlaneX)
+      && Number.isFinite(focus.focusShiftMm)
+      && markup.includes("best-real-ray-focus-line")
+      && markup.includes("Real-ray focus shift:")
+      && markup.includes("Focus agreement depends on prescription and glass-data fidelity.");
   }));
 
   test("Biotar SVG reference is attached directly to the real patent preset", () => {
@@ -21945,8 +22806,10 @@ const runOpticsSelfCheck = () => {
       ))
       && resolution.models.filter(Boolean).some((model) => model.lineOnlyOpticalFallback || model.renderFilledGlass === false)
       && markup.includes("optical-layout-surface")
-      && !markup.includes("optical-layout-fill")
+      && markup.includes("optical-layout-fill")
       && !markup.includes("patent-line-only-surface")
+      && !markup.includes("AIR GAP !")
+      && !markup.includes("bevel-edge")
       && !markup.includes("Mechanical data not supplied by patent")
       && diagnosticsMarkup.includes("Mechanical data not supplied by patent");
   }));
@@ -22015,7 +22878,7 @@ const runOpticsSelfCheck = () => {
       diagramGeometryDisplayMode: "manufacturing"
     }, "all");
     const after = calculateSystem(state.lenses);
-    return DEFAULT_ANALYSIS_SETTINGS.diagramRenderStyle === "professionalOptical"
+    return DEFAULT_ANALYSIS_SETTINGS.diagramRenderStyle === "patentIllustration"
       && !markupHasClass(markup, "glass-fill")
       && !markup.includes("optical-layout-fill")
       && !markup.includes("optical-aperture-edge")
@@ -22073,11 +22936,11 @@ const runOpticsSelfCheck = () => {
         }))
       });
     };
-    state.diagramRenderStyle = "professionalOptical";
-    state.diagramLensFill = false;
+    state.diagramRenderStyle = "patentIllustration";
+    state.diagramLensFill = true;
     state.diagramGeometryDisplayMode = "safe";
     const baseline = signature();
-    ["transparentGlass", "manufacturingEnvelope", "requestedInvalid", "professionalOptical"].forEach((style) => {
+    ["patentIllustration", "transparentGlass", "professionalOptical", "manufacturingEnvelope", "requestedInvalid"].forEach((style) => {
       state.diagramRenderStyle = style;
       state.diagramGeometryDisplayMode = diagramGeometryModeForRenderStyle(style, state.diagramGeometryDisplayMode);
       const system = calculateSystem(state.lenses);
@@ -23513,6 +24376,62 @@ const runOpticsSelfCheck = () => {
       && markup.includes("manufacturer-mtf-30")
       && markup.includes("Wide-open geometric preview");
   }));
+
+  test("manufacturer-style MTF legend combines frequency and line-style meanings", () => {
+    const markup = renderManufacturerMtfLegend({
+      frequencies: [10, 30],
+      maxImageHeightMm: FULL_FRAME_SENSOR.diagonal / 2,
+      source: "iterated chief-ray intercept",
+      sensor: FULL_FRAME_SENSOR
+    }, {
+      fNumber: 1.42,
+      focusPolicy: "fixed"
+    });
+    return markup.includes("10 lp/mm · Sagittal")
+      && markup.includes("10 lp/mm · Tangential / meridional")
+      && markup.includes("30 lp/mm · Sagittal")
+      && markup.includes("30 lp/mm · Tangential / meridional")
+      && markup.includes("manufacturer-mtf-10 manufacturer-mtf-tangential")
+      && markup.includes("manufacturer-mtf-30 manufacturer-mtf-tangential")
+      && markup.includes("Colour = spatial frequency")
+      && markup.includes("Solid = sagittal")
+      && markup.includes("Dashed = tangential / meridional");
+  });
+
+  test("manufacturer-style MTF footer renders readable labelled chips", () => {
+    const markup = renderManufacturerMtfLegend({
+      frequencies: [10, 30],
+      maxImageHeightMm: 21.63,
+      source: "iterated chief-ray intercept",
+      sensor: FULL_FRAME_SENSOR
+    }, {
+      fNumber: 1.42,
+      focusPolicy: "fixed"
+    });
+    return (markup.match(/mtf-footer-chip/g) || []).length >= 5
+      && markup.includes("<strong>Aperture</strong> Wide open")
+      && markup.includes("<strong>Plane</strong> fixed image plane")
+      && markup.includes("<strong>Field limit</strong>")
+      && markup.includes("21.63 mm");
+  });
+
+  test("manufacturer-style MTF legend and footer use high-contrast text styles", () => {
+    const stylesheetText = Array.from(document.styleSheets || [])
+      .flatMap((sheet) => {
+        try {
+          return Array.from(sheet.cssRules || []).map((rule) => rule.cssText);
+        } catch (error) {
+          return [];
+        }
+      })
+      .join("\n");
+    return stylesheetText.includes(".manufacturer-combined-legend-item")
+      && stylesheetText.includes(".mtf-chart-footer-chips")
+      && stylesheetText.includes("rgba(255, 255, 255, 0.9)")
+      && stylesheetText.includes("rgba(255, 255, 255, 0.82)")
+      && stylesheetText.includes("font-size: 13px")
+      && stylesheetText.includes("font-size: 12px");
+  });
 
   test("manufacturer-style MTF sensor format controls image height endpoint", () => withTemporaryState(() => {
     loadPresetIntoState("manual");

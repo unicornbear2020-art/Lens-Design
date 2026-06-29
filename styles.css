@@ -3566,15 +3566,35 @@ select {
   gap: 8px 12px;
   align-items: center;
   margin-top: 8px;
-  color: var(--light-surface-muted);
-  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 13px;
+  line-height: 1.35;
   font-weight: 800;
+}
+
+.manufacturer-combined-legend {
+  align-items: stretch;
+  padding: 8px 0 2px;
+}
+
+.mtf-legend-combined-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  width: 100%;
 }
 
 .mtf-swatch-item {
   display: inline-flex;
   gap: 6px;
   align-items: center;
+}
+
+.manufacturer-combined-legend-item {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 13px;
+  font-weight: 850;
 }
 
 .mtf-line-swatch {
@@ -3594,7 +3614,54 @@ select {
 }
 
 .mtf-swatch-note {
-  color: var(--light-surface-ink);
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.mtf-legend-explain,
+.mtf-chart-footer-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  width: 100%;
+}
+
+.mtf-legend-explain {
+  gap: 6px 14px;
+  margin-top: 2px;
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.mtf-chart-footer-chips {
+  gap: 6px;
+  margin-top: 6px;
+  padding-bottom: 4px;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.mtf-footer-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 26px;
+  padding: 4px 8px;
+  border: 1px solid rgba(215, 229, 238, 0.22);
+  border-radius: 999px;
+  background: rgba(215, 229, 238, 0.08);
+  color: rgba(255, 255, 255, 0.84);
+  white-space: normal;
+}
+
+.mtf-footer-chip strong {
+  color: rgba(255, 255, 255, 0.96);
+  font-weight: 900;
+}
+
+.mtf-footer-chip.is-secondary {
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .mtf-coverage-marker {
@@ -3822,6 +3889,7 @@ select {
 }
 
 .diagram-actions {
+  position: relative;
   display: inline-flex;
   gap: 6px;
   align-items: center;
@@ -3916,6 +3984,15 @@ select {
   stroke-linecap: round;
 }
 
+.reference-image-plane-line {
+  stroke: #1f2b32;
+  stroke-width: 1.25;
+  stroke-linecap: round;
+  stroke-dasharray: 6 4;
+  opacity: 0.78;
+  vector-effect: non-scaling-stroke;
+}
+
 .sensor-diagonal {
   stroke: #87969c;
   stroke-width: 2;
@@ -3937,11 +4014,38 @@ select {
   vector-effect: non-scaling-stroke;
 }
 
+.mount-flange-line {
+  stroke: #79bdd9;
+  stroke-width: 1.05;
+  stroke-dasharray: 6 5;
+  opacity: 0.74;
+  vector-effect: non-scaling-stroke;
+}
+
+.best-real-ray-focus-line {
+  stroke: #c78300;
+  stroke-width: 1.2;
+  opacity: 0.9;
+  vector-effect: non-scaling-stroke;
+}
+
+.best-real-ray-focus-line.focus-aligned {
+  stroke: #16845f;
+}
+
+.best-real-ray-focus-line.focus-minor {
+  stroke: #c78300;
+}
+
+.best-real-ray-focus-line.focus-significant {
+  stroke: #d83a3a;
+}
+
 .bfd-guide-line {
-  stroke: #82939a;
-  stroke-width: 1;
+  stroke: #172126;
+  stroke-width: 1.05;
   stroke-dasharray: 4 5;
-  opacity: 0.42;
+  opacity: 0.64;
   vector-effect: non-scaling-stroke;
 }
 
@@ -4613,6 +4717,157 @@ select {
   display: inline-flex;
   align-items: end;
   gap: 6px;
+}
+
+.diagram-options-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 8;
+  width: min(520px, calc(100vw - 28px));
+  padding: 10px;
+  border: 1px solid rgba(215, 229, 238, 0.22);
+  border-radius: 12px;
+  background: rgba(10, 53, 86, 0.96);
+  box-shadow: 0 18px 42px rgba(0, 31, 84, 0.32);
+}
+
+.diagram-options-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(150px, 1fr));
+  gap: 8px;
+  align-items: end;
+}
+
+.diagram-options-popover .diagram-view-mode-control {
+  width: 100%;
+}
+
+.diagram-options-caption {
+  align-self: end;
+  color: #d7e5ee;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.focus-comparison-note {
+  font-weight: 800;
+}
+
+.focus-comparison-note.focus-aligned {
+  color: #16845f;
+}
+
+.focus-comparison-note.focus-minor {
+  color: #c78300;
+}
+
+.focus-comparison-note.focus-significant,
+.focus-comparison-note.focus-invalid {
+  color: #d83a3a;
+}
+
+.focus-fidelity-note {
+  color: var(--light-surface-muted);
+}
+
+.diagram-reset-button {
+  width: 100%;
+  min-height: 34px;
+  margin-top: 8px;
+  border: 1px solid rgba(215, 229, 238, 0.28);
+  border-radius: 9px;
+  color: #f8f6f2;
+  background: rgba(121, 187, 217, 0.14);
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.ray-diagram.render-patentIllustration .optical-layout-fill {
+  fill: rgba(121, 187, 217, 0.13);
+}
+
+.ray-diagram.render-patentIllustration .optical-layout-fill.glass-tone-1 {
+  fill: rgba(91, 168, 151, 0.11);
+}
+
+.ray-diagram.render-patentIllustration .optical-layout-fill.glass-tone-2 {
+  fill: rgba(74, 139, 169, 0.12);
+}
+
+.ray-diagram.render-patentIllustration .optical-layout-surface,
+.ray-diagram.render-patentIllustration .surface-outline,
+.ray-diagram.render-patentIllustration .cemented-shared-interface {
+  stroke: #2f5862;
+  stroke-width: 1.2;
+  opacity: 0.94;
+}
+
+.ray-diagram.render-patentIllustration .optical-aperture-edge {
+  stroke: #2f5862;
+  stroke-width: 0.85;
+  opacity: 0.38;
+}
+
+.ray-diagram.render-patentIllustration .mechanical-edge,
+.ray-diagram.render-patentIllustration .bevel-edge,
+.ray-diagram.render-patentIllustration .cemented-group-outer-outline,
+.ray-diagram.render-patentIllustration .geometry-warning-marker,
+.ray-diagram.render-patentIllustration .air-gap-warning-marker,
+.ray-diagram.render-patentIllustration .air-gap-clearance-marker,
+.ray-diagram.render-patentIllustration .air-gap-debug-construction,
+.ray-diagram.render-patentIllustration .requested-profile-outline,
+.ray-diagram.render-patentIllustration .requested-profile-fill {
+  display: none;
+}
+
+.ray-diagram.render-patentIllustration .axis-line {
+  stroke: #93a3aa;
+  stroke-width: 1;
+  opacity: 0.62;
+}
+
+.ray-diagram.render-patentIllustration .sensor-line,
+.ray-diagram.render-patentIllustration .reference-image-plane-line,
+.ray-diagram.render-patentIllustration .bfd-guide-line,
+.ray-diagram.render-patentIllustration .sony-flange-line,
+.ray-diagram.render-patentIllustration .mount-flange-line {
+  opacity: 0.56;
+}
+
+.ray-diagram.render-patentIllustration .aperture-stop-bar,
+.ray-diagram.render-patentIllustration .aperture-stop-marker line {
+  stroke: #17242a;
+  stroke-width: 1.45;
+}
+
+.ray-diagram.render-patentIllustration .real-ray {
+  stroke: #0a6cf1;
+  stroke-width: 0.8;
+  opacity: 0.58;
+}
+
+.ray-diagram.render-patentIllustration .real-ray-chief {
+  stroke-width: 1.2;
+  opacity: 0.86;
+}
+
+.ray-diagram.render-patentIllustration .real-ray-marginal {
+  stroke-width: 0.85;
+  opacity: 0.68;
+}
+
+.ray-diagram.render-patentIllustration .real-ray-secondary {
+  stroke-width: 0.5;
+  opacity: 0.22;
+}
+
+.ray-diagram.render-patentIllustration .individual-lens-label,
+.ray-diagram.render-patentIllustration .cemented-group-label {
+  fill: #52656e;
+  opacity: 0.74;
+  font-size: 7px;
 }
 
 .focus-dot {
@@ -5721,6 +5976,45 @@ h1 {
   stroke: rgba(10, 53, 86, 0.46);
 }
 
+.top-diagram .physical-grid-line {
+  stroke: rgba(10, 53, 86, 0.18);
+  stroke-width: 0.65;
+  vector-effect: non-scaling-stroke;
+}
+
+.top-diagram .physical-grid-label {
+  fill: rgba(10, 53, 86, 0.62);
+  stroke: #f8f6f2;
+  stroke-width: 2px;
+  paint-order: stroke;
+  font-size: 5.8px;
+  font-weight: 700;
+}
+
+.top-diagram .mount-reference-dimension-line,
+.top-diagram .mount-reference-dimension-tick {
+  stroke: rgba(2, 132, 201, 0.72);
+  stroke-width: 0.95;
+  stroke-dasharray: 2 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.top-diagram .physical-scale-bar-line,
+.top-diagram .physical-scale-bar-tick {
+  stroke: #0a3556;
+  stroke-width: 1.25;
+  vector-effect: non-scaling-stroke;
+}
+
+.top-diagram .physical-scale-bar-label {
+  fill: #0a3556;
+  stroke: #f8f6f2;
+  stroke-width: 2.5px;
+  paint-order: stroke;
+  font-size: 7px;
+  font-weight: 800;
+}
+
 .top-diagram .lens-shape .glass-fill,
 .top-diagram .cemented-group .glass-fill,
 .top-diagram .lens-shape.is-clean-optical-layout .glass-fill {
@@ -6633,4 +6927,50 @@ textarea,
 .top-diagram .ray-diagram.render-professionalOptical .real-ray-secondary {
   stroke-width: 0.55;
   opacity: 0.25;
+}
+
+.top-diagram .ray-diagram.render-patentIllustration .optical-layout-fill {
+  fill: rgba(121, 187, 217, 0.13);
+}
+
+.top-diagram .ray-diagram.render-patentIllustration .optical-layout-surface,
+.top-diagram .ray-diagram.render-patentIllustration .surface-outline,
+.top-diagram .ray-diagram.render-patentIllustration .cemented-shared-interface {
+  stroke: #2f5862;
+  stroke-width: 1.2;
+  opacity: 0.94;
+}
+
+.top-diagram .ray-diagram.render-patentIllustration .optical-aperture-edge {
+  stroke: #2f5862;
+  stroke-width: 0.85;
+  opacity: 0.38;
+}
+
+.top-diagram .ray-diagram.render-patentIllustration .mechanical-edge,
+.top-diagram .ray-diagram.render-patentIllustration .bevel-edge,
+.top-diagram .ray-diagram.render-patentIllustration .cemented-group-outer-outline,
+.top-diagram .ray-diagram.render-patentIllustration .geometry-warning-marker,
+.top-diagram .ray-diagram.render-patentIllustration .air-gap-warning-marker,
+.top-diagram .ray-diagram.render-patentIllustration .air-gap-clearance-marker,
+.top-diagram .ray-diagram.render-patentIllustration .air-gap-debug-construction,
+.top-diagram .ray-diagram.render-patentIllustration .requested-profile-outline,
+.top-diagram .ray-diagram.render-patentIllustration .requested-profile-fill {
+  display: none;
+}
+
+.top-diagram .ray-diagram.render-patentIllustration .real-ray {
+  stroke: #0a6cf1;
+  stroke-width: 0.8;
+  opacity: 0.58;
+}
+
+.top-diagram .ray-diagram.render-patentIllustration .real-ray-chief {
+  stroke-width: 1.2;
+  opacity: 0.86;
+}
+
+.top-diagram .ray-diagram.render-patentIllustration .real-ray-marginal {
+  stroke-width: 0.85;
+  opacity: 0.68;
 }

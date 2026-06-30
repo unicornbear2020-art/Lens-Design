@@ -28,8 +28,8 @@ This audit documents how each patent-based preset resolves its aperture stop in 
 | `sonyFe24F14Wo2019073744Ex1` | Sony FE 24mm f/1.4 GM — WO2019-073744 Example 1 | Auto central air-gap estimate | Computed at runtime | Estimated | Unverified | https://patents.google.com/patent/WO2019073744A1/en | No stop plane is confirmed in the current local transcription. | No |
 | `sonyFe70200F4Us20150226945Ex1` | Sony FE 70-200mm f/4 G OSS — US20150226945 Example 1 | Auto central air-gap estimate | Computed at runtime | Estimated | Unverified | https://patents.google.com/patent/US20150226945A1/en | No stop plane is confirmed in the current local transcription. | No |
 | `nikonLargeApertureWideAngleUs3576360` | Nikon large aperture wide angle — US3576360A | Auto central air-gap estimate | Computed at runtime | Estimated | Unverified | https://patents.google.com/patent/US3576360A/en | No stop plane is confirmed in the current local transcription. | No |
-| `nikonF12Us3738736` | Nikon f/1.2 lens — US3738736A | Auto central air-gap estimate | Computed at runtime | Estimated | Unverified | https://patents.google.com/patent/US3738736A/en | No stop plane is confirmed in the current local transcription. | No |
-| `olympusF12Us4099843` | Olympus f/1.2 lens — US4099843A | Auto central air-gap estimate | Computed at runtime | Estimated | Unverified | https://patents.google.com/patent/US4099843A/en | No stop plane is confirmed in the current local transcription. | No |
+| `nikonF12Us3738736` | Nikon 100mm f/1.2 — US3738736A Example 1 | Patent-supported component gap | S6-S7 midpoint estimate | Patent | Probable axial fraction | https://patents.google.com/patent/US3738736A/en | Patent states the diaphragm is between the third and fourth components; exact axial fraction is not numerically specified, so midpoint remains editable. | No |
+| `olympusF12Us4099843` | Olympus 100mm f/1.2 — US4099843A Embodiment 1 | Auto central air-gap estimate | Computed at runtime | Estimated | Unverified | https://patents.google.com/patent/US4099843A/en | No stop plane is confirmed in the current local transcription. | No |
 
 ## Known Limitations
 

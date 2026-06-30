@@ -1,6 +1,6 @@
 /* eslint-env worker */
 
-const GEOMETRIC_MTF_WORKER_VERSION = "20260630-mtf-contract-1";
+const GEOMETRIC_MTF_WORKER_VERSION = "20260630-mtf-cache-correctness-1";
 const GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION = "geometric-lsf-contract-20260630-1";
 
 try {

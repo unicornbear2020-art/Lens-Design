@@ -1,0 +1,52 @@
+/* eslint-env worker */
+
+const GEOMETRIC_MTF_WORKER_VERSION = "20260630-mtf-contract-1";
+const GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION = "geometric-lsf-contract-20260630-1";
+
+try {
+  importScripts(`geometric-mtf-core.js?v=${GEOMETRIC_MTF_WORKER_VERSION}`);
+} catch (error) {
+  self.geometricMtfCoreLoadError = error;
+}
+
+self.onmessage = (event) => {
+  const payload = event.data || {};
+  const { requestId, task } = payload;
+
+  if (task !== "geometric-lsf-convergence") {
+    self.postMessage({
+      requestId,
+      status: "error",
+      error: `Unsupported geometric MTF worker task: ${task || "unknown"}`
+    });
+    return;
+  }
+
+  if (!self.geometricMtfCore?.calculateGeometricLsfConvergence) {
+    self.postMessage({
+      requestId,
+      status: "error",
+      workerVersion: GEOMETRIC_MTF_WORKER_VERSION,
+      error: self.geometricMtfCoreLoadError?.message || "geometric-mtf-core.js did not load."
+    });
+    return;
+  }
+
+  try {
+    const result = self.geometricMtfCore.calculateGeometricLsfConvergence(payload);
+    self.postMessage({
+      requestId,
+      status: "complete",
+      workerVersion: GEOMETRIC_MTF_WORKER_VERSION,
+      solverContractVersion: GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION,
+      result
+    });
+  } catch (error) {
+    self.postMessage({
+      requestId,
+      status: "error",
+      workerVersion: GEOMETRIC_MTF_WORKER_VERSION,
+      error: error?.message || String(error)
+    });
+  }
+};

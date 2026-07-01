@@ -10,7 +10,7 @@ const DIAGRAM_SIZE = {
   height: 480
 };
 
-const ANALYSIS_WORKER_VERSION = "20260630-mtf-cache-correctness-1";
+const ANALYSIS_WORKER_VERSION = "20260701-mtf-cache-regression-1";
 const GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION = "geometric-lsf-contract-20260630-1";
 const DEFAULT_PRESET_KEY = "zeissBiotar50F14Us1786916Ex2";
 const OLD_MISLEADING_ZEISS_PRESET_KEYS = [
@@ -270,6 +270,7 @@ const PANEL_FIELD_STEPS = {
   rayFanCustomFieldAngleDegrees: 1,
   rayTrace3DFieldAngleDegrees: 1,
   rayTrace3DSampleCount: 2,
+  mtfPupilSampleCount: 2,
   stRayFanCustomFieldAngleDegrees: 1,
   stRayFanRayCount: 2,
   physicalMtfFNumber: 0.1
@@ -313,6 +314,7 @@ const DEFAULT_ANALYSIS_SETTINGS = {
   mtfPlaneMode: "current",
   mtfEngine: "geometricLsfFft",
   mtfLsfQuality: "interactive",
+  mtfPupilSampleCount: 7,
   mtfFieldFocusPolicy: "fixed",
   mtfChartMode: "field",
   mtfMaxFrequencyLpMm: "auto",
@@ -2569,6 +2571,7 @@ const snapshotState = () => ({
   diagramShowScaleBar: state.diagramShowScaleBar,
   mtfEngine: state.mtfEngine,
   mtfLsfQuality: state.mtfLsfQuality,
+  mtfPupilSampleCount: effectiveMtfPupilSampleCount(),
   mtfFieldFocusPolicy: state.mtfFieldFocusPolicy
 });
 
@@ -2615,6 +2618,7 @@ const restoreSnapshot = (snapshot) => {
   state.diagramShowScaleBar = snapshot.diagramShowScaleBar === true;
   state.mtfEngine = normalizeMtfEngine(snapshot.mtfEngine);
   state.mtfLsfQuality = normalizeGeometricLsfQuality(snapshot.mtfLsfQuality);
+  state.mtfPupilSampleCount = effectiveMtfPupilSampleCount(snapshot.mtfPupilSampleCount);
   state.mtfFieldFocusPolicy = snapshot.mtfFieldFocusPolicy === "centerRefocus" ? "centerRefocus" : "fixed";
 };
 
@@ -2708,6 +2712,7 @@ const saveCurrentDesign = ({ preferExisting = false } = {}) => {
       diagramShowScaleBar: state.diagramShowScaleBar,
       mtfEngine: state.mtfEngine,
       mtfLsfQuality: state.mtfLsfQuality,
+      mtfPupilSampleCount: effectiveMtfPupilSampleCount(),
       mtfFieldFocusPolicy: state.mtfFieldFocusPolicy
     },
     prescription: serializePrescription(),
@@ -2737,6 +2742,7 @@ const loadDesign = (design) => {
   state.diagramShowFocusComparison = DEFAULT_ANALYSIS_SETTINGS.diagramShowFocusComparison;
   state.diagramPhysicalGrid = DEFAULT_ANALYSIS_SETTINGS.diagramPhysicalGrid;
   state.diagramShowScaleBar = DEFAULT_ANALYSIS_SETTINGS.diagramShowScaleBar;
+  state.mtfPupilSampleCount = DEFAULT_ANALYSIS_SETTINGS.mtfPupilSampleCount;
   state.prescription = design.prescription
     ? normalizePrescription(design.prescription)
     : normalizePrescription({
@@ -2813,6 +2819,7 @@ const loadDesign = (design) => {
     state.diagramShowScaleBar = design.analysisSettings.diagramShowScaleBar === true;
     state.mtfEngine = normalizeMtfEngine(design.analysisSettings.mtfEngine);
     state.mtfLsfQuality = normalizeGeometricLsfQuality(design.analysisSettings.mtfLsfQuality);
+    state.mtfPupilSampleCount = effectiveMtfPupilSampleCount(design.analysisSettings.mtfPupilSampleCount);
     state.mtfFieldFocusPolicy = design.analysisSettings.mtfFieldFocusPolicy === "centerRefocus" ? "centerRefocus" : "fixed";
   }
   state.designName = design.name;
@@ -2980,6 +2987,7 @@ const adjustPanelField = (field, delta) => {
   if (field === "rayFanCustomFieldAngleDegrees") nextValue = clamp(nextValue, 0, 70);
   if (field === "rayTrace3DFieldAngleDegrees") nextValue = clamp(nextValue, 0, 70);
   if (field === "rayTrace3DSampleCount") nextValue = clamp(Math.round(nextValue), 3, 31);
+  if (field === "mtfPupilSampleCount") nextValue = effectiveMtfPupilSampleCount(nextValue);
   if (field === "stRayFanCustomFieldAngleDegrees") nextValue = clamp(nextValue, 0, 70);
   if (field === "stRayFanRayCount") nextValue = clamp(Math.round(nextValue), 3, 31);
   if (field === "physicalMtfFNumber") nextValue = Math.max(0.5, nextValue);
@@ -3014,6 +3022,7 @@ const adjustPanelField = (field, delta) => {
     "rayCircleFieldStepDegrees",
     "rayFanCustomFieldAngleDegrees",
     "rayTrace3DFieldAngleDegrees",
+    "mtfPupilSampleCount",
     "stRayFanCustomFieldAngleDegrees",
     "physicalMtfFNumber"
   ].includes(field) ? 2 : 0));
@@ -12652,7 +12661,7 @@ const mtfMainAnalysisSignature = () => JSON.stringify({
   stWavelength: state.stMtfWavelengthMode,
   plane: state.mtfPlaneMode,
   bestFocusRequested: state.mtfBestFocusComparisonRequested === true,
-  rayCount: Math.round(clamp(toNumber(state.rayTrace3DSampleCount) || 7, 3, 15)),
+  rayCount: effectiveMtfPupilSampleCount(),
   fieldFocusPolicy: state.mtfFieldFocusPolicy,
   apertureFrequencyField: state.mtfApertureFrequencyFieldKey,
   sweepFocus: state.mtfApertureSweepFocusPolicy,
@@ -12690,7 +12699,7 @@ const emptyMtfResolutionResult = (analysis = state.mtfAnalysis?.main || {}) => (
   isQueued: ["queued", "computing", "stale", "idle"].includes(analysis.status),
   isUpdating: ["queued", "computing", "stale"].includes(analysis.status),
   asyncPlaceholder: true,
-  rayCount: Math.round(clamp(toNumber(state.rayTrace3DSampleCount) || 7, 3, 15)),
+  rayCount: effectiveMtfPupilSampleCount(),
   wavelengthMode: state.stMtfWavelengthMode === "rgb" ? "rgb" : "d",
   maxFrequencyLpMm: 100,
   wideOpenFNumber: NaN,
@@ -12701,6 +12710,8 @@ const emptyMtfResolutionResult = (analysis = state.mtfAnalysis?.main || {}) => (
     warnings: [],
     engine: normalizeMtfEngine(state.mtfEngine),
     engineLabel: normalizeMtfEngine(state.mtfEngine) === "geometricLsfFft" ? "Geometric LSF/FFT" : "Fast RMS Gaussian",
+    sensor: activeMtfSensorFormat(),
+    source: "queued geometric preview",
     focusPolicy: state.mtfFieldFocusPolicy === "centerRefocus" ? "center-refocused" : "fixed"
   },
   apertureSweepResults: [],
@@ -12897,7 +12908,10 @@ const queueDiffractionMtfAnalysis = ({ reason = "explicit" } = {}) => {
       requestToken: token,
       reason
     };
-    update();
+    if (
+      state.mtfAnalysis?.diffraction?.requestToken === token
+      && state.mtfAnalysis?.diffraction?.signature === signature
+    ) update();
     return;
   }
   state.mtfAnalysis.diffraction = {
@@ -12910,7 +12924,12 @@ const queueDiffractionMtfAnalysis = ({ reason = "explicit" } = {}) => {
     requestToken: token,
     reason
   };
-  setTimeout(() => update(), 0);
+  setTimeout(() => {
+    if (
+      state.mtfAnalysis?.diffraction?.requestToken === token
+      && state.mtfAnalysis?.diffraction?.signature === signature
+    ) update();
+  }, 0);
   const runner = () => {
     diffractionIdleHandle = null;
     if (
@@ -15445,6 +15464,10 @@ const activeGeometricMtfOptions = (maxFrequencyLpMm) => ({
   frequencyStepLpMm: 5
 });
 
+const effectiveMtfPupilSampleCount = (value = state.mtfPupilSampleCount) => (
+  Math.round(clamp(toNumber(value) || DEFAULT_ANALYSIS_SETTINGS.mtfPupilSampleCount, 3, 15))
+);
+
 const mtfEngineSummary = (result) => {
   if (!result) return "";
   const qualityLabel = GEOMETRIC_LSF_FFT_QUALITY_PROFILES[normalizeGeometricLsfQuality(result.quality)]?.label;
@@ -15885,7 +15908,7 @@ const calculateSagittalTangentialGeometricMTF = (lenses, system, options = {}) =
       || SPECTRAL_LINES.d.wavelengthNm;
     const fieldAngleDegrees = toNumber(options.fieldAngleDegrees) || 0;
     const imagePlaneX = Number.isFinite(toNumber(options.imagePlaneX)) ? toNumber(options.imagePlaneX) : 0;
-    const rayCount = Math.round(clamp(toNumber(options.rayCount) || state.rayTrace3DSampleCount || 7, 3, 15));
+    const rayCount = effectiveMtfPupilSampleCount(options.rayCount);
     const trace = traceSystem3D(lenses, system, {
       ...rayTraceApertureOptions(options),
       fieldAngleDegrees,
@@ -16109,7 +16132,7 @@ const curvesAreNearlyIdentical = (first, second, tolerance = 0.000001) => {
 const calculateSagittalTangentialGeometricMTFPanelData = (lenses, system) => {
   const wavelengthMode = state.stMtfWavelengthMode === "rgb" ? "rgb" : "d";
   const lines = rayFanSpectralLines(wavelengthMode);
-  const rayCount = Math.round(clamp(toNumber(state.rayTrace3DSampleCount) || 7, 3, 15));
+  const rayCount = effectiveMtfPupilSampleCount();
   const maxFrequencyLpMm = resolveMtfMaxFrequency(system, SPECTRAL_LINES.d.wavelengthNm);
   const geometricMtfOptions = activeGeometricMtfOptions(maxFrequencyLpMm);
   const includeBestFocus = state.mtfPlaneMode === "best" || state.mtfBestFocusComparisonRequested === true;
@@ -16160,7 +16183,7 @@ const calculateSagittalTangentialGeometricMTFPanelData = (lenses, system) => {
     : "Geometric LSF/FFT preview — not physical wavefront MTF.");
 
   const fieldFocus = state.mtfFieldFocusPolicy === "centerRefocus"
-    ? findBestFocusSagittalTangentialMTF(lenses, system, {
+    ? findCachedBestFocusSagittalTangentialMTF(lenses, system, {
       ...rayTraceApertureOptions(state),
       ...geometricMtfOptions,
       fieldKey: "center",
@@ -16168,7 +16191,9 @@ const calculateSagittalTangentialGeometricMTFPanelData = (lenses, system) => {
       fieldAngleDegrees: 0,
       spectralLineKey: "d",
       wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
-      rayCount
+      rayCount,
+      rangeMm: 5,
+      sampleCount: 21
     })
     : null;
   const fieldChartImagePlaneX = state.mtfFieldFocusPolicy === "centerRefocus" && Number.isFinite(fieldFocus?.imagePlaneX)
@@ -16331,7 +16356,7 @@ const rememberApertureSweepCacheValue = (key, value) => {
 };
 
 const calculateMtfApertureSweepOption = (lenses, system, aperture, field, options = {}) => {
-  const rayCount = Math.round(clamp(toNumber(state.rayTrace3DSampleCount) || 7, 3, 15));
+  const rayCount = effectiveMtfPupilSampleCount();
   const maxFrequencyLpMm = options.maxFrequencyLpMm || resolveMtfMaxFrequency(system);
   const geometricMtfOptions = options.geometricMtfOptions || activeGeometricMtfOptions(maxFrequencyLpMm);
   const requestedFNumber = aperture.fNumber || calculateFNumber(system);
@@ -16514,7 +16539,7 @@ const manufacturerMtfFieldSamples = (lenses, system, options = {}) => {
   const sampleCount = Math.max(9, Math.round(toNumber(options.sampleCount) || 9));
   const maxFrequencyLpMm = options.maxFrequencyLpMm || resolveMtfMaxFrequency(system);
   const frequencies = options.frequencies || selectedManufacturerMtfFrequencies();
-  const rayCount = Math.round(clamp(toNumber(state.rayTrace3DSampleCount) || 7, 3, 15));
+  const rayCount = effectiveMtfPupilSampleCount();
   const warnings = new Set();
   const commonImagePlaneX = Number.isFinite(toNumber(options.imagePlaneX)) ? toNumber(options.imagePlaneX) : 0;
   const engine = normalizeMtfEngine(options.mtfEngine || state.mtfEngine);
@@ -17199,7 +17224,7 @@ const calculateThroughFocusMtf = (lenses, system, options = {}) => {
   const line = SPECTRAL_LINES[lineKey] || SPECTRAL_LINES.d;
   const frequencyLpMm = toNumber(options.frequencyLpMm) || 40;
   const apertureDiameter = physicalStopDiameterForRequestedFNumber(lenses, system, aperture.fNumber);
-  const rayCount = Math.round(clamp(toNumber(state.rayTrace3DSampleCount) || 7, 3, 15));
+  const rayCount = effectiveMtfPupilSampleCount();
   const maxFrequencyLpMm = options.maxFrequencyLpMm || resolveMtfMaxFrequency(system, line.wavelengthNm);
   const geometricMtfOptions = options.geometricMtfOptions || activeGeometricMtfOptions(maxFrequencyLpMm);
   const spanMm = [1, 2, 5].includes(toNumber(state.mtfThroughFocusRangeMm)) ? toNumber(state.mtfThroughFocusRangeMm) : 2;
@@ -17371,7 +17396,7 @@ const calculateDiffractionHybridMTFPanelData = (lenses, system) => {
     : "d";
   const lines = diffractionHybridLinesForMode(wavelengthMode);
   const fNumber = calculateFNumber(system, state.apertureDiameter);
-  const rayCount = Math.round(clamp(toNumber(state.rayTrace3DSampleCount) || 7, 3, 15));
+  const rayCount = effectiveMtfPupilSampleCount();
   const maxFrequencyLpMm = resolveMtfMaxFrequency(system, SPECTRAL_LINES.d.wavelengthNm);
   const geometricMtfOptions = activeGeometricMtfOptions(maxFrequencyLpMm);
   const results = lines.map(([lineKey, line]) => {
@@ -17551,6 +17576,7 @@ const renderMTFBestFocusSummary = (comparisons) => {
   }
 
   return `
+    ${state.mtfPlaneMode !== "best" ? `<button class="action-button secondary-action" type="button" data-action="hide-best-focus-comparison">Hide best-focus comparison</button>` : ""}
     <div class="mtf-focus-grid">
       ${comparable.map((comparison) => `
         <div class="mtf-focus-card">
@@ -17716,6 +17742,7 @@ const renderSagittalTangentialMTFBestFocusSummary = (comparisons) => {
   }
 
   return `
+    ${state.mtfPlaneMode !== "best" ? `<button class="action-button secondary-action" type="button" data-action="hide-best-focus-comparison">Hide best-focus comparison</button>` : ""}
     <div class="st-mtf-focus-grid">
       ${comparable.map((comparison) => `
         <div class="mtf-focus-card">
@@ -18364,7 +18391,7 @@ const renderSagittalTangentialGeometricMTFPanel = (result) => {
             <option value="rgb" ${state.stMtfWavelengthMode === "rgb" ? "selected" : ""}>RGB C/d/F overlay</option>
           </select>
         </label>
-        ${metric("3D pupil sample", result.rayCount, "grid width")}
+        ${panelSteppableInput({ field: "mtfPupilSampleCount", label: "MTF pupil samples", action: "update-mtf-pupil-samples", inputmode: "numeric", unit: "3-15 grid width" })}
       </div>
       <details class="mtf-frequency-advanced">
         <summary>Advanced frequency selector</summary>
@@ -18473,7 +18500,7 @@ const renderSagittalTangentialGeometricMTFPanel = (result) => {
         <p class="diagram-note">Visible chart: ${escapeHtml(mtfAnalysisStatusLabel(result.mtfAnalysisStatus || result.status))} · Main calculation: ${Number.isFinite(result.mtfAnalysisDurationMs) ? `${formatNumber(result.mtfAnalysisDurationMs, 0)} ms` : "--"} · Source: ${escapeHtml(result.mtfAnalysisSource || "queued")} · Cache: ${result.mtfAnalysisCacheHit ? "hit" : "miss"} · Cancelled stale jobs: ${formatNumber(result.cancelledStaleJobs || 0, 0)}</p>
         <p class="diagram-note">Deferred sections: diffraction / hybrid, through-focus, convergence diagnostics.</p>
         <p class="diagram-note">Engine: ${manufacturerFieldData.engine === "geometricLsfFft" ? "Geometric LSF/FFT" : "Fast RMS Gaussian"}.</p>
-        <p class="diagram-note">Traced rays: ${manufacturerFieldData.samples?.[0]?.result?.totalRayCount ?? "--"}. Energy-carrying pupil samples: ${manufacturerFieldData.samples?.[0]?.result?.totalEnergyRayCount ?? "--"}. Chief reference ray: ${manufacturerFieldData.samples?.[0]?.result?.chiefReferenceRayCount ?? "--"}. Valid energy samples: ${manufacturerFieldData.samples?.[0]?.result?.validEnergyRayCount ?? "--"}. Field samples: ${manufacturerFieldData.fieldSampleCount || manufacturerFieldData.samples?.length || 0}. Focus policy: ${manufacturerFieldData.focusPolicy === "center-refocused" ? "Centre-refocused common plane" : "Fixed Sony sensor plane"}.</p>
+        <p class="diagram-note">MTF effective pupil samples: ${escapeHtml(String(effectiveMtfPupilSampleCount()))}. Traced rays: ${manufacturerFieldData.samples?.[0]?.result?.totalRayCount ?? "--"}. Energy-carrying pupil samples: ${manufacturerFieldData.samples?.[0]?.result?.totalEnergyRayCount ?? "--"}. Chief reference ray: ${manufacturerFieldData.samples?.[0]?.result?.chiefReferenceRayCount ?? "--"}. Valid energy samples: ${manufacturerFieldData.samples?.[0]?.result?.validEnergyRayCount ?? "--"}. Field samples: ${manufacturerFieldData.fieldSampleCount || manufacturerFieldData.samples?.length || 0}. Focus policy: ${manufacturerFieldData.focusPolicy === "center-refocused" ? "Centre-refocused common plane" : "Fixed Sony sensor plane"}.</p>
         ${manufacturerFieldData.engine === "geometricLsfFft" && manufacturerFieldData.samples?.[0]?.result?.tangential?.lsf ? `<p class="diagram-note">LSF bin pitch: ${escapeHtml(formatNumber(manufacturerFieldData.samples[0].result.tangential.lsf.binPitchMm, 6))} mm · Nyquist: ${escapeHtml(formatNumber(manufacturerFieldData.samples[0].result.tangential.lsf.nyquistFrequencyLpMm, 1))} lp/mm · Samples/cycle at requested max: ${escapeHtml(formatNumber(manufacturerFieldData.samples[0].result.tangential.lsf.samplesPerCycleAtMax, 2))} · Zero-padding: ${escapeHtml(formatNumber(manufacturerFieldData.samples[0].result.tangential.lsf.zeroPaddingFactor, 1))}×</p>` : ""}
         ${result.lsfConvergence ? `<p class="diagram-note">${escapeHtml(result.lsfConvergence.label)}${Number.isFinite(result.lsfConvergence.delta40) ? ` · Convergence at 40 lp/mm: Δ${escapeHtml(formatNumber(result.lsfConvergence.delta40, 3))}` : ""}</p>` : ""}
         ${renderGeometricMtfConvergenceDiagnostics(result.lsfConvergence)}
@@ -21692,6 +21719,15 @@ mount.addEventListener("change", (event) => {
     return;
   }
 
+  if (event.target.dataset.action === "update-mtf-pupil-samples") {
+    state.mtfPupilSampleCount = effectiveMtfPupilSampleCount(event.target.value);
+    update();
+
+    const sameInput = mount.querySelector('[data-action="update-mtf-pupil-samples"][data-field="mtfPupilSampleCount"]');
+    if (sameInput) sameInput.focus();
+    return;
+  }
+
   if (event.target.dataset.action === "update-mtf-sensor-format") {
     state.mtfSensorFormatKey = SENSOR_FORMATS.some((format) => format.key === event.target.value)
       ? event.target.value
@@ -22181,6 +22217,14 @@ mount.addEventListener("click", (event) => {
     return;
   }
 
+  if (action === "hide-best-focus-comparison") {
+    state.mtfBestFocusComparisonRequested = false;
+    state.mtfAnalysis.signature = "";
+    queueMtfMainAnalysis({ reason: "hide-best-focus-comparison" });
+    update();
+    return;
+  }
+
   if (action === "toggle-lens-card") {
     const lensId = button.dataset.id;
     const collapsed = (state.collapsedLensCards || {})[lensId] !== false;
@@ -22380,6 +22424,35 @@ const runOpticsSelfCheck = (options = {}) => {
   const deepTest = (name, fn) => {
     if (includeDeep) test(name, fn);
   };
+  const cancelSelfCheckAsyncMtfWork = () => {
+    if (mtfMainFrameHandle !== null && typeof cancelAnimationFrame === "function") {
+      cancelAnimationFrame(mtfMainFrameHandle);
+      mtfMainFrameHandle = null;
+    }
+    cancelIdleOrTimeout(mtfMainIdleHandle);
+    mtfMainIdleHandle = null;
+    if (diffractionFrameHandle !== null && typeof cancelAnimationFrame === "function") {
+      cancelAnimationFrame(diffractionFrameHandle);
+      diffractionFrameHandle = null;
+    }
+    cancelIdleOrTimeout(diffractionIdleHandle);
+    diffractionIdleHandle = null;
+    cancelIdleOrTimeout(geometricMtfConvergenceIdleHandle);
+    geometricMtfConvergenceIdleHandle = null;
+    clearTimeout(opticalAnalysisUpdateTimer);
+    opticalAnalysisUpdateTimer = null;
+    cancelIdleOrTimeout(opticalAnalysisIdleHandle);
+    opticalAnalysisIdleHandle = null;
+    if (state.mtfAnalysis) {
+      state.mtfAnalysis.requestToken = (state.mtfAnalysis.requestToken || 0) + 1;
+      state.mtfAnalysis.diffraction = {
+        ...(state.mtfAnalysis.diffraction || {}),
+        requestToken: (state.mtfAnalysis.diffraction?.requestToken || 0) + 1
+      };
+    }
+    state.geometricMtfConvergenceToken = (state.geometricMtfConvergenceToken || 0) + 1;
+    state.geometricMtfConvergencePending = false;
+  };
   const markupClassList = (markup) => (
     [...String(markup).matchAll(/class="([^"]*)"/g)]
       .flatMap((match) => match[1].trim().split(/\s+/).filter(Boolean))
@@ -22431,16 +22504,42 @@ const runOpticsSelfCheck = (options = {}) => {
       "patentGeometrySignature",
       "patentApertureWarnings",
       "entrancePupilResult",
+      "mtfAnalysis",
+      "lastMtfResolutionResult",
+      "analysisCache",
+      "analysisCacheRevision",
+      "geometricMtfConvergencePending",
+      "geometricMtfConvergenceToken",
+      "geometricMtfConvergenceLastResult",
+      "geometricMtfConvergenceLastKey",
       ...Object.keys(DEFAULT_ANALYSIS_SETTINGS)
     ];
     const cloneValue = (value) => value === undefined ? undefined : JSON.parse(JSON.stringify(value));
     const backup = Object.fromEntries(fields.map((field) => [field, cloneValue(state[field])]));
+    const cacheBackup = {
+      main: [...mainMtfResultCache.entries()],
+      bestFocus: [...bestFocusMtfResultCache.entries()],
+      apertureSweep: [...apertureSweepResultCache.entries()],
+      diffraction: [...diffractionMtfResultCache.entries()],
+      convergence: [...geometricMtfConvergenceCache.entries()]
+    };
     try {
       return fn();
     } finally {
+      cancelSelfCheckAsyncMtfWork();
       fields.forEach((field) => {
         state[field] = cloneValue(backup[field]);
       });
+      mainMtfResultCache.clear();
+      cacheBackup.main.forEach(([key, value]) => mainMtfResultCache.set(key, value));
+      bestFocusMtfResultCache.clear();
+      cacheBackup.bestFocus.forEach(([key, value]) => bestFocusMtfResultCache.set(key, value));
+      apertureSweepResultCache.clear();
+      cacheBackup.apertureSweep.forEach(([key, value]) => apertureSweepResultCache.set(key, value));
+      diffractionMtfResultCache.clear();
+      cacheBackup.diffraction.forEach(([key, value]) => diffractionMtfResultCache.set(key, value));
+      geometricMtfConvergenceCache.clear();
+      cacheBackup.convergence.forEach(([key, value]) => geometricMtfConvergenceCache.set(key, value));
     }
   };
 
@@ -26289,7 +26388,8 @@ const runOpticsSelfCheck = (options = {}) => {
       apertureDiameter: 20,
       apertureStopIndex: "frontGroup",
       wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
-      spectralLineKey: "d"
+      spectralLineKey: "d",
+      includeBestFocus: true
     });
     return Number.isFinite(comparison.best.imagePlaneX)
       && Math.abs(comparison.best.imagePlaneX - comparison.current.imagePlaneX) > 0.000001
@@ -26354,8 +26454,7 @@ const runOpticsSelfCheck = (options = {}) => {
     state.collapsedPanels = { ...state.collapsedPanels, mtfResolution: false };
     const markup = render();
     return markup.includes("Fast RMS Gaussian preview")
-      && markup.includes("Geometric ray-intercept preview — RMS blur approximation")
-      && markup.includes("not a validated physical MTF")
+      && (markup.includes("not production-quality physical MTF") || markup.includes("not physical wavefront MTF"))
       && !markup.includes("<h3>Approximate Geometric MTF</h3>")
       && !markup.includes("<h3>Sagittal / Tangential Geometric MTF</h3>");
   }));
@@ -26601,18 +26700,80 @@ const runOpticsSelfCheck = (options = {}) => {
     loadPresetIntoState("manual");
     state.mtfEngine = "geometricLsfFft";
     state.mtfLsfQuality = "interactive";
+    state.mtfPlaneMode = "current";
+    state.mtfBestFocusComparisonRequested = false;
     const lenses = clonePresetLenses("manual");
     const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
     const result = calculateSagittalTangentialGeometricMTFPanelData(lenses, system);
-    const comparisonEngines = result.comparisons.flatMap((comparison) => [comparison.current.engine, comparison.best.engine]);
+    const comparisonEngines = result.comparisons.flatMap((comparison) => [
+      comparison.current?.engine,
+      comparison.best?.engine
+    ]).filter(Boolean);
     const sweepEngines = result.apertureSweepResults.map((item) => item.result.engine);
     const throughEngines = result.throughFocusResult?.samples?.map((sample) => sample.engine).filter(Boolean) || [];
     return comparisonEngines.every((engine) => engine === "geometricLsfFft" || engine === "fastRmsGaussian")
       && comparisonEngines.some((engine) => engine === "geometricLsfFft")
       && sweepEngines.every((engine) => engine === "geometricLsfFft" || engine === "fastRmsGaussian")
       && throughEngines.every((engine) => engine === "geometricLsfFft" || engine === "fastRmsGaussian")
+      && result.comparisons.every((comparison) => comparison.best === null)
+      && result.comparisons.every((comparison) => comparison.bestFocusDeferred === true)
       && result.throughFocusDeferred === true
       && result.manufacturerFieldData.engine === "geometricLsfFft";
+  }));
+
+  test("Best-plane MTF panel calculations include best-focus comparisons", () => withTemporaryState(() => {
+    loadPresetIntoState("manual");
+    state.mtfEngine = "geometricLsfFft";
+    state.mtfLsfQuality = "interactive";
+    state.mtfPlaneMode = "best";
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const result = calculateSagittalTangentialGeometricMTFPanelData(lenses, system);
+    return result.comparisons.length > 0
+      && result.comparisons.every((comparison) => comparison.best !== null)
+      && result.comparisons.every((comparison) => comparison.bestFocusDeferred === false);
+  }));
+
+  test("Centre-refocused MTF field chart uses and reuses best-focus cache", () => withTemporaryState(() => {
+    loadPresetIntoState("manual");
+    state.mtfEngine = "fastRmsGaussian";
+    state.mtfFieldFocusPolicy = "centerRefocus";
+    bestFocusMtfResultCache.clear();
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const first = calculateSagittalTangentialGeometricMTFPanelData(lenses, system);
+    const firstSize = bestFocusMtfResultCache.size;
+    const second = calculateSagittalTangentialGeometricMTFPanelData(lenses, system);
+    return firstSize === 1
+      && bestFocusMtfResultCache.size === firstSize
+      && Number.isFinite(first.manufacturerFieldData.samples?.[0]?.result?.imagePlaneX)
+      && second.manufacturerFieldData.focusPolicy === "center-refocused";
+  }));
+
+  test("Fixed-focus MTF field chart does not populate best-focus cache", () => withTemporaryState(() => {
+    loadPresetIntoState("manual");
+    state.mtfEngine = "fastRmsGaussian";
+    state.mtfFieldFocusPolicy = "fixed";
+    bestFocusMtfResultCache.clear();
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    calculateSagittalTangentialGeometricMTFPanelData(lenses, system);
+    return bestFocusMtfResultCache.size === 0;
+  }));
+
+  test("Hiding best-focus comparison restores deferred current-plane behaviour", () => withTemporaryState(() => {
+    loadPresetIntoState("manual");
+    state.mtfEngine = "fastRmsGaussian";
+    state.mtfPlaneMode = "current";
+    state.mtfBestFocusComparisonRequested = true;
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const withBest = calculateSagittalTangentialGeometricMTFPanelData(lenses, system);
+    state.mtfBestFocusComparisonRequested = false;
+    const hidden = calculateSagittalTangentialGeometricMTFPanelData(lenses, system);
+    return withBest.comparisons.every((comparison) => comparison.best !== null)
+      && hidden.comparisons.every((comparison) => comparison.best === null)
+      && hidden.comparisons.every((comparison) => comparison.bestFocusDeferred === true);
   }));
 
   test("MTF panel initial data defers through-focus diagnostics", () => withTemporaryState(() => {
@@ -26668,15 +26829,23 @@ const runOpticsSelfCheck = (options = {}) => {
       && !markup.includes("undefined");
   }));
 
-  test("main MTF signature changes with pupil sample count", () => withTemporaryState(() => {
+  test("main MTF signature changes with every effective MTF pupil sample count", () => withTemporaryState(() => {
     loadPresetIntoState("manual");
-    state.rayTrace3DSampleCount = 7;
+    const signatures = new Set();
+    for (let sampleCount = 3; sampleCount <= 15; sampleCount += 1) {
+      state.mtfPupilSampleCount = sampleCount;
+      signatures.add(mtfMainAnalysisSignature());
+    }
+    state.mtfPupilSampleCount = 7;
     const seven = mtfMainAnalysisSignature();
-    state.rayTrace3DSampleCount = 13;
-    const thirteen = mtfMainAnalysisSignature();
-    state.rayTrace3DSampleCount = 7;
-    const sevenAgain = mtfMainAnalysisSignature();
-    return seven !== thirteen && seven === sevenAgain;
+    state.mtfPupilSampleCount = 31;
+    const capped = mtfMainAnalysisSignature();
+    return signatures.size === 13
+      && signatures.has(seven)
+      && capped === (() => {
+        state.mtfPupilSampleCount = 15;
+        return mtfMainAnalysisSignature();
+      })();
   }));
 
   test("diffraction MTF signature includes full aperture stop geometry", () => withTemporaryState(() => {
@@ -26728,6 +26897,42 @@ const runOpticsSelfCheck = (options = {}) => {
       && secondToken === firstToken + 1
       && state.mtfAnalysis.diffraction.signature === diffractionMtfAnalysisSignature();
   }));
+
+  test("self-check temporary state restores persistent MTF async state", () => {
+    const cloneValue = (value) => value === undefined ? undefined : JSON.parse(JSON.stringify(value));
+    const before = {
+      mtfAnalysis: cloneValue(state.mtfAnalysis),
+      lastMtfResolutionResult: cloneValue(state.lastMtfResolutionResult),
+      analysisCache: cloneValue(state.analysisCache),
+      analysisCacheRevision: state.analysisCacheRevision,
+      geometricMtfConvergencePending: state.geometricMtfConvergencePending,
+      geometricMtfConvergenceToken: state.geometricMtfConvergenceToken,
+      geometricMtfConvergenceLastResult: cloneValue(state.geometricMtfConvergenceLastResult),
+      geometricMtfConvergenceLastKey: state.geometricMtfConvergenceLastKey
+    };
+    const ran = withTemporaryState(() => {
+      loadPresetIntoState("manual");
+      state.collapsedPanels = { ...state.collapsedPanels, mtfResolution: false };
+      queueMtfMainAnalysis({ reason: "self-check-isolation" });
+      state.lastMtfResolutionResult = { sentinel: true };
+      state.analysisCache = { sentinel: true };
+      state.analysisCacheRevision = 9999;
+      state.geometricMtfConvergencePending = true;
+      state.geometricMtfConvergenceLastKey = "temporary";
+      return true;
+    });
+    const after = {
+      mtfAnalysis: cloneValue(state.mtfAnalysis),
+      lastMtfResolutionResult: cloneValue(state.lastMtfResolutionResult),
+      analysisCache: cloneValue(state.analysisCache),
+      analysisCacheRevision: state.analysisCacheRevision,
+      geometricMtfConvergencePending: state.geometricMtfConvergencePending,
+      geometricMtfConvergenceToken: state.geometricMtfConvergenceToken,
+      geometricMtfConvergenceLastResult: cloneValue(state.geometricMtfConvergenceLastResult),
+      geometricMtfConvergenceLastKey: state.geometricMtfConvergenceLastKey
+    };
+    return ran && JSON.stringify(after) === JSON.stringify(before);
+  });
 
   test("manufacturer field solver reaches smaller valid angles even if large trials fail", () => withTemporaryState(() => {
     loadPresetIntoState(DEFAULT_PRESET_KEY);

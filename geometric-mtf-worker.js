@@ -1,6 +1,6 @@
 /* eslint-env worker */
 
-const GEOMETRIC_MTF_WORKER_VERSION = "20260701-mtf-cache-regression-1";
+const GEOMETRIC_MTF_WORKER_VERSION = "20260701-visible-mtf-worker-1";
 const GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION = "geometric-lsf-contract-20260630-1";
 
 try {
@@ -13,7 +13,7 @@ self.onmessage = (event) => {
   const payload = event.data || {};
   const { requestId, task } = payload;
 
-  if (task !== "geometric-lsf-convergence") {
+  if (!["geometric-lsf-convergence", "geometric-lsf-main-panel"].includes(task)) {
     self.postMessage({
       requestId,
       status: "error",
@@ -22,7 +22,11 @@ self.onmessage = (event) => {
     return;
   }
 
-  if (!self.geometricMtfCore?.calculateGeometricLsfConvergence) {
+  const coreFunction = task === "geometric-lsf-main-panel"
+    ? self.geometricMtfCore?.calculateGeometricLsfMainPanel
+    : self.geometricMtfCore?.calculateGeometricLsfConvergence;
+
+  if (!coreFunction) {
     self.postMessage({
       requestId,
       status: "error",
@@ -33,12 +37,13 @@ self.onmessage = (event) => {
   }
 
   try {
-    const result = self.geometricMtfCore.calculateGeometricLsfConvergence(payload);
+    const result = coreFunction(payload);
     self.postMessage({
       requestId,
       status: "complete",
       workerVersion: GEOMETRIC_MTF_WORKER_VERSION,
       solverContractVersion: GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION,
+      surfaceSignature: result?.surfaceSignature || payload.expectedSurfaceSignature || "",
       result
     });
   } catch (error) {

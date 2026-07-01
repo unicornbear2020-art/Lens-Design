@@ -1,12 +1,19 @@
 /* eslint-env worker */
 
 (() => {
+  const GEOMETRIC_MTF_CORE_VERSION = "20260701-visible-mtf-worker-1";
   const GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION = "geometric-lsf-contract-20260630-1";
   const QUALITY_PROFILES = {
     interactive: { baseGrid: 16, label: "Interactive" },
     high: { baseGrid: 32, label: "High" },
     reference: { baseGrid: 64, label: "Reference" }
   };
+  const MAIN_PANEL_QUALITY_PROFILES = {
+    interactive: { rings: 6, label: "Interactive", approximateRays: 129 },
+    high: { rings: 15, label: "High", approximateRays: 723 },
+    reference: { rings: 20, label: "Reference", approximateRays: 1263 }
+  };
+  const MTF_READOUT_FREQUENCIES = [10, 20, 40, 80];
 
   const toNumber = (value) => {
     const number = Number(value);
@@ -488,6 +495,367 @@
     return { values, diagnostics };
   };
 
+  const mtfValueAtFrequency = (curve, frequency) => {
+    const target = toNumber(frequency);
+    const frequencies = curve?.frequencies || [];
+    const values = curve?.values || [];
+    if (!Number.isFinite(target) || !frequencies.length || frequencies.length !== values.length) return NaN;
+    if (target <= frequencies[0]) return values[0];
+    for (let index = 1; index < frequencies.length; index += 1) {
+      if (target <= frequencies[index]) {
+        const leftFrequency = frequencies[index - 1];
+        const rightFrequency = frequencies[index];
+        const leftValue = values[index - 1];
+        const rightValue = values[index];
+        const span = rightFrequency - leftFrequency || 1;
+        return leftValue + (rightValue - leftValue) * ((target - leftFrequency) / span);
+      }
+    }
+    return values[values.length - 1];
+  };
+
+  const mainPanelQuality = (quality) => MAIN_PANEL_QUALITY_PROFILES[quality] ? quality : "interactive";
+
+  const weightedEqualAreaPupilSamples = (quality = "interactive", apertureRadius = 10) => {
+    const profile = MAIN_PANEL_QUALITY_PROFILES[mainPanelQuality(quality)];
+    const rings = profile.rings;
+    const radius = Math.max(0.1, toNumber(apertureRadius) || 10);
+    const samples = [{
+      y: 0,
+      z: 0,
+      pupilU: 0,
+      pupilV: 0,
+      ring: 0,
+      isChiefReference: true,
+      weight: 0,
+      pupilWeight: 0
+    }];
+    for (let ring = 1; ring <= rings; ring += 1) {
+      const innerRadius = Math.sqrt((ring - 1) / rings);
+      const outerRadius = Math.sqrt(ring / rings);
+      const normalizedRadius = Math.sqrt((innerRadius ** 2 + outerRadius ** 2) / 2);
+      const angularCount = Math.max(8, ring * 6);
+      const annulusArea = Math.PI * (outerRadius ** 2 - innerRadius ** 2);
+      const sampleWeight = annulusArea / angularCount;
+      for (let index = 0; index < angularCount; index += 1) {
+        const angle = 2 * Math.PI * (index + 0.5) / angularCount;
+        const pupilU = normalizedRadius * Math.cos(angle);
+        const pupilV = normalizedRadius * Math.sin(angle);
+        samples.push({
+          y: radius * pupilU,
+          z: radius * pupilV,
+          pupilU,
+          pupilV,
+          ring,
+          innerRadius,
+          outerRadius,
+          annulusArea,
+          isChiefReference: false,
+          weight: sampleWeight,
+          pupilWeight: sampleWeight
+        });
+      }
+    }
+    const energyWeight = samples
+      .filter((sample) => !sample.isChiefReference)
+      .reduce((sum, sample) => sum + sample.pupilWeight, 0) || 1;
+    return samples.map((sample) => {
+      const pupilWeight = sample.isChiefReference ? 0 : sample.pupilWeight / energyWeight;
+      return { ...sample, weight: pupilWeight, pupilWeight };
+    });
+  };
+
+  const makeWeightedRayBundle = (setup, fieldAngleDegrees = 0, quality = "interactive") => {
+    const direction = fieldDirection3D(fieldAngleDegrees, setup.orientation || "tangential");
+    const apertureRadius = Math.max(0.1, toNumber(setup.apertureRadius) || 10);
+    const referenceX = toNumber(setup.referenceX) || 0;
+    const startX = toNumber(setup.startX) || referenceX + 25;
+    const tToReference = Math.abs(direction.x) > 1e-9 ? (referenceX - startX) / direction.x : 0;
+    return weightedEqualAreaPupilSamples(quality, apertureRadius).map((sample) => ({
+      x: startX,
+      y: sample.y - direction.y * tToReference,
+      z: sample.z - direction.z * tToReference,
+      dx: direction.x,
+      dy: direction.y,
+      dz: direction.z,
+      apertureY: sample.y,
+      apertureZ: sample.z,
+      pupilU: sample.pupilU,
+      pupilV: sample.pupilV,
+      pupilWeight: sample.pupilWeight,
+      pupilRing: sample.ring,
+      isChiefReference: sample.isChiefReference === true
+    }));
+  };
+
+  const traceWeightedPupilForMainMtf = (surfaces, setup, fieldAngleDegrees, quality = "interactive") => {
+    const rays = makeWeightedRayBundle(setup, fieldAngleDegrees, quality).map((ray) => {
+      const traced = traceRay3D(ray, surfaces);
+      const imagePoint = traced.status === "valid" ? imagePlaneIntersection3D(traced.finalRay, setup.imagePlaneX) : null;
+      const status = traced.status === "valid" && !imagePoint ? "invalid" : traced.status;
+      return {
+        ...traced,
+        status,
+        inputRay: ray,
+        imagePoint,
+        weight: ray.pupilWeight,
+        isChiefReference: ray.isChiefReference === true
+      };
+    });
+    const validRays = rays.filter((ray) => ray.status === "valid" && ray.imagePoint);
+    const energyRays = rays.filter((ray) => ray.weight > 0);
+    const validEnergyRays = validRays.filter((ray) => ray.weight > 0);
+    return {
+      rays,
+      validRays,
+      totalRayCount: rays.length,
+      totalEnergyRayCount: energyRays.length,
+      validEnergyRayCount: validEnergyRays.length,
+      chiefReferenceRayCount: rays.filter((ray) => ray.isChiefReference).length,
+      clippedRayCount: rays.filter((ray) => ray.status === "missed aperture").length,
+      clippedEnergyRayCount: energyRays.filter((ray) => ray.status === "missed aperture").length
+    };
+  };
+
+  const buildWeightedLsf = (samples, maxFrequencyLpMm) => {
+    const energySamples = samples.filter((sample) => (
+      Number.isFinite(sample.coordinate)
+      && Number.isFinite(sample.weight)
+      && sample.weight > 0
+    ));
+    const coordinates = energySamples.map((sample) => sample.coordinate);
+    if (coordinates.length < 2) return { status: "invalid", warning: "Too few valid ray intercepts for LSF.", bins: [], binPitchMm: NaN };
+    const maxFrequency = Math.max(10, toNumber(maxFrequencyLpMm) || 100);
+    const samplesPerCycleTarget = 8;
+    const minPitch = 1 / (Math.max(2, maxFrequency) * samplesPerCycleTarget);
+    const minCoordinate = Math.min(...coordinates);
+    const maxCoordinate = Math.max(...coordinates);
+    const span = Math.max(maxCoordinate - minCoordinate, minPitch * 16);
+    const padding = Math.max(span * 0.25, minPitch * 8);
+    const left = minCoordinate - padding;
+    const right = maxCoordinate + padding;
+    const rawBinCount = Math.ceil((right - left) / minPitch) + 1;
+    const maxBinCount = 8192;
+    const requestedBinCount = nextPowerOfTwo(rawBinCount);
+    const binCount = clamp(requestedBinCount, 128, maxBinCount);
+    const binPitchMm = (right - left) / (binCount - 1);
+    const bins = new Array(binCount).fill(0);
+    energySamples.forEach((sample) => {
+      const position = (sample.coordinate - left) / binPitchMm;
+      const index = Math.floor(position);
+      const fraction = position - index;
+      if (index >= 0 && index < binCount) bins[index] += sample.weight * (1 - fraction);
+      if (index + 1 >= 0 && index + 1 < binCount) bins[index + 1] += sample.weight * fraction;
+    });
+    const energy = bins.reduce((sum, value) => sum + value, 0);
+    if (!(energy > 0)) return { status: "invalid", warning: "LSF energy is zero.", bins, binPitchMm };
+    const nyquistFrequencyLpMm = 1 / (2 * binPitchMm);
+    const samplesPerCycleAtMax = 1 / (maxFrequency * binPitchMm);
+    const reliableMaxFrequencyLpMm = 0.8 * nyquistFrequencyLpMm;
+    const frequencyLimited = requestedBinCount > maxBinCount || maxFrequency > reliableMaxFrequencyLpMm;
+    return {
+      status: "valid",
+      bins: bins.map((value) => value / energy),
+      binPitchMm,
+      supportMm: right - left,
+      binCount,
+      requestedBinCount,
+      maxBinCount,
+      nyquistFrequencyLpMm,
+      samplesPerCycleAtMax,
+      samplesPerCycleTarget,
+      reliableMaxFrequencyLpMm,
+      effectiveMaxFrequencyLpMm: frequencyLimited ? reliableMaxFrequencyLpMm : maxFrequency,
+      frequencyLimited,
+      energySampleCount: energySamples.length
+    };
+  };
+
+  const axisMtfResultFromWeightedLsf = (axis, samples, options = {}) => {
+    const maxFrequency = Math.max(10, toNumber(options.maxFrequencyLpMm) || 100);
+    const frequencyStep = Math.max(1, toNumber(options.frequencyStepLpMm) || 5);
+    const lsf = buildWeightedLsf(samples, maxFrequency);
+    if (lsf.status !== "valid") {
+      return {
+        axis,
+        engine: "geometricLsfFft",
+        status: lsf.status,
+        warning: lsf.warning,
+        frequencies: [],
+        values: [],
+        readouts: Object.fromEntries(MTF_READOUT_FREQUENCIES.map((frequency) => [frequency, NaN])),
+        lsf
+      };
+    }
+    const paddedLength = nextPowerOfTwo(lsf.bins.length * 2);
+    const padded = lsf.bins.concat(new Array(paddedLength - lsf.bins.length).fill(0));
+    const fft = fftRadix2(padded);
+    const dc = Math.hypot(fft.real[0], fft.imag[0]) || 1;
+    const effectiveMaxFrequency = Math.max(0, Math.min(maxFrequency, lsf.effectiveMaxFrequencyLpMm || maxFrequency));
+    const frequencies = [];
+    const values = [];
+    const frequencyDiagnostics = {};
+    for (let frequency = 0; frequency <= effectiveMaxFrequency + 1e-6; frequency += frequencyStep) {
+      const roundedFrequency = Number(frequency.toFixed(4));
+      const bin = roundedFrequency * paddedLength * lsf.binPitchMm;
+      const leftIndex = Math.floor(bin);
+      const rightIndex = Math.min(fft.real.length - 1, leftIndex + 1);
+      const t = bin - leftIndex;
+      const magnitudeAt = (index) => Math.hypot(fft.real[index] || 0, fft.imag[index] || 0) / dc;
+      const rawValue = leftIndex >= 0 && leftIndex < fft.real.length
+        ? magnitudeAt(leftIndex) * (1 - t) + magnitudeAt(rightIndex) * t
+        : NaN;
+      const kernelMtf = sinc(roundedFrequency * lsf.binPitchMm) ** 2;
+      const correctionApplied = roundedFrequency < 0.5 * lsf.nyquistFrequencyLpMm && kernelMtf > 0.25;
+      const value = correctionApplied ? rawValue / kernelMtf : rawValue;
+      frequencies.push(roundedFrequency);
+      values.push(clamp(value, 0, 1));
+      frequencyDiagnostics[roundedFrequency] = {
+        rawValue,
+        kernelMtf,
+        correctionApplied,
+        frequencyLimited: roundedFrequency > lsf.reliableMaxFrequencyLpMm
+      };
+    }
+    const result = {
+      axis,
+      engine: "geometricLsfFft",
+      status: "valid",
+      frequencies,
+      values,
+      lsf: {
+        binPitchMm: lsf.binPitchMm,
+        binCount: lsf.binCount,
+        supportMm: lsf.supportMm,
+        kernel: "linear B-spline / triangular binning",
+        kernelCorrection: "sinc(f * binPitch)^2 correction below 50% Nyquist when stable",
+        frequencyDiagnostics,
+        nyquistFrequencyLpMm: lsf.nyquistFrequencyLpMm,
+        samplesPerCycleAtMax: lsf.samplesPerCycleAtMax,
+        samplesPerCycleTarget: lsf.samplesPerCycleTarget,
+        zeroPaddingFactor: paddedLength / lsf.binCount,
+        energySampleCount: lsf.energySampleCount,
+        requestedMaxFrequencyLpMm: maxFrequency,
+        effectiveMaxFrequencyLpMm: effectiveMaxFrequency,
+        frequencyLimited: lsf.frequencyLimited === true,
+        warning: lsf.frequencyLimited ? "Frequency range limited by LSF sampling." : ""
+      },
+      warnings: lsf.frequencyLimited ? ["Frequency range limited by LSF sampling."] : []
+    };
+    return {
+      ...result,
+      readouts: Object.fromEntries(MTF_READOUT_FREQUENCIES.map((frequency) => [
+        frequency,
+        mtfValueAtFrequency(result, frequency)
+      ]))
+    };
+  };
+
+  const calculateMainGeometricLsfMtf = (surfaces, setup, request = {}) => {
+    const quality = mainPanelQuality(request.quality || setup.quality);
+    const fieldAngleDegrees = toNumber(request.fieldAngleDegrees) || 0;
+    const traced = traceWeightedPupilForMainMtf(surfaces, setup, fieldAngleDegrees, quality);
+    const warnings = [];
+    if (traced.validEnergyRayCount < 12) warnings.push(`Fewer than 12 valid weighted pupil rays for ${fieldAngleDegrees}° d-line LSF/FFT MTF.`);
+    if (traced.totalEnergyRayCount && traced.clippedEnergyRayCount / traced.totalEnergyRayCount > 0.5) warnings.push(`More than 50% of weighted pupil rays are clipped at ${fieldAngleDegrees}° d-line.`);
+    const chiefRay = traced.validRays.reduce((closest, ray) => {
+      const pupilDistance = Math.hypot(ray.inputRay?.pupilU || 0, ray.inputRay?.pupilV || 0);
+      const closestDistance = closest ? Math.hypot(closest.inputRay?.pupilU || 0, closest.inputRay?.pupilV || 0) : Infinity;
+      return pupilDistance < closestDistance ? ray : closest;
+    }, null);
+    const chiefY = chiefRay?.imagePoint?.y ?? NaN;
+    const chiefZ = chiefRay?.imagePoint?.z ?? NaN;
+    if (traced.validEnergyRayCount < 4 || !chiefRay) {
+      return {
+        fieldKey: request.fieldKey,
+        fieldName: request.fieldName || "Field",
+        fieldAngleDegrees,
+        spectralLineKey: request.spectralLineKey || "d",
+        wavelengthNm: toNumber(request.wavelengthNm) || 587.6,
+        imagePlaneX: setup.imagePlaneX,
+        planeLabel: request.planeLabel || "Current sensor plane",
+        status: "too-few-rays",
+        engine: "geometricLsfFft",
+        engineLabel: "Geometric LSF/FFT preview — not physical wavefront MTF",
+        quality,
+        isFallback: false,
+        fallbackReason: "",
+        validRayCount: traced.validRays.length,
+        totalRayCount: traced.totalRayCount,
+        validEnergyRayCount: traced.validEnergyRayCount,
+        totalEnergyRayCount: traced.totalEnergyRayCount,
+        chiefReferenceRayCount: traced.chiefReferenceRayCount,
+        clippedRayCount: traced.clippedRayCount,
+        clippedEnergyRayCount: traced.clippedEnergyRayCount,
+        apertureStopX: setup.referenceX,
+        chiefY,
+        chiefZ,
+        tangential: axisMtfResultFromWeightedLsf("tangential", [], request),
+        sagittal: axisMtfResultFromWeightedLsf("sagittal", [], request),
+        combinedRms: NaN,
+        lsfKernel: "linear B-spline / triangular binning",
+        warnings
+      };
+    }
+    const axes = rayTrace3DAxes(setup.orientation || "tangential");
+    const weightedSamples = traced.validRays.map((ray) => {
+      const dy = ray.imagePoint.y - chiefY;
+      const dz = ray.imagePoint.z - chiefZ;
+      return {
+        tangential: project({ y: dy, z: dz }, axes.tangential),
+        sagittal: project({ y: dy, z: dz }, axes.sagittal),
+        weight: Number.isFinite(ray.weight) ? ray.weight : 1
+      };
+    });
+    const rmsFor = (axis) => {
+      const totalWeight = weightedSamples.reduce((sum, sample) => sum + sample.weight, 0) || 1;
+      return Math.sqrt(weightedSamples.reduce((sum, sample) => sum + sample.weight * sample[axis] ** 2, 0) / totalWeight);
+    };
+    const tangential = axisMtfResultFromWeightedLsf("tangential", weightedSamples.map((sample) => ({
+      coordinate: sample.tangential,
+      weight: sample.weight
+    })), request);
+    const sagittal = axisMtfResultFromWeightedLsf("sagittal", weightedSamples.map((sample) => ({
+      coordinate: sample.sagittal,
+      weight: sample.weight
+    })), request);
+    const tangentialSigma = rmsFor("tangential");
+    const sagittalSigma = rmsFor("sagittal");
+    const combinedRms = Number.isFinite(tangentialSigma) && Number.isFinite(sagittalSigma)
+      ? Math.sqrt((tangentialSigma ** 2 + sagittalSigma ** 2) / 2)
+      : NaN;
+    return {
+      fieldKey: request.fieldKey,
+      fieldName: request.fieldName || "Field",
+      fieldAngleDegrees,
+      spectralLineKey: request.spectralLineKey || "d",
+      wavelengthNm: toNumber(request.wavelengthNm) || 587.6,
+      imagePlaneX: setup.imagePlaneX,
+      planeLabel: request.planeLabel || "Current sensor plane",
+      status: traced.validRays.length >= 12 && tangential.status === "valid" && sagittal.status === "valid" ? "valid" : "too-few-rays",
+      engine: "geometricLsfFft",
+      engineLabel: "Geometric LSF/FFT preview — not physical wavefront MTF",
+      quality,
+      isFallback: false,
+      fallbackReason: "",
+      validRayCount: traced.validRays.length,
+      totalRayCount: traced.totalRayCount,
+      validEnergyRayCount: traced.validEnergyRayCount,
+      totalEnergyRayCount: traced.totalEnergyRayCount,
+      chiefReferenceRayCount: traced.chiefReferenceRayCount,
+      clippedRayCount: traced.clippedRayCount,
+      clippedEnergyRayCount: traced.clippedEnergyRayCount,
+      apertureStopX: setup.referenceX,
+      chiefY,
+      chiefZ,
+      tangential: { ...tangential, sigma: tangentialSigma },
+      sagittal: { ...sagittal, sigma: sagittalSigma },
+      combinedRms,
+      lsfKernel: "linear B-spline / triangular binning",
+      warnings: [...warnings, ...(tangential.warnings || []), ...(sagittal.warnings || [])].filter((warning, index, list) => warning && list.indexOf(warning) === index)
+    };
+  };
+
   const traceQuality = (surfaces, setup, quality, fieldAngleDegrees, chiefImagePoint) => {
     const adaptive = adaptivePupilSamples(surfaces, setup, quality, fieldAngleDegrees);
     const axes = rayTrace3DAxes(setup.orientation);
@@ -737,7 +1105,301 @@
     };
   };
 
+  const normalizeSurfaceModel = (payload = {}) => (payload.surfaceModel || payload.surfaces || [])
+    .map((surface) => ({
+      ...surface,
+      x: toNumber(surface.x),
+      radius: toNumber(surface.radius) || 0,
+      semiDiameter: Math.max(0.001, toNumber(surface.semiDiameter) || 1),
+      nBefore: toNumber(surface.nBefore) || 1,
+      nAfter: toNumber(surface.nAfter) || 1,
+      decenterY: toNumber(surface.decenterY) || 0,
+      decenterZ: toNumber(surface.decenterZ) || 0,
+      tiltY: toNumber(surface.tiltY) || 0,
+      tiltZ: toNumber(surface.tiltZ) || 0,
+      asphere: surface.asphere ? {
+        ...surface.asphere,
+        active: surface.asphere.active === true || asphereHasTerms(surface.asphere),
+        enabled: surface.asphere.enabled === true || surface.asphere.active === true
+      } : null,
+      isStop: surface.isStop === true
+    }))
+    .filter((surface) => Number.isFinite(surface.x))
+    .sort((a, b) => b.x - a.x);
+
+  const setupFromSurfaces = (surfaces, payload = {}) => {
+    const apertureSurface = surfaces.find((surface) => surface.isStop) || surfaces[0];
+    const rightMostSurfaceX = Math.max(...surfaces.map((surface) => surface.x));
+    return {
+      orientation: payload.fieldOrientation || "tangential",
+      quality: mainPanelQuality(payload.quality),
+      apertureRadius: Math.max(0.001, toNumber(apertureSurface?.semiDiameter) || (toNumber(payload.apertureDiameter) || 1) / 2),
+      referenceX: apertureSurface?.x || 0,
+      startX: rightMostSurfaceX + Math.max(20, Math.abs(toNumber(payload.totalTrackMm) || 0) * 0.15),
+      imagePlaneX: Number.isFinite(toNumber(payload.imagePlaneX)) ? toNumber(payload.imagePlaneX) : 0,
+      maxFieldAngleDegrees: payload.maxFieldAngleDegrees || 45
+    };
+  };
+
+  const normalizeMainPanelPayload = (payload = {}) => {
+    if (payload.solverContractVersion && payload.solverContractVersion !== GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION) {
+      return {
+        error: {
+          status: "engine-mismatch",
+          reason: "Worker received a different geometric MTF solver contract.",
+          expectedSolverContractVersion: GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION,
+          payloadSolverContractVersion: payload.solverContractVersion
+        }
+      };
+    }
+    const surfaces = normalizeSurfaceModel(payload);
+    const modelSignature = surfaceSignature(surfaces);
+    if (payload.expectedSurfaceSignature && payload.expectedSurfaceSignature !== modelSignature) {
+      return {
+        surfaces,
+        surfaceSignature: modelSignature,
+        error: {
+          status: "engine-mismatch",
+          reason: "Worker surface signature does not match the active optical model.",
+          expectedSurfaceSignature: payload.expectedSurfaceSignature,
+          surfaceSignature: modelSignature
+        }
+      };
+    }
+    const features = surfaceFeatureFlags(surfaces);
+    if (features.unsupportedByWorker) {
+      return {
+        surfaces,
+        surfaceSignature: modelSignature,
+        features,
+        error: {
+          status: "unsupported-geometry",
+          reason: `Worker model does not yet support ${features.unsupportedFeatures.join(" and ")} geometry.`,
+          unsupportedFeatures: features.unsupportedFeatures
+        }
+      };
+    }
+    if (!surfaces.length) {
+      return {
+        surfaces,
+        surfaceSignature: modelSignature,
+        features,
+        error: {
+          status: "invalid",
+          reason: "No worker surface model supplied."
+        }
+      };
+    }
+    return { surfaces, surfaceSignature: modelSignature, features };
+  };
+
+  const calculateMainComparisons = (surfaces, setup, payload = {}) => {
+    const requests = Array.isArray(payload.fieldRequests) ? payload.fieldRequests : [];
+    return requests.map((request) => {
+      const current = calculateMainGeometricLsfMtf(surfaces, setup, {
+        ...payload,
+        ...request,
+        maxFrequencyLpMm: payload.maxFrequencyLpMm,
+        frequencyStepLpMm: payload.frequencyStepLpMm || 5,
+        quality: payload.quality,
+        spectralLineKey: request.spectralLineKey || payload.wavelength?.spectralLineKey || "d",
+        wavelengthNm: request.wavelengthNm || payload.wavelength?.wavelengthNm || 587.6
+      });
+      return {
+        fieldKey: request.fieldKey,
+        fieldName: request.fieldName || "Field",
+        fieldAngleDegrees: request.fieldAngleDegrees,
+        spectralLineKey: request.spectralLineKey || "d",
+        current,
+        best: null,
+        bestFocusDeferred: true,
+        enginesMatch: true,
+        comparisonUnavailableReason: ""
+      };
+    });
+  };
+
+  const calculateManufacturerFieldData = (surfaces, setup, payload = {}, request = {}) => {
+    const maxHeight = Math.max(0, toNumber(request.maxImageHeightMm) || 0);
+    const sampleCount = Math.max(3, Math.round(toNumber(request.sampleCount) || 9));
+    const frequencies = (request.frequencies || [10, 30]).map(toNumber).filter(Number.isFinite);
+    const warnings = new Set();
+    const sampleForTarget = (targetImageHeight, index) => {
+      const solved = solveFieldAngleForImageHeight(surfaces, setup, targetImageHeight);
+      const result = solved.status === "solved" || targetImageHeight <= 1e-6
+        ? calculateMainGeometricLsfMtf(surfaces, setup, {
+          ...payload,
+          fieldAngleDegrees: solved.fieldAngleDegrees || 0,
+          fieldName: `${Number(targetImageHeight).toFixed(1)} mm`,
+          fieldKey: `height-${index}`,
+          maxFrequencyLpMm: payload.maxFrequencyLpMm,
+          frequencyStepLpMm: payload.frequencyStepLpMm || 5,
+          quality: payload.quality
+        })
+        : null;
+      if (solved.status !== "solved") warnings.add(`Target image height ${targetImageHeight.toFixed(2)} mm could not be solved (${solved.status}).`);
+      const imageHeight = Number.isFinite(solved.imageHeight) ? solved.imageHeight : NaN;
+      const isSolved = solved.status === "solved" && Number.isFinite(imageHeight) && result;
+      return {
+        targetImageHeight,
+        imageHeight,
+        fieldAngleDegrees: solved.fieldAngleDegrees,
+        solvedFromChiefRay: solved.status === "solved",
+        solveStatus: solved.status,
+        residualMm: solved.residualMm,
+        result: result || {
+          status: solved.status,
+          engine: "geometricLsfFft",
+          engineLabel: "Geometric LSF/FFT preview — not physical wavefront MTF",
+          quality: mainPanelQuality(payload.quality),
+          tangential: { frequencies: [], values: [] },
+          sagittal: { frequencies: [], values: [] }
+        },
+        readouts: Object.fromEntries(frequencies.map((frequency) => [
+          frequency,
+          {
+            sagittal: isSolved ? mtfValueAtFrequency(result.sagittal, frequency) : NaN,
+            tangential: isSolved ? mtfValueAtFrequency(result.tangential, frequency) : NaN
+          }
+        ]))
+      };
+    };
+    const targets = Array.from({ length: sampleCount }, (_, index) => (maxHeight * index) / (sampleCount - 1));
+    const samples = targets.map(sampleForTarget).sort((left, right) => (
+      (Number.isFinite(left.imageHeight) ? left.imageHeight : Number.POSITIVE_INFINITY)
+      - (Number.isFinite(right.imageHeight) ? right.imageHeight : Number.POSITIVE_INFINITY)
+    ));
+    const solvedEdgeMm = samples.reduce((edge, sample) => (
+      sample.solveStatus === "solved" && Number.isFinite(sample.imageHeight)
+        ? Math.max(edge, sample.imageHeight)
+        : edge
+    ), 0);
+    return {
+      maxImageHeightMm: maxHeight,
+      selectedSensorCornerMm: maxHeight,
+      solvedEdgeMm,
+      reachedSensorCorner: samples.some((sample) => sample.solveStatus === "solved" && Number.isFinite(sample.imageHeight) && Math.abs(sample.imageHeight - maxHeight) <= 0.02),
+      sensor: request.sensor || null,
+      frequencies,
+      engine: "geometricLsfFft",
+      engineLabel: "Geometric LSF/FFT preview — not physical wavefront MTF",
+      quality: mainPanelQuality(payload.quality),
+      focusPolicy: request.focusPolicy || "fixed",
+      samples,
+      source: "worker · iterated chief-ray intercept · geometric LSF/FFT",
+      imagePlaneX: setup.imagePlaneX,
+      fieldSampleCount: samples.length,
+      warnings: [...warnings]
+    };
+  };
+
+  const calculateApertureSweep = (payload = {}, baseSetup, baseSurfaces) => {
+    const request = payload.apertureSweepRequest || {};
+    const options = Array.isArray(request.options) ? request.options : [];
+    const field = request.field || { key: "center", name: "Centre", angle: 0 };
+    return options.map((option) => {
+      const surfaces = option.surfaceModel ? normalizeSurfaceModel({ surfaceModel: option.surfaceModel }) : baseSurfaces;
+      const setup = setupFromSurfaces(surfaces, {
+        ...payload,
+        imagePlaneX: Number.isFinite(toNumber(option.imagePlaneX)) ? toNumber(option.imagePlaneX) : baseSetup.imagePlaneX
+      });
+      const result = calculateMainGeometricLsfMtf(surfaces, setup, {
+        ...payload,
+        fieldKey: field.key,
+        fieldName: field.name,
+        fieldAngleDegrees: field.angle || 0,
+        maxFrequencyLpMm: payload.maxFrequencyLpMm,
+        frequencyStepLpMm: payload.frequencyStepLpMm || 5,
+        quality: payload.quality
+      });
+      const fieldData = calculateManufacturerFieldData(surfaces, setup, payload, {
+        ...(payload.manufacturerRequest || {}),
+        ...(option.manufacturerRequest || {}),
+        sampleCount: request.chartMode === "field" ? 7 : (payload.manufacturerRequest?.sampleCount || 9),
+        focusPolicy: option.focusPolicy || "fixed"
+      });
+      return {
+        key: option.key,
+        label: option.label,
+        fNumber: option.fNumber ?? null,
+        requestedFNumber: option.requestedFNumber ?? option.fNumber ?? null,
+        physicalStopDiameter: option.physicalStopDiameter,
+        imagePlaneX: setup.imagePlaneX,
+        bestFocusStable: option.bestFocusStable,
+        refocusAtSearchLimit: option.refocusAtSearchLimit === true,
+        focusPolicy: option.focusPolicy || "fixed",
+        fieldData,
+        result,
+        retraced: true,
+        cachedAtRevision: payload.cacheRevision || 0,
+        source: "worker"
+      };
+    });
+  };
+
+  const calculateGeometricLsfMainPanel = (payload = {}) => {
+    const started = Date.now();
+    const normalized = normalizeMainPanelPayload(payload);
+    if (normalized.error) {
+      return {
+        status: normalized.error.status,
+        solverContractVersion: GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION,
+        surfaceSignature: normalized.surfaceSignature || "",
+        warnings: [normalized.error.reason],
+        diagnostics: normalized.error,
+        source: "worker",
+        comparisons: [],
+        activeResults: [],
+        manufacturerFieldData: null,
+        apertureSweepResults: [],
+        elapsedMs: Date.now() - started
+      };
+    }
+    const { surfaces, surfaceSignature: modelSignature, features } = normalized;
+    const setup = setupFromSurfaces(surfaces, payload);
+    const comparisons = calculateMainComparisons(surfaces, setup, payload);
+    const activeResults = comparisons.map((comparison) => comparison.current);
+    const manufacturerFieldData = payload.manufacturerRequest
+      ? calculateManufacturerFieldData(surfaces, setup, payload, payload.manufacturerRequest)
+      : null;
+    const apertureSweepResults = calculateApertureSweep(payload, setup, surfaces);
+    const warnings = new Set();
+    activeResults.forEach((result) => (result.warnings || []).forEach((warning) => warnings.add(warning)));
+    (manufacturerFieldData?.warnings || []).forEach((warning) => warnings.add(warning));
+    apertureSweepResults.forEach((item) => {
+      (item.result?.warnings || []).forEach((warning) => warnings.add(warning));
+      (item.fieldData?.warnings || []).forEach((warning) => warnings.add(warning));
+    });
+    return {
+      status: "valid",
+      source: "worker",
+      solverContractVersion: GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION,
+      workerVersion: payload.workerVersion || "",
+      surfaceSignature: modelSignature,
+      surfaceFeatureFlags: features,
+      comparisons,
+      activeResults,
+      manufacturerFieldData,
+      apertureSweepResults,
+      warnings: [...warnings],
+      rayCount: payload.rayCount,
+      maxFrequencyLpMm: payload.maxFrequencyLpMm || 100,
+      diagnostics: {
+        elapsedMs: Date.now() - started,
+        surfaceSignature: modelSignature,
+        solverContractVersion: GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION,
+        workerEligible: true
+      },
+      elapsedMs: Date.now() - started
+    };
+  };
+
   const api = {
+    GEOMETRIC_MTF_CORE_VERSION,
+    GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION,
+    surfaceFeatureFlags,
+    surfaceSignature,
+    calculateGeometricLsfMainPanel,
     calculateGeometricLsfConvergence,
     QUALITY_PROFILES
   };

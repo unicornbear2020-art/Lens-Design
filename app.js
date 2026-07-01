@@ -10,7 +10,7 @@ const DIAGRAM_SIZE = {
   height: 480
 };
 
-const ANALYSIS_WORKER_VERSION = "20260701-mtf-cache-regression-1";
+const ANALYSIS_WORKER_VERSION = "20260701-visible-mtf-worker-1";
 const GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION = "geometric-lsf-contract-20260630-1";
 const DEFAULT_PRESET_KEY = "zeissBiotar50F14Us1786916Ex2";
 const OLD_MISLEADING_ZEISS_PRESET_KEYS = [
@@ -681,6 +681,20 @@ const PRESETS = {
       { type: "biconcave", diameter: 45, thickness: 3, refractiveIndex: 1.7, r1: -95, r2: 52, gapAfter: 2 },
       { type: "biconvex", diameter: 50, thickness: 5, refractiveIndex: 1.62, r1: 46, r2: -65, gapAfter: 0 }
     ]
+  },
+  voigtlanderNoktonClassic40F14Reference: {
+    name: "Voigtländer NOKTON Classic 40mm f/1.4 — reference only",
+    note: [
+      "Reference-only product entry. No authoritative numerical optical prescription is loaded.",
+      "Do not treat this modern Cosina Voigtländer lens as equivalent to the historical Voigtländer Nokton 50mm f/1.5 patent prescriptions."
+    ].join("\n"),
+    sourceType: "reference-only",
+    prescriptionType: "referenceOnly",
+    brand: "Voigtländer",
+    designType: "Normal",
+    prescriptionStatus: "reference-only",
+    sourceNotes: "Modern product reference only until an authoritative prescription is found.",
+    lenses: []
   }
 };
 
@@ -1156,6 +1170,113 @@ const PATENT_SURFACE_PRESCRIPTION_DATA = {
       { no: 16, radius: Infinity, distanceToNext: null, role: "imagePlane" }
     ]
   },
+  voigtlanderNokton50F15Us2646721: {
+    patentDataStatus: "needsManualVerification",
+    sourcePatent: "US2646721A",
+    sourceExample: "Numerical example, Fig. 2",
+    example: "Fig. 2 numerical example",
+    focalLength: 50,
+    apertureRatio: "1:1.5",
+    normalizationBasis: "Patent states focal length equals unit; radii, thicknesses and distances are normalized to F = 1.0.",
+    prescriptionStatus: "needs-primary-table-transcription",
+    presetGroup: "Historical Voigtländer Patent Lenses",
+    sourceNotes: [
+      "Primary source confirms a normalized high-speed modified Gauss example at relative aperture 1:1.5 and initial aperture diameter 0.667 for focal length 1.",
+      "The numerical table is embedded in the patent PDF in a form that was not reliably machine-readable in this environment, so no radii, thicknesses, air gaps, nd or Abbe values are loaded.",
+      "Do not approximate from later Nokton products or mix data from other patents."
+    ].join(" "),
+    note: [
+      "Pending primary-source table transcription. The patent narrative identifies the normalized f/1.5 modified Gauss example, but the row-by-row numerical table has not been entered.",
+      "No numerical optical prescription is loaded, and this entry is intentionally not marked verified."
+    ].join("\n"),
+    surfaces: createPatentPlaceholderSurfaces(1)
+  },
+  voigtlanderApoLanthar200F45Us2645154: {
+    patentDataStatus: "needsTranscriptionAudit",
+    sourcePatent: "US2645154A",
+    sourceExample: "Numerical f/4.5 example",
+    example: "Numerical f/4.5 example",
+    focalLength: 200,
+    apertureRatio: "1:4.5",
+    normalizationBasis: "Patent table gives F = 1.0000; exact row transcription is pending before this can be scaled to a 200 mm verified preset.",
+    prescriptionStatus: "needs-primary-table-transcription",
+    presetGroup: "Historical Voigtländer Patent Lenses",
+    sourceNotes: [
+      "US2645154A f/4.5 Heliar-derived example has a rear diaphragm space split by b1 and b2 in the patent table.",
+      "The available machine transcription did not pass the app paraxial EFL audit, so no numerical radii, thicknesses, air gaps, nd or Abbe values are loaded as verified yet.",
+      "Do not interpolate or repair this entry from the related US2645156A Color-Heliar patent."
+    ].join(" "),
+    note: [
+      "Pending primary-source table transcription audit. The source patent is identified, but this entry is intentionally not marked verified until the row-by-row prescription passes the focal-length audit.",
+      "No numerical optical prescription is loaded."
+    ].join("\n"),
+    numericalAudit: {
+      expectedEflMm: 200,
+      eflToleranceMm: 3,
+      status: "failed-machine-transcription"
+    },
+    surfaces: createPatentPlaceholderSurfaces(1)
+  },
+  voigtlanderColorHeliar200F35Us2645156: {
+    patentDataStatus: "verified",
+    sourcePatent: "US2645156A",
+    sourceExample: "Numerical f/3.5 example",
+    example: "Numerical f/3.5 example",
+    focalLength: 200,
+    apertureRatio: "1:3.5",
+    backFocalLength: 164.06,
+    normalizationBasis: "Patent table gives F = 1.0000; this preset scales all radii, axial thicknesses and air spaces by 200 for a 200 mm version.",
+    prescriptionStatus: "verified-patent",
+    presetGroup: "Historical Voigtländer Patent Lenses",
+    sourceNotes: "US2645156A f/3.5 Color-Heliar example. Refractive indices and Abbe numbers are patent nd/V values. The rear diaphragm space a2 is split by b1 and b2 in the patent table.",
+    note: "Patent prescription scaled from normalized F = 1.0 to 200 mm. Scale axial dimensions and radii only; refractive indices and Abbe numbers remain as printed. Clear apertures and mechanical diameters are not supplied by the patent and remain estimated.",
+    numericalAudit: {
+      expectedEflMm: 200,
+      eflToleranceMm: 3,
+      status: "pending"
+    },
+    surfaces: [
+      { no: 1, radius: 61.618, distanceToNext: 15.404, nAfter: 1.65110, vdAfter: 58.6 },
+      { no: 2, radius: -178.692, distanceToNext: 3.698, nAfter: 1.60266, vdAfter: 38.4 },
+      { no: 3, radius: 1160.616, distanceToNext: 7.042 },
+      { no: 4, radius: -161.26, distanceToNext: 3.698, nAfter: 1.64282, vdAfter: 47.9 },
+      { no: 5, radius: 56.688, distanceToNext: 14.358 },
+      { no: 6, radius: Infinity, distanceToNext: 3.698, nAfter: 1.58241, vdAfter: 40.6 },
+      { no: 7, radius: 64.39, distanceToNext: 14.542, nAfter: 1.69347, vdAfter: 53.5 },
+      { no: 8, radius: -105.982, distanceToNext: null }
+    ]
+  },
+  voigtlanderUltron50F2Us2627204Ex2: {
+    patentDataStatus: "verified",
+    sourcePatent: "US2627204A",
+    sourceExample: "Example II",
+    example: "Example II",
+    focalLength: 50,
+    apertureRatio: "1:2.0",
+    normalizationBasis: "Patent Example II gives focal length 1.0; this preset scales all radii, axial thicknesses and air spaces by 50 for a 50 mm version.",
+    prescriptionStatus: "verified-patent",
+    presetGroup: "Historical Voigtländer Patent Lenses",
+    sourceNotes: "US2627204A Example II, f/2.0 modified Gauss. Glasses are stored as patent nd/V values only; no catalogue glass designations are inferred.",
+    note: "Patent prescription scaled from normalized F = 1.0 to 50 mm. Scale axial dimensions and radii only; refractive indices and Abbe numbers remain as printed. Clear apertures and mechanical diameters are not supplied by the patent and remain estimated.",
+    numericalAudit: {
+      expectedEflMm: 50,
+      eflToleranceMm: 1,
+      status: "pending"
+    },
+    surfaces: [
+      { no: 1, radius: 31.607, distanceToNext: 2.998, nAfter: 1.62139, vdAfter: 60.3 },
+      { no: 2, radius: 88.0055, distanceToNext: 0.2 },
+      { no: 3, radius: 21.914, distanceToNext: 4.1965, nAfter: 1.65953, vdAfter: 57.0 },
+      { no: 4, radius: 54.34, distanceToNext: 3.5975 },
+      { no: 5, radius: 48.5145, distanceToNext: 2.448, nAfter: 1.64691, vdAfter: 33.9 },
+      { no: 6, radius: 13.548, distanceToNext: 9.443 },
+      { no: 7, radius: -13.222, distanceToNext: 1.099, nAfter: 1.63652, vdAfter: 35.5 },
+      { no: 8, radius: 38.5015, distanceToNext: 4.849, nAfter: 1.69347, vdAfter: 53.5 },
+      { no: 10, radius: -18.6165, distanceToNext: 0.15 },
+      { no: 11, radius: 188.3115, distanceToNext: 3.897, nAfter: 1.72381, vdAfter: 38.0 },
+      { no: 12, radius: -39.691, distanceToNext: null }
+    ]
+  },
   sonyFe24F14Wo2019073744Ex1: { patentDataStatus: "needsManualVerification", surfaces: createPatentPlaceholderSurfaces(1) },
   sonyFe70200F4Us20150226945Ex1: { patentDataStatus: "needsManualVerification", surfaces: createPatentPlaceholderSurfaces(1) },
   nikonLargeApertureWideAngleUs3576360: {
@@ -1327,6 +1448,11 @@ const makePatentPreset = ({
   backFocalLength = null,
   fieldAngleDeg = null,
   imageFormat = null,
+  presetGroup = "Patent-based prescriptions",
+  sourceExample = example,
+  normalizationBasis = "",
+  prescriptionStatus = "needsManualVerification",
+  sourceNotes = "",
   surfaceCount = 1,
   diameterSource = null,
   diameterReference = null,
@@ -1348,6 +1474,11 @@ const makePatentPreset = ({
   backFocalLength,
   fieldAngleDeg,
   imageFormat,
+  presetGroup,
+  sourceExample,
+  normalizationBasis,
+  prescriptionStatus,
+  sourceNotes,
   diameterSource,
   diameterReference,
   diameterNote,
@@ -1417,6 +1548,36 @@ const PATENT_APERTURE_STOP_SPECS = {
     sourceLabel: "US20150092100 Numerical Example 1 includes stop surface 7.",
     sourceUrl: "https://patents.google.com/patent/US20150092100A1/en",
     note: "Stop is explicitly entered as surface 7."
+  },
+  voigtlanderApoLanthar200F45Us2645154: {
+    kind: "airGap",
+    afterSurfaceNumber: 5,
+    fraction: 0.6552538370720189,
+    sourceLevel: "patent",
+    confidence: "verified",
+    sourceLabel: "US2645154A f/4.5 example gives rear diaphragm space a2 split by b1 = 0.03885 and b2 = 0.02044 between R5 and R6.",
+    sourceUrl: "https://patents.google.com/patent/US2645154A/en",
+    note: "Preset is scaled to 200 mm; the stop fraction preserves the patent b1/a2 split."
+  },
+  voigtlanderColorHeliar200F35Us2645156: {
+    kind: "airGap",
+    afterSurfaceNumber: 5,
+    fraction: 0.644240144866973,
+    sourceLevel: "patent",
+    confidence: "verified",
+    sourceLabel: "US2645156A f/3.5 example gives rear diaphragm space a2 = 0.07179 split by b1 = 0.04625 and b2 = 0.02554 between R5 and R6.",
+    sourceUrl: "https://patents.google.com/patent/US2645156A/en",
+    note: "Preset is scaled to 200 mm; the stop fraction preserves the patent b1/a2 split."
+  },
+  voigtlanderUltron50F2Us2627204Ex2: {
+    kind: "airGap",
+    afterSurfaceNumber: 6,
+    fraction: 0.4973525362702531,
+    sourceLevel: "patent",
+    confidence: "verified",
+    sourceLabel: "US2627204A Example II gives central diaphragm space a3 split by b1 = 0.09393 and b2 = 0.09493 between R6 and R7.",
+    sourceUrl: "https://patents.google.com/patent/US2627204A/en",
+    note: "Preset is scaled to 50 mm; the stop fraction preserves the patent b1/a3 split."
   },
   nikonF12Us3738736: {
     kind: "airGap",
@@ -1858,6 +2019,45 @@ const PATENT_PRESET_DEFINITIONS = [
     designType: "Normal"
   }),
   makePatentPreset({
+    key: "voigtlanderNokton50F15Us2646721",
+    name: "Voigtländer Nokton 50mm f/1.5 — US2646721A",
+    sourcePatent: "US2646721A",
+    example: "Fig. 2 numerical example",
+    brand: "Voigtländer",
+    designType: "Ultra-fast",
+    presetGroup: "Historical Voigtländer Patent Lenses",
+    analysisDefaults: TELEPHOTO_ANALYSIS_DEFAULTS
+  }),
+  makePatentPreset({
+    key: "voigtlanderApoLanthar200F45Us2645154",
+    name: "Voigtländer Apo-Lanthar 200mm f/4.5 — US2645154A",
+    sourcePatent: "US2645154A",
+    example: "Numerical f/4.5 example",
+    brand: "Voigtländer",
+    designType: "Telephoto",
+    presetGroup: "Historical Voigtländer Patent Lenses",
+    analysisDefaults: TELEPHOTO_ANALYSIS_DEFAULTS
+  }),
+  makePatentPreset({
+    key: "voigtlanderColorHeliar200F35Us2645156",
+    name: "Voigtländer Color-Heliar 200mm f/3.5 — US2645156A",
+    sourcePatent: "US2645156A",
+    example: "Numerical f/3.5 example",
+    brand: "Voigtländer",
+    designType: "Telephoto",
+    presetGroup: "Historical Voigtländer Patent Lenses",
+    analysisDefaults: TELEPHOTO_ANALYSIS_DEFAULTS
+  }),
+  makePatentPreset({
+    key: "voigtlanderUltron50F2Us2627204Ex2",
+    name: "Voigtländer Ultron-type 50mm f/2 — US2627204A Example II",
+    sourcePatent: "US2627204A",
+    example: "Example II",
+    brand: "Voigtländer",
+    designType: "Normal",
+    presetGroup: "Historical Voigtländer Patent Lenses"
+  }),
+  makePatentPreset({
     key: "sonyFe24F14Wo2019073744Ex1",
     name: "Sony FE 24mm f/1.4 GM — WO2019-073744 Example 1",
     sourcePatent: "WO2019-073744",
@@ -1944,6 +2144,11 @@ const normalizePrescription = (prescription = {}) => {
       sourcePatent: prescription.sourcePatent ?? null,
       example: prescription.example ?? null,
       patentDataStatus: prescription.patentDataStatus ?? null,
+      presetGroup: prescription.presetGroup || null,
+      sourceExample: prescription.sourceExample || null,
+      normalizationBasis: prescription.normalizationBasis || null,
+      prescriptionStatus: prescription.prescriptionStatus || null,
+      sourceNotes: prescription.sourceNotes || null,
       explicitImagePlaneSurfaceNumber: Number.isFinite(numericValue(prescription.explicitImagePlaneSurfaceNumber))
         ? Math.round(numericValue(prescription.explicitImagePlaneSurfaceNumber))
         : null,
@@ -2027,6 +2232,11 @@ const clonePresetPrescription = (presetKey) => {
       sourcePatent: preset.sourcePatent,
       example: preset.example,
       patentDataStatus: preset.patentDataStatus,
+      presetGroup: preset.presetGroup || null,
+      sourceExample: preset.sourceExample || null,
+      normalizationBasis: preset.normalizationBasis || null,
+      prescriptionStatus: preset.prescriptionStatus || null,
+      sourceNotes: preset.sourceNotes || null,
       explicitImagePlaneSurfaceNumber: preset.explicitImagePlaneSurfaceNumber ?? null,
       imagePlaneSource: preset.imagePlaneSource || null,
       finalSurfaceRole: preset.finalSurfaceRole || null,
@@ -2406,6 +2616,7 @@ let opticalAnalysisIdleHandle = null;
 let geometricMtfConvergenceIdleHandle = null;
 let mtfMainFrameHandle = null;
 let mtfMainIdleHandle = null;
+let geometricMtfMainWorker = null;
 let diffractionFrameHandle = null;
 let diffractionIdleHandle = null;
 
@@ -2471,6 +2682,10 @@ const invalidateAnalysisCache = () => {
   }
   cancelIdleOrTimeout(mtfMainIdleHandle);
   mtfMainIdleHandle = null;
+  if (geometricMtfMainWorker) {
+    geometricMtfMainWorker.terminate();
+    geometricMtfMainWorker = null;
+  }
   if (diffractionFrameHandle !== null && typeof cancelAnimationFrame === "function") {
     cancelAnimationFrame(diffractionFrameHandle);
     diffractionFrameHandle = null;
@@ -12482,6 +12697,19 @@ const presetSelectEntries = () => (
   ))
 );
 
+const presetMenuGroupLabel = (preset) => (
+  preset?.presetGroup
+  || (preset?.sourceType === "visualReference" ? "Visual references" : "Patent-based prescriptions")
+);
+
+const groupPresetSelectEntries = (entries) => entries.reduce((groups, entry) => {
+  const [, preset] = entry;
+  const label = presetMenuGroupLabel(preset);
+  if (!groups.has(label)) groups.set(label, []);
+  groups.get(label).push(entry);
+  return groups;
+}, new Map());
+
 const renderPresetSelect = () => {
   const presetEntries = Object.entries(PRESETS).filter(([key, preset]) => (
     key !== "custom"
@@ -12489,13 +12717,18 @@ const renderPresetSelect = () => {
     && ["patent", "visualReference"].includes(preset.sourceType)
     && presetHasDrawablePrescription(preset)
   ));
+  const groupedEntries = groupPresetSelectEntries(presetEntries);
 
   return `
     <label class="header-select-control preset-select-control">
       <span>${tx("classicPreset")}</span>
       <select data-action="select-preset" aria-label="${tx("classicPreset")}">
-        ${presetEntries.map(([key, preset]) => `
-          <option value="${key}" ${state.preset === key ? "selected" : ""}>${escapeHtml(presetMenuLabel(preset))}</option>
+        ${[...groupedEntries.entries()].map(([label, entries]) => `
+          <optgroup label="${escapeHtml(label)}">
+            ${entries.map(([key, preset]) => `
+              <option value="${key}" ${state.preset === key ? "selected" : ""}>${escapeHtml(presetMenuLabel(preset))}</option>
+            `).join("")}
+          </optgroup>
         `).join("")}
       </select>
     </label>
@@ -12809,7 +13042,7 @@ const queueMtfMainAnalysis = ({ reason = "update", immediate = false } = {}) => 
   mtfMainFrameHandle = null;
   mtfMainIdleHandle = null;
 
-  const runCalculation = () => {
+  const runCalculation = async () => {
     if (token !== state.mtfAnalysis.requestToken || signature !== state.mtfAnalysis.signature) {
       state.mtfAnalysis.cancelledStaleJobs = (state.mtfAnalysis.cancelledStaleJobs || 0) + 1;
       return;
@@ -12821,7 +13054,48 @@ const queueMtfMainAnalysis = ({ reason = "update", immediate = false } = {}) => 
     const startedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
     try {
       const system = calculateSystem(state.lenses);
-      const result = calculateSagittalTangentialGeometricMTFPanelData(state.lenses, system);
+      const eligibility = canUseGeometricMtfMainWorker(state.lenses, system);
+      let result;
+      let source = "main-thread fallback";
+      if (eligibility.supported) {
+        const payload = buildGeometricMtfMainWorkerPayload(state.lenses, system);
+        try {
+          const workerResult = await calculateGeometricMtfMainPanelInWorker(payload, token, signature);
+          if (token !== state.mtfAnalysis.requestToken || signature !== state.mtfAnalysis.signature) {
+            state.mtfAnalysis.cancelledStaleJobs = (state.mtfAnalysis.cancelledStaleJobs || 0) + 1;
+            return;
+          }
+          if (workerResult?.status !== "valid" || workerResult?.source !== "worker") {
+            throw new Error(workerResult?.warnings?.[0] || workerResult?.diagnostics?.reason || "Worker returned unsupported result.");
+          }
+          result = finalizeGeometricMtfMainWorkerResult(workerResult, system, eligibility);
+          source = "worker";
+        } catch (workerError) {
+          const fallbackResult = calculateSagittalTangentialGeometricMTFPanelData(state.lenses, system);
+          result = {
+            ...fallbackResult,
+            workerEligibility: eligibility,
+            workerFallbackReason: workerError?.message || "Worker unavailable",
+            warnings: [
+              "Main-thread fallback — worker geometry or focus mode unsupported.",
+              workerError?.message || "Worker unavailable",
+              ...(fallbackResult.warnings || [])
+            ].filter(Boolean)
+          };
+          source = "main-thread fallback";
+        }
+      } else {
+        const fallbackResult = calculateSagittalTangentialGeometricMTFPanelData(state.lenses, system);
+        result = {
+          ...fallbackResult,
+          workerEligibility: eligibility,
+          warnings: [
+            eligibility.reason,
+            eligibility.details,
+            ...(fallbackResult.warnings || [])
+          ].filter(Boolean)
+        };
+      }
       const durationMs = (typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt;
       if (token !== state.mtfAnalysis.requestToken || signature !== state.mtfAnalysis.signature) {
         state.mtfAnalysis.cancelledStaleJobs = (state.mtfAnalysis.cancelledStaleJobs || 0) + 1;
@@ -12830,7 +13104,7 @@ const queueMtfMainAnalysis = ({ reason = "update", immediate = false } = {}) => 
       const stored = rememberBoundedCacheValue(mainMtfResultCache, signature, {
         ...result,
         mtfAnalysisDurationMs: durationMs,
-        mtfAnalysisSource: "main-thread fallback",
+        mtfAnalysisSource: source,
         mtfAnalysisReason: reason,
         mtfAnalysisSignature: signature
       }, MAIN_MTF_CACHE_LIMIT);
@@ -12840,7 +13114,7 @@ const queueMtfMainAnalysis = ({ reason = "update", immediate = false } = {}) => 
         error: "",
         durationMs,
         cacheHit: false,
-        source: "main-thread fallback"
+        source
       };
       state.lastMtfResolutionResult = stored;
       scheduleGeometricMtfConvergenceValidation(state.lenses, system, stored.manufacturerFieldData, {
@@ -16990,6 +17264,263 @@ const geometricMtfWorkerPayload = (lenses, system, fieldData, options = {}) => {
   };
 };
 
+const geometricMtfSurfaceModelForOptions = (lenses, system, options = {}) => {
+  const spectralLineKey = options.spectralLineKey || "d";
+  const wavelengthNm = toNumber(options.wavelengthNm)
+    || SPECTRAL_LINES[spectralLineKey]?.wavelengthNm
+    || SPECTRAL_LINES.d.wavelengthNm;
+  return buildSurfaceList(lenses, system, {
+    ...rayTraceApertureOptions(state),
+    ...options,
+    wavelengthNm,
+    spectralLineKey
+  }).map(serializeSurfaceForGeometricMtfWorker);
+};
+
+const canUseGeometricMtfMainWorker = (lenses, system) => {
+  if (normalizeMtfEngine(state.mtfEngine) !== "geometricLsfFft") {
+    return {
+      supported: false,
+      reason: "Main-thread fallback — worker geometry or focus mode unsupported.",
+      details: "Selected MTF engine is not Geometric LSF/FFT."
+    };
+  }
+  if (state.stMtfWavelengthMode === "rgb") {
+    return {
+      supported: false,
+      reason: "Main-thread fallback — worker geometry or focus mode unsupported.",
+      details: "RGB MTF mode needs multiple wavelength surface models."
+    };
+  }
+  if (state.mtfPlaneMode === "best" || state.mtfBestFocusComparisonRequested === true) {
+    return {
+      supported: false,
+      reason: "Main-thread fallback — worker geometry or focus mode unsupported.",
+      details: "Best-plane comparison is not part of the first visible worker stage."
+    };
+  }
+  if (state.mtfFieldFocusPolicy === "centerRefocus") {
+    return {
+      supported: false,
+      reason: "Main-thread fallback — worker geometry or focus mode unsupported.",
+      details: "Centre-refocused field policy is not supported by the first visible worker stage."
+    };
+  }
+  if (state.mtfApertureSweepFocusPolicy === "refocus") {
+    return {
+      supported: false,
+      reason: "Main-thread fallback — worker geometry or focus mode unsupported.",
+      details: "Aperture sweep centre-refocus is not supported by the first visible worker stage."
+    };
+  }
+  const surfaceModel = geometricMtfSurfaceModelForOptions(lenses, system, {
+    wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+    spectralLineKey: "d"
+  });
+  const flags = geometricMtfSurfaceFeatureFlags(surfaceModel);
+  if (flags.unsupportedByWorker) {
+    return {
+      supported: false,
+      reason: "Main-thread fallback — worker geometry or focus mode unsupported.",
+      details: `Worker model does not yet support ${flags.unsupportedFeatures.join(" and ")} geometry.`,
+      surfaceFeatureFlags: flags
+    };
+  }
+  return {
+    supported: true,
+    reason: "Worker eligible",
+    details: "Spherical/plano zero-tilt current-plane Geometric LSF/FFT.",
+    surfaceFeatureFlags: flags,
+    surfaceSignature: geometricMtfSurfaceSignature(surfaceModel)
+  };
+};
+
+const buildGeometricMtfMainWorkerPayload = (lenses, system) => {
+  const spectralLineKey = "d";
+  const wavelengthNm = SPECTRAL_LINES.d.wavelengthNm;
+  const rayCount = effectiveMtfPupilSampleCount();
+  const maxFrequencyLpMm = resolveMtfMaxFrequency(system, wavelengthNm);
+  const geometricMtfOptions = activeGeometricMtfOptions(maxFrequencyLpMm);
+  const surfaceModel = geometricMtfSurfaceModelForOptions(lenses, system, {
+    wavelengthNm,
+    spectralLineKey
+  });
+  const surfaceSignature = geometricMtfSurfaceSignature(surfaceModel);
+  const manufacturerFrequencies = selectedManufacturerMtfFrequencies();
+  const sensor = activeMtfSensorFormat();
+  const apertureSweepOptions = mtfApertureSweepCalculationOptions();
+  const apertureSweepField = RAY_TRACE_FIELDS.find((item) => item.key === state.mtfApertureFrequencyFieldKey) || RAY_TRACE_FIELDS[0];
+  const sweepOptions = apertureSweepOptions.map((option) => {
+    const physicalStopDiameter = physicalStopDiameterForRequestedFNumber(lenses, system, option.fNumber);
+    return {
+      key: option.key,
+      label: option.label,
+      fNumber: option.fNumber,
+      requestedFNumber: option.fNumber || calculateFNumber(system),
+      physicalStopDiameter,
+      focusPolicy: "fixed",
+      imagePlaneX: 0,
+      surfaceModel: geometricMtfSurfaceModelForOptions(lenses, system, {
+        wavelengthNm,
+        spectralLineKey,
+        apertureDiameter: physicalStopDiameter
+      })
+    };
+  });
+  return {
+    task: "geometric-lsf-main-panel",
+    workerVersion: ANALYSIS_WORKER_VERSION,
+    solverContractVersion: GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION,
+    expectedSurfaceSignature: surfaceSignature,
+    surfaceModel,
+    surfaceSignature,
+    rayCount,
+    quality: geometricMtfOptions.quality,
+    maxFrequencyLpMm,
+    frequencyStepLpMm: geometricMtfOptions.frequencyStepLpMm,
+    wavelengthMode: "d",
+    wavelength: { spectralLineKey, wavelengthNm },
+    currentPlaneOnly: true,
+    imagePlaneX: 0,
+    fieldOrientation: "tangential",
+    totalTrackMm: system.totalTrack,
+    maxFieldAngleDegrees: 45,
+    fieldRequests: RAY_TRACE_FIELDS.map((field) => ({
+      fieldKey: field.key,
+      fieldName: field.name,
+      fieldAngleDegrees: field.angle,
+      spectralLineKey,
+      wavelengthNm
+    })),
+    manufacturerRequest: {
+      frequencies: manufacturerFrequencies,
+      sensor,
+      maxImageHeightMm: (sensor.diagonal || FULL_FRAME_SENSOR.diagonal) / 2,
+      sampleCount: 9,
+      focusPolicy: "fixed"
+    },
+    apertureSweepRequest: {
+      chartMode: state.mtfChartMode,
+      field: apertureSweepField,
+      options: sweepOptions
+    },
+    normalizedPrescription: {
+      preset: state.preset,
+      prescriptionType: state.prescription?.prescriptionType || "element"
+    },
+    cacheRevision: state.analysisCacheRevision || 0
+  };
+};
+
+const isGeometricMtfMainWorkerResponseCurrent = (response, payload, token, signature) => (
+  response?.requestId === token
+  && state.mtfAnalysis?.requestToken === token
+  && state.mtfAnalysis?.signature === signature
+  && response.status === "complete"
+  && response.workerVersion === ANALYSIS_WORKER_VERSION
+  && response.solverContractVersion === GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION
+  && (!payload.expectedSurfaceSignature || !response.surfaceSignature || response.surfaceSignature === payload.expectedSurfaceSignature)
+  && (!payload.expectedSurfaceSignature || !response.result?.surfaceSignature || response.result.surfaceSignature === payload.expectedSurfaceSignature)
+);
+
+const calculateGeometricMtfMainPanelInCore = (payload) => {
+  if (!globalThis.geometricMtfCore?.calculateGeometricLsfMainPanel) {
+    throw new Error("geometric-mtf-core.js main-panel solver is unavailable.");
+  }
+  return globalThis.geometricMtfCore.calculateGeometricLsfMainPanel(payload);
+};
+
+const calculateGeometricMtfMainPanelInWorker = (payload, token, signature) => new Promise((resolve, reject) => {
+  if (typeof Worker === "undefined") {
+    reject(new Error("Worker unavailable"));
+    return;
+  }
+  if (geometricMtfMainWorker) {
+    geometricMtfMainWorker.terminate();
+    geometricMtfMainWorker = null;
+    if (state.mtfAnalysis) state.mtfAnalysis.cancelledStaleJobs = (state.mtfAnalysis.cancelledStaleJobs || 0) + 1;
+  }
+  let settled = false;
+  const finish = (result) => {
+    if (settled) return;
+    settled = true;
+    if (geometricMtfMainWorker) {
+      geometricMtfMainWorker.terminate();
+      geometricMtfMainWorker = null;
+    }
+    resolve(result);
+  };
+  const fail = (error) => {
+    if (settled) return;
+    settled = true;
+    if (geometricMtfMainWorker) {
+      geometricMtfMainWorker.terminate();
+      geometricMtfMainWorker = null;
+    }
+    reject(error);
+  };
+  try {
+    geometricMtfMainWorker = new Worker(`geometric-mtf-worker.js?v=${ANALYSIS_WORKER_VERSION}`);
+    geometricMtfMainWorker.onmessage = (event) => {
+      const response = event.data || {};
+      if (response.requestId !== token) {
+        if (state.mtfAnalysis) state.mtfAnalysis.cancelledStaleJobs = (state.mtfAnalysis.cancelledStaleJobs || 0) + 1;
+        return;
+      }
+      if (state.mtfAnalysis?.requestToken !== token || state.mtfAnalysis?.signature !== signature) {
+        if (state.mtfAnalysis) state.mtfAnalysis.cancelledStaleJobs = (state.mtfAnalysis.cancelledStaleJobs || 0) + 1;
+        return;
+      }
+      if (response.status !== "complete") {
+        fail(new Error(response.error || response.reason || "Geometric MTF main worker failed"));
+        return;
+      }
+      if (!isGeometricMtfMainWorkerResponseCurrent(response, payload, token, signature)) {
+        if (state.mtfAnalysis) state.mtfAnalysis.cancelledStaleJobs = (state.mtfAnalysis.cancelledStaleJobs || 0) + 1;
+        fail(new Error("Geometric MTF main worker returned stale or mismatched metadata."));
+        return;
+      }
+      finish(response.result);
+    };
+    geometricMtfMainWorker.onerror = () => fail(new Error("Geometric MTF main worker error"));
+    geometricMtfMainWorker.postMessage({ requestId: token, ...payload });
+  } catch (error) {
+    fail(error);
+  }
+});
+
+const finalizeGeometricMtfMainWorkerResult = (result, system, eligibility) => ({
+  wavelengthMode: "d",
+  rayCount: effectiveMtfPupilSampleCount(),
+  maxFrequencyLpMm: result.maxFrequencyLpMm || resolveMtfMaxFrequency(system, SPECTRAL_LINES.d.wavelengthNm),
+  wideOpenFNumber: calculateFNumber(system),
+  comparisons: result.comparisons || [],
+  activeResults: result.activeResults || [],
+  manufacturerFieldData: result.manufacturerFieldData || {
+    maxImageHeightMm: FULL_FRAME_SENSOR.diagonal / 2,
+    frequencies: selectedManufacturerMtfFrequencies(),
+    samples: [],
+    warnings: [],
+    engine: "geometricLsfFft",
+    engineLabel: mtfEngineLabel("geometricLsfFft"),
+    sensor: activeMtfSensorFormat(),
+    source: "worker",
+    focusPolicy: "fixed"
+  },
+  lsfConvergence: null,
+  apertureSweepResults: result.apertureSweepResults || [],
+  throughFocusResult: null,
+  throughFocusDeferred: true,
+  warnings: [
+    ...(result.warnings || []),
+    "Geometric LSF/FFT preview — not physical wavefront MTF."
+  ].filter((warning, index, list) => warning && list.indexOf(warning) === index),
+  workerEligibility: eligibility,
+  workerParityStatus: "shared-core",
+  workerSurfaceSignature: result.surfaceSignature || "",
+  workerContractVersion: result.solverContractVersion || GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION
+});
+
 const rememberGeometricMtfConvergence = (key, result) => {
   geometricMtfConvergenceCache.set(key, result);
   while (geometricMtfConvergenceCache.size > GEOMETRIC_MTF_CONVERGENCE_CACHE_LIMIT) {
@@ -18497,7 +19028,7 @@ const renderSagittalTangentialGeometricMTFPanel = (result) => {
       ${renderSagittalTangentialMTFReadoutTable(result.activeResults)}
       <details class="mtf-diagnostics-details">
         <summary>Geometric preview diagnostics</summary>
-        <p class="diagram-note">Visible chart: ${escapeHtml(mtfAnalysisStatusLabel(result.mtfAnalysisStatus || result.status))} · Main calculation: ${Number.isFinite(result.mtfAnalysisDurationMs) ? `${formatNumber(result.mtfAnalysisDurationMs, 0)} ms` : "--"} · Source: ${escapeHtml(result.mtfAnalysisSource || "queued")} · Cache: ${result.mtfAnalysisCacheHit ? "hit" : "miss"} · Cancelled stale jobs: ${formatNumber(result.cancelledStaleJobs || 0, 0)}</p>
+        <p class="diagram-note">Visible chart: ${escapeHtml(mtfAnalysisStatusLabel(result.mtfAnalysisStatus || result.status))} · Main calculation: ${Number.isFinite(result.mtfAnalysisDurationMs) ? `${formatNumber(result.mtfAnalysisDurationMs, 0)} ms` : "--"} · Source: ${escapeHtml(result.mtfAnalysisSource || "queued")} · Cache: ${result.mtfAnalysisCacheHit ? "hit" : "miss"} · Worker eligibility: ${escapeHtml(result.workerEligibility?.supported ? "eligible" : (result.workerEligibility?.details || "not checked"))} · Parity: ${escapeHtml(result.workerParityStatus || "pending")} · Cancelled stale jobs: ${formatNumber(result.cancelledStaleJobs || 0, 0)}</p>
         <p class="diagram-note">Deferred sections: diffraction / hybrid, through-focus, convergence diagnostics.</p>
         <p class="diagram-note">Engine: ${manufacturerFieldData.engine === "geometricLsfFft" ? "Geometric LSF/FFT" : "Fast RMS Gaussian"}.</p>
         <p class="diagram-note">MTF effective pupil samples: ${escapeHtml(String(effectiveMtfPupilSampleCount()))}. Traced rays: ${manufacturerFieldData.samples?.[0]?.result?.totalRayCount ?? "--"}. Energy-carrying pupil samples: ${manufacturerFieldData.samples?.[0]?.result?.totalEnergyRayCount ?? "--"}. Chief reference ray: ${manufacturerFieldData.samples?.[0]?.result?.chiefReferenceRayCount ?? "--"}. Valid energy samples: ${manufacturerFieldData.samples?.[0]?.result?.validEnergyRayCount ?? "--"}. Field samples: ${manufacturerFieldData.fieldSampleCount || manufacturerFieldData.samples?.length || 0}. Focus policy: ${manufacturerFieldData.focusPolicy === "center-refocused" ? "Centre-refocused common plane" : "Fixed Sony sensor plane"}.</p>
@@ -22808,7 +23339,7 @@ const runOpticsSelfCheck = (options = {}) => {
   });
 
   test("active patent entries exist as surface prescriptions", () => (
-    PATENT_PRESET_KEYS.length === 18
+    PATENT_PRESET_KEYS.length === 22
       && !PATENT_PRESET_KEYS.includes("zeissTessar50F28Fr1066698Ex1")
       && !("zeissTessar50F28Fr1066698Ex1" in PRESETS)
       && PATENT_PRESET_KEYS.every((key) => PRESETS[key]?.sourceType === "patent" && PRESETS[key]?.prescriptionType === "surface")
@@ -22857,11 +23388,65 @@ const runOpticsSelfCheck = (options = {}) => {
       && PRESETS.sonyZeissPlanar50F14Us20140071331Ex4.surfaces.length === 14
       && PRESETS.sonySonnarFe55F18Us20150092100Ex1.patentDataStatus === "verified"
       && PRESETS.sonySonnarFe55F18Us20150092100Ex1.surfaces.length === 16
+      && PRESETS.voigtlanderApoLanthar200F45Us2645154.patentDataStatus === "needsTranscriptionAudit"
+      && PRESETS.voigtlanderApoLanthar200F45Us2645154.surfaces.length === 1
+      && PRESETS.voigtlanderColorHeliar200F35Us2645156.patentDataStatus === "verified"
+      && PRESETS.voigtlanderColorHeliar200F35Us2645156.surfaces.length === 8
+      && PRESETS.voigtlanderUltron50F2Us2627204Ex2.patentDataStatus === "verified"
+      && PRESETS.voigtlanderUltron50F2Us2627204Ex2.surfaces.length === 11
       && PRESETS.zeissSonnar40F28Us3994576Ex1.surfaces.length === 10
       && PRESETS.nikonF12Us3738736.surfaces.length === 13
       && PRESETS.olympusF12Us4099843.patentDataStatus === "needsTranscriptionAudit"
       && PRESETS.olympusF12Us4099843.surfaces.length === 13
   ));
+
+  test("Historical Voigtlander patent presets preserve source metadata and reference boundaries", () => {
+    const verifiedKeys = [
+      "voigtlanderColorHeliar200F35Us2645156",
+      "voigtlanderUltron50F2Us2627204Ex2"
+    ];
+    const verifiedOk = verifiedKeys.every((key) => {
+      const preset = PRESETS[key];
+      return preset?.presetGroup === "Historical Voigtländer Patent Lenses"
+        && preset.sourcePatent
+        && preset.sourceExample
+        && preset.normalizationBasis
+        && preset.prescriptionStatus === "verified-patent"
+        && preset.sourceNotes
+        && preset.apertureStopSpec?.sourceLevel === "patent"
+        && preset.apertureStopSpec?.confidence === "verified";
+    });
+    const nokton = PRESETS.voigtlanderNokton50F15Us2646721;
+    const apo = PRESETS.voigtlanderApoLanthar200F45Us2645154;
+    const modernReference = PRESETS.voigtlanderNoktonClassic40F14Reference;
+    return verifiedOk
+      && nokton?.prescriptionStatus === "needs-primary-table-transcription"
+      && nokton.patentDataStatus === "needsManualVerification"
+      && (nokton.surfaces || []).every((surface) => surface.radius === null && surface.distanceToNext === null)
+      && apo?.prescriptionStatus === "needs-primary-table-transcription"
+      && apo.patentDataStatus === "needsTranscriptionAudit"
+      && (apo.surfaces || []).every((surface) => surface.radius === null && surface.distanceToNext === null)
+      && apo.apertureStopSpec?.sourceLevel === "patent"
+      && modernReference?.sourceType === "reference-only"
+      && modernReference?.prescriptionStatus === "reference-only"
+      && !modernReference.note.includes("US2646721A");
+  });
+
+  test("Historical Voigtlander patent stop splits and paraxial audits remain sane", () => {
+    const checks = [
+      ["voigtlanderColorHeliar200F35Us2645156", 5, 0.644240144866973, 200],
+      ["voigtlanderUltron50F2Us2627204Ex2", 6, 0.4973525362702531, 50]
+    ];
+    return checks.every(([key, afterSurfaceNumber, fraction, targetEfl]) => {
+      const preset = PRESETS[key];
+      const audit = calculateDirectPatentSequentialParaxialAudit(preset);
+      return preset.apertureStopSpec?.kind === "airGap"
+        && preset.apertureStopSpec.afterSurfaceNumber === afterSurfaceNumber
+        && Math.abs(preset.apertureStopSpec.fraction - fraction) < 1e-12
+        && Number.isFinite(audit.effectiveFocalLength)
+        && Math.abs(audit.effectiveFocalLength - targetEfl) / targetEfl < 0.08;
+    });
+  });
 
   test("Canon 50mm f/0.95 Dream Lens patent preset creates seven elements in five groups", () => {
     const preset = PRESETS.canonDreamLens50F095JpSho39_10178;
@@ -26646,6 +27231,179 @@ const runOpticsSelfCheck = (options = {}) => {
       : null;
     return unsupported?.status === "unsupported-geometry"
       && unsupported.diagnostics.unsupportedFeatures.includes("active asphere");
+  }));
+
+  test("visible geometric MTF worker payload rejects unknown solver contract", () => withTemporaryState(() => {
+    loadPresetIntoState("manual");
+    state.mtfEngine = "geometricLsfFft";
+    state.mtfPlaneMode = "current";
+    state.mtfFieldFocusPolicy = "fixed";
+    state.mtfApertureSweepFocusPolicy = "fixed";
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const payload = buildGeometricMtfMainWorkerPayload(lenses, system);
+    const result = calculateGeometricMtfMainPanelInCore({
+      ...payload,
+      solverContractVersion: "unknown-contract"
+    });
+    return result.status === "engine-mismatch"
+      && result.diagnostics.expectedSolverContractVersion === GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION;
+  }));
+
+  test("visible geometric MTF worker payload rejects mismatched surface signatures", () => withTemporaryState(() => {
+    loadPresetIntoState("manual");
+    state.mtfEngine = "geometricLsfFft";
+    state.mtfPlaneMode = "current";
+    state.mtfFieldFocusPolicy = "fixed";
+    state.mtfApertureSweepFocusPolicy = "fixed";
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const payload = buildGeometricMtfMainWorkerPayload(lenses, system);
+    const result = calculateGeometricMtfMainPanelInCore({
+      ...payload,
+      expectedSurfaceSignature: "mismatched"
+    });
+    return result.status === "engine-mismatch"
+      && result.diagnostics.expectedSurfaceSignature === "mismatched"
+      && result.surfaceSignature === payload.surfaceSignature;
+  }));
+
+  test("supported spherical current-plane MTF can use visible worker", () => withTemporaryState(() => {
+    loadPresetIntoState("manual");
+    state.mtfEngine = "geometricLsfFft";
+    state.mtfPlaneMode = "current";
+    state.mtfBestFocusComparisonRequested = false;
+    state.mtfFieldFocusPolicy = "fixed";
+    state.mtfApertureSweepFocusPolicy = "fixed";
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const eligibility = canUseGeometricMtfMainWorker(lenses, system);
+    const payload = buildGeometricMtfMainWorkerPayload(lenses, system);
+    const result = calculateGeometricMtfMainPanelInCore(payload);
+    return eligibility.supported === true
+      && payload.task === "geometric-lsf-main-panel"
+      && result.source === "worker"
+      && result.comparisons.length === RAY_TRACE_FIELDS.length
+      && result.activeResults.every((item) => item.engine === "geometricLsfFft");
+  }));
+
+  test("visible geometric MTF worker falls back for active asphere and surface tilt", () => withTemporaryState(() => {
+    loadPresetIntoState("manual");
+    state.mtfEngine = "geometricLsfFft";
+    state.mtfPlaneMode = "current";
+    state.mtfFieldFocusPolicy = "fixed";
+    state.mtfApertureSweepFocusPolicy = "fixed";
+    const asphereLenses = clonePresetLenses("manual").map((lens, index) => index === 0 ? normalizeLens({
+      ...lens,
+      frontAsphereEnabled: true,
+      frontA4: 1e-6
+    }) : lens);
+    const tiltLenses = clonePresetLenses("manual").map((lens, index) => index === 0 ? normalizeLens({
+      ...lens,
+      tiltY: 0.03
+    }) : lens);
+    return canUseGeometricMtfMainWorker(asphereLenses, calculateSystem(asphereLenses, SPECTRAL_LINES.d.wavelengthNm)).supported === false
+      && canUseGeometricMtfMainWorker(tiltLenses, calculateSystem(tiltLenses, SPECTRAL_LINES.d.wavelengthNm)).supported === false;
+  }));
+
+  test("visible geometric MTF worker falls back for best-plane and centre-refocus modes", () => withTemporaryState(() => {
+    loadPresetIntoState("manual");
+    state.mtfEngine = "geometricLsfFft";
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    state.mtfPlaneMode = "best";
+    const best = canUseGeometricMtfMainWorker(lenses, system);
+    state.mtfPlaneMode = "current";
+    state.mtfFieldFocusPolicy = "centerRefocus";
+    const centerRefocus = canUseGeometricMtfMainWorker(lenses, system);
+    state.mtfFieldFocusPolicy = "fixed";
+    state.mtfApertureSweepFocusPolicy = "refocus";
+    const apertureRefocus = canUseGeometricMtfMainWorker(lenses, system);
+    return best.supported === false
+      && centerRefocus.supported === false
+      && apertureRefocus.supported === false
+      && best.reason.includes("Main-thread fallback")
+      && centerRefocus.reason.includes("Main-thread fallback");
+  }));
+
+  test("visible MTF worker aperture payload includes only active field tab or checked frequency apertures", () => withTemporaryState(() => {
+    loadPresetIntoState("manual");
+    state.mtfEngine = "geometricLsfFft";
+    state.mtfPlaneMode = "current";
+    state.mtfFieldFocusPolicy = "fixed";
+    state.mtfApertureSweepFocusPolicy = "fixed";
+    state.mtfChartMode = "field";
+    state.mtfApertureSweepStops = ["wideOpen", "f4", "f8"];
+    state.mtfApertureFieldChartKey = "f4";
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const fieldPayload = buildGeometricMtfMainWorkerPayload(lenses, system);
+    state.mtfChartMode = "frequency";
+    const frequencyPayload = buildGeometricMtfMainWorkerPayload(lenses, system);
+    return fieldPayload.apertureSweepRequest.options.length === 1
+      && fieldPayload.apertureSweepRequest.options[0].key === "f4"
+      && frequencyPayload.apertureSweepRequest.options.map((item) => item.key).join(",") === "wideOpen,f4,f8";
+  }));
+
+  test("visible MTF worker stale responses cannot replace newer output", () => withTemporaryState(() => {
+    loadPresetIntoState("manual");
+    state.mtfEngine = "geometricLsfFft";
+    state.mtfPlaneMode = "current";
+    state.mtfFieldFocusPolicy = "fixed";
+    state.mtfApertureSweepFocusPolicy = "fixed";
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const signature = "newer-signature";
+    state.mtfAnalysis = {
+      ...state.mtfAnalysis,
+      signature,
+      requestToken: 2
+    };
+    const payload = buildGeometricMtfMainWorkerPayload(lenses, system);
+    const staleSuccess = {
+      requestId: 1,
+      status: "complete",
+      workerVersion: ANALYSIS_WORKER_VERSION,
+      solverContractVersion: GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION,
+      surfaceSignature: payload.surfaceSignature,
+      result: { surfaceSignature: payload.surfaceSignature }
+    };
+    const staleError = {
+      requestId: 1,
+      status: "error",
+      workerVersion: ANALYSIS_WORKER_VERSION,
+      error: "old error"
+    };
+    const current = {
+      requestId: 2,
+      status: "complete",
+      workerVersion: ANALYSIS_WORKER_VERSION,
+      solverContractVersion: GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION,
+      surfaceSignature: payload.surfaceSignature,
+      result: { surfaceSignature: payload.surfaceSignature }
+    };
+    return isGeometricMtfMainWorkerResponseCurrent(staleSuccess, payload, 2, signature) === false
+      && isGeometricMtfMainWorkerResponseCurrent(staleError, payload, 2, signature) === false
+      && isGeometricMtfMainWorkerResponseCurrent(current, payload, 2, signature) === true;
+  }));
+
+  test("visible MTF worker shared-core parity remains exact for repeated main-thread calculation", () => withTemporaryState(() => {
+    loadPresetIntoState("manual");
+    state.mtfEngine = "geometricLsfFft";
+    state.mtfPlaneMode = "current";
+    state.mtfFieldFocusPolicy = "fixed";
+    state.mtfApertureSweepFocusPolicy = "fixed";
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const payload = buildGeometricMtfMainWorkerPayload(lenses, system);
+    const first = calculateGeometricMtfMainPanelInCore(payload);
+    const second = calculateGeometricMtfMainPanelInCore(payload);
+    const firstCurve = first.activeResults[0]?.sagittal;
+    const secondCurve = second.activeResults[0]?.sagittal;
+    const maxDelta = Math.max(...firstCurve.values.map((value, index) => Math.abs(value - secondCurve.values[index])));
+    return first.source === "worker"
+      && second.source === "worker"
+      && maxDelta <= 1e-6;
   }));
 
   test("geometric LSF FFT reports triangular-binning kernel correction diagnostics", () => withTemporaryState(() => {

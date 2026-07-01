@@ -442,6 +442,82 @@ const TELEPHOTO_ANALYSIS_DEFAULTS = {
 };
 
 const STORAGE_KEY = "lensDesigner.savedDesigns.v1";
+const PROJECT_SCHEMA_VERSION = 2;
+const INDEXED_DB_NAME = "lensDesigner.projects.v2";
+const INDEXED_DB_VERSION = 1;
+const INDEXED_DB_STORES = {
+  designs: "designs",
+  analysisCache: "analysisCache",
+  optimizerReports: "optimizerReports",
+  csvExports: "csvExports",
+  svgReferences: "svgReferences",
+  metadata: "metadata"
+};
+
+const nowMs = () => (
+  typeof performance !== "undefined" && typeof performance.now === "function"
+    ? performance.now()
+    : Date.now()
+);
+
+const recordTimingDiagnostic = (name, durationMs, detail = {}) => {
+  if (!state?.timingDiagnostics) return;
+  const entry = {
+    name,
+    durationMs,
+    detail,
+    at: new Date().toISOString()
+  };
+  state.timingDiagnostics[name] = entry;
+  state.timingDiagnosticsLog.push(entry);
+  if (state.timingDiagnosticsLog.length > 80) state.timingDiagnosticsLog.shift();
+};
+
+const measureTiming = (name, detail, callback) => {
+  const started = nowMs();
+  try {
+    return callback();
+  } finally {
+    recordTimingDiagnostic(name, nowMs() - started, detail);
+  }
+};
+
+const measureTimingAsync = async (name, detail, callback) => {
+  const started = nowMs();
+  try {
+    return await callback();
+  } finally {
+    recordTimingDiagnostic(name, nowMs() - started, detail);
+  }
+};
+
+const platformService = {
+  async openProjectJson(file) {
+    const text = await file.text();
+    return validateProjectJson(JSON.parse(text));
+  },
+  async saveProjectJson(project, filename = "lens-design-project.json") {
+    const blob = new Blob([JSON.stringify(project, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  },
+  async exportText(filename, text, type = "text/plain") {
+    const blob = new Blob([text], { type });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  },
+  async appDataPath() {
+    return "browser:indexedDB:lensDesigner.projects.v2";
+  }
+};
 
 const UI_TEXT = {
   eyebrow: "Optics Calculator",
@@ -2290,6 +2366,172 @@ const loadSavedDesigns = () => {
   }
 };
 
+let indexedDbPromise = null;
+
+const hasIndexedDb = () => typeof indexedDB !== "undefined";
+
+const openLensDesignDb = () => {
+  if (!hasIndexedDb()) return Promise.resolve(null);
+  if (indexedDbPromise) return indexedDbPromise;
+  indexedDbPromise = new Promise((resolve) => {
+    const request = indexedDB.open(INDEXED_DB_NAME, INDEXED_DB_VERSION);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      Object.values(INDEXED_DB_STORES).forEach((storeName) => {
+        if (!db.objectStoreNames.contains(storeName)) {
+          db.createObjectStore(storeName, { keyPath: "id" });
+        }
+      });
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => resolve(null);
+    request.onblocked = () => resolve(null);
+  });
+  return indexedDbPromise;
+};
+
+const idbTransaction = async (storeName, mode, callback) => {
+  const db = await openLensDesignDb();
+  if (!db) return null;
+  return new Promise((resolve) => {
+    const transaction = db.transaction(storeName, mode);
+    const store = transaction.objectStore(storeName);
+    let callbackResult = null;
+    try {
+      callbackResult = callback(store);
+    } catch (error) {
+      resolve(null);
+      return;
+    }
+    transaction.oncomplete = () => resolve(callbackResult);
+    transaction.onerror = () => resolve(null);
+    transaction.onabort = () => resolve(null);
+  });
+};
+
+const idbGetAll = async (storeName) => {
+  const db = await openLensDesignDb();
+  if (!db) return [];
+  return new Promise((resolve) => {
+    const transaction = db.transaction(storeName, "readonly");
+    const request = transaction.objectStore(storeName).getAll();
+    request.onsuccess = () => resolve(request.result || []);
+    request.onerror = () => resolve([]);
+  });
+};
+
+const idbPutAll = async (storeName, records) => idbTransaction(storeName, "readwrite", (store) => {
+  (records || []).forEach((record) => store.put(record));
+  return true;
+});
+
+const idbDelete = async (storeName, id) => idbTransaction(storeName, "readwrite", (store) => {
+  store.delete(id);
+  return true;
+});
+
+const idbPutMetadata = async (id, value) => idbPutAll(INDEXED_DB_STORES.metadata, [{ id, value, updatedAt: new Date().toISOString() }]);
+
+const idbGetMetadata = async (id) => {
+  const db = await openLensDesignDb();
+  if (!db) return null;
+  return new Promise((resolve) => {
+    const transaction = db.transaction(INDEXED_DB_STORES.metadata, "readonly");
+    const request = transaction.objectStore(INDEXED_DB_STORES.metadata).get(id);
+    request.onsuccess = () => resolve(request.result?.value ?? null);
+    request.onerror = () => resolve(null);
+  });
+};
+
+const migrateLocalStorageSavedDesignsToIndexedDb = async () => {
+  if (!hasIndexedDb()) return { migrated: false, count: 0 };
+  const alreadyMigrated = await idbGetMetadata("localStorageMigrationComplete");
+  const localDesigns = loadSavedDesigns();
+  if (alreadyMigrated || !localDesigns.length) return { migrated: false, count: 0 };
+  const existing = await idbGetAll(INDEXED_DB_STORES.designs);
+  const existingIds = new Set(existing.map((design) => design.id));
+  const records = localDesigns
+    .filter((design) => design?.id && !existingIds.has(design.id))
+    .map((design) => ({
+      ...design,
+      schemaVersion: design.schemaVersion || PROJECT_SCHEMA_VERSION,
+      migratedFrom: "localStorage",
+      migratedAt: new Date().toISOString()
+    }));
+  if (records.length) await idbPutAll(INDEXED_DB_STORES.designs, records);
+  await idbPutMetadata("localStorageMigrationComplete", true);
+  return { migrated: records.length > 0, count: records.length };
+};
+
+const refreshSavedDesignsFromIndexedDb = async () => {
+  const designs = await idbGetAll(INDEXED_DB_STORES.designs);
+  if (!designs.length) return false;
+  state.savedDesigns = designs
+    .filter((design) => design && design.id)
+    .sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")));
+  return true;
+};
+
+const initPersistentStorage = async () => {
+  const migration = await migrateLocalStorageSavedDesignsToIndexedDb();
+  const loaded = await refreshSavedDesignsFromIndexedDb();
+  state.storageStatus = {
+    backend: hasIndexedDb() ? "indexedDB" : "localStorage",
+    migration
+  };
+  if (loaded || migration.migrated) update({ scope: "storage-init" });
+};
+
+const persistAnalysisCacheMetadata = () => {
+  if (!hasIndexedDb()) return;
+  idbPutAll(INDEXED_DB_STORES.analysisCache, [{
+    id: "active-analysis-cache",
+    revision: state.analysisCacheRevision || 0,
+    mtfSignature: state.mtfAnalysis?.signature || "",
+    mainMtfCacheSize: mainMtfResultCache.size,
+    apertureSweepCacheSize: apertureSweepResultCache.size,
+    diffractionCacheSize: diffractionMtfResultCache.size,
+    updatedAt: new Date().toISOString()
+  }]);
+};
+
+const persistOptimizerReport = (result = state.optimizerBest) => {
+  if (!hasIndexedDb() || !result) return;
+  idbPutAll(INDEXED_DB_STORES.optimizerReports, [{
+    id: `optimizer-${Date.now()}`,
+    designName: state.designName || PRESETS[state.preset]?.name || "Untitled design",
+    preset: state.preset,
+    result,
+    csv: exportOptimizerCsv(result),
+    updatedAt: new Date().toISOString()
+  }]);
+};
+
+const persistCsvExport = (kind, text) => {
+  if (!hasIndexedDb() || !text) return;
+  idbPutAll(INDEXED_DB_STORES.csvExports, [{
+    id: `${kind}-${Date.now()}`,
+    kind,
+    text,
+    preset: state.preset,
+    designName: state.designName || "",
+    updatedAt: new Date().toISOString()
+  }]);
+};
+
+const persistSvgReferenceMetadata = () => {
+  if (!hasIndexedDb()) return;
+  const reference = getProductionSvgReferenceForPreset(PRESETS[state.preset]);
+  if (!reference) return;
+  idbPutAll(INDEXED_DB_STORES.svgReferences, [{
+    id: state.preset || "active",
+    preset: state.preset,
+    href: reference.href || "",
+    viewBox: reference.viewBox || "",
+    updatedAt: new Date().toISOString()
+  }]);
+};
+
 const state = {
   language: "en",
   preset: DEFAULT_PRESET_KEY,
@@ -2383,6 +2625,12 @@ const state = {
   geometricMtfConvergenceToken: 0,
   geometricMtfConvergenceLastResult: null,
   geometricMtfConvergenceLastKey: "",
+  timingDiagnostics: {},
+  timingDiagnosticsLog: [],
+  storageStatus: {
+    backend: "localStorage",
+    migration: { migrated: false, count: 0 }
+  },
   toleranceSettings: { ...DEFAULT_TOLERANCE_SETTINGS },
   tolerancePreview: null,
   toleranceResult: null,
@@ -2620,6 +2868,85 @@ let geometricMtfMainWorker = null;
 let diffractionFrameHandle = null;
 let diffractionIdleHandle = null;
 
+class PersistentWorkerClient {
+  constructor(urlFactory, label) {
+    this.urlFactory = urlFactory;
+    this.label = label;
+    this.worker = null;
+    this.pending = new Map();
+    this.generation = 0;
+  }
+
+  ensureWorker() {
+    if (this.worker || typeof Worker === "undefined") return this.worker;
+    this.worker = new Worker(this.urlFactory());
+    this.worker.onmessage = (event) => this.handleMessage(event.data || {});
+    this.worker.onerror = (error) => {
+      const pending = [...this.pending.values()];
+      this.pending.clear();
+      pending.forEach((request) => request.reject(new Error(error?.message || `${this.label} worker failed`)));
+      this.shutdown();
+    };
+    return this.worker;
+  }
+
+  handleMessage(message) {
+    const pending = this.pending.get(message.requestId);
+    if (!pending) return;
+    if (pending.generation !== this.generation) {
+      this.pending.delete(message.requestId);
+      pending.reject(new Error(`${this.label} worker response is stale.`));
+      return;
+    }
+    if (pending.isStale && pending.isStale(message)) {
+      this.pending.delete(message.requestId);
+      pending.reject(new Error(`${this.label} worker response no longer matches the active request.`));
+      return;
+    }
+    this.pending.delete(message.requestId);
+    pending.resolve(message);
+  }
+
+  request(payload, { transfer = [], isStale = null } = {}) {
+    const worker = this.ensureWorker();
+    if (!worker) return Promise.reject(new Error(`${this.label} worker unavailable`));
+    const requestId = payload.requestId || `${this.label}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const generation = this.generation;
+    return new Promise((resolve, reject) => {
+      this.pending.set(requestId, { resolve, reject, generation, isStale });
+      try {
+        worker.postMessage({ ...payload, requestId }, transfer);
+      } catch (error) {
+        this.pending.delete(requestId);
+        reject(error);
+      }
+    });
+  }
+
+  cancelPending(reason = "cancelled") {
+    this.generation += 1;
+    const pending = [...this.pending.values()];
+    this.pending.clear();
+    pending.forEach((request) => request.reject(new Error(reason)));
+  }
+
+  shutdown() {
+    this.cancelPending(`${this.label} worker shutdown`);
+    if (this.worker) this.worker.terminate();
+    this.worker = null;
+  }
+}
+
+const physicalMtfWorkerClient = new PersistentWorkerClient(
+  () => `physical-mtf-worker.js?v=${ANALYSIS_WORKER_VERSION}`,
+  "physical-mtf"
+);
+
+const geometricMtfWorkerClient = new PersistentWorkerClient(
+  () => `geometric-mtf-worker.js?v=${ANALYSIS_WORKER_VERSION}`,
+  "geometric-mtf"
+);
+
 const rememberBoundedCacheValue = (cache, key, value, limit) => {
   if (cache.has(key)) cache.delete(key);
   cache.set(key, value);
@@ -2682,10 +3009,9 @@ const invalidateAnalysisCache = () => {
   }
   cancelIdleOrTimeout(mtfMainIdleHandle);
   mtfMainIdleHandle = null;
-  if (geometricMtfMainWorker) {
-    geometricMtfMainWorker.terminate();
-    geometricMtfMainWorker = null;
-  }
+  geometricMtfWorkerClient.cancelPending("Optical model changed; geometric MTF request cancelled.");
+  physicalMtfWorkerClient.cancelPending("Optical model changed; physical MTF request cancelled.");
+  geometricMtfMainWorker = null;
   if (diffractionFrameHandle !== null && typeof cancelAnimationFrame === "function") {
     cancelAnimationFrame(diffractionFrameHandle);
     diffractionFrameHandle = null;
@@ -2698,6 +3024,7 @@ const invalidateAnalysisCache = () => {
   }
   if (state) state.geometricMtfConvergencePending = false;
   resetMtfAnalysisState("stale");
+  persistAnalysisCacheMetadata();
 };
 
 const scheduleOpticalAnalysisRefresh = () => {
@@ -2844,7 +3171,17 @@ const rememberState = () => {
 };
 
 const persistSavedDesigns = () => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state.savedDesigns));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state.savedDesigns));
+  } catch {
+    // IndexedDB remains the primary store when localStorage is unavailable.
+  }
+  if (hasIndexedDb()) {
+    idbPutAll(INDEXED_DB_STORES.designs, state.savedDesigns.map((design) => ({
+      ...design,
+      schemaVersion: design.schemaVersion || PROJECT_SCHEMA_VERSION
+    })));
+  }
 };
 
 const serializeDesign = () => state.lenses.map(({ id, ...lens }) => normalizeLens({ ...lens }));
@@ -2896,6 +3233,7 @@ const saveCurrentDesign = ({ preferExisting = false } = {}) => {
   const existingIndex = state.savedDesigns.findIndex((design) => design.name.toLowerCase() === name.toLowerCase());
   const savedDesign = {
     id: existingIndex >= 0 ? state.savedDesigns[existingIndex].id : crypto.randomUUID(),
+    schemaVersion: PROJECT_SCHEMA_VERSION,
     name,
     updatedAt: new Date().toISOString(),
     preset: "custom",
@@ -2944,6 +3282,7 @@ const saveCurrentDesign = ({ preferExisting = false } = {}) => {
   state.selectedSavedDesignId = savedDesign.id;
   state.preset = "custom";
   persistSavedDesigns();
+  persistSvgReferenceMetadata();
   return savedDesign;
 };
 
@@ -3040,6 +3379,65 @@ const loadDesign = (design) => {
   state.designName = design.name;
   state.selectedSavedDesignId = design.id;
   resetGeneratedAnalysisState();
+};
+
+const serializeProjectJson = () => ({
+  schemaVersion: PROJECT_SCHEMA_VERSION,
+  exportedAt: new Date().toISOString(),
+  app: "Lens Design",
+  preset: state.preset,
+  designName: state.designName,
+  prescription: serializePrescription(),
+  lenses: serializeDesign(),
+  analysisSettings: {
+    diagramViewMode: state.diagramViewMode,
+    diagramRenderStyle: state.diagramRenderStyle,
+    diagramLensFill: state.diagramLensFill,
+    diagramRayDisplayMode: state.diagramRayDisplayMode,
+    diagramRayFieldKey: state.diagramRayFieldKey,
+    diagramGeometryDisplayMode: state.diagramGeometryDisplayMode,
+    diagramTargetReferenceMode: state.diagramTargetReferenceMode,
+    diagramMountReferenceMode: state.diagramMountReferenceMode,
+    apertureStopMode: state.apertureStopMode,
+    apertureStopSurfaceNumber: state.apertureStopSurfaceNumber,
+    apertureStopSurfaceOffsetMm: state.apertureStopSurfaceOffsetMm,
+    apertureStopDistanceFromSensorMm: state.apertureStopDistanceFromSensorMm,
+    apertureStopDistanceFromFrontMm: state.apertureStopDistanceFromFrontMm,
+    apertureDiameter: state.apertureDiameter,
+    rayTraceRayCount: state.rayTraceRayCount,
+    mtfEngine: state.mtfEngine,
+    mtfLsfQuality: state.mtfLsfQuality
+  },
+  svgReferenceMetadata: getProductionSvgReferenceForPreset(PRESETS[state.preset]) || null
+});
+
+function validateProjectJson(project) {
+  if (!project || typeof project !== "object") {
+    throw new Error("Project JSON must be an object.");
+  }
+  if (!Number.isFinite(toNumber(project.schemaVersion))) {
+    throw new Error("Project JSON is missing schemaVersion.");
+  }
+  if (!project.prescription && !Array.isArray(project.lenses)) {
+    throw new Error("Project JSON must include a prescription or lens array.");
+  }
+  return {
+    ...project,
+    schemaVersion: Math.round(toNumber(project.schemaVersion))
+  };
+}
+
+const loadProjectJson = (project) => {
+  const validProject = validateProjectJson(project);
+  rememberState();
+  loadDesign({
+    id: validProject.id || crypto.randomUUID(),
+    name: validProject.designName || validProject.name || "Imported project",
+    preset: "custom",
+    prescription: validProject.prescription,
+    lenses: validProject.lenses,
+    analysisSettings: validProject.analysisSettings || {}
+  });
 };
 
 const syncCustomElementPrescription = () => {
@@ -15570,27 +15968,14 @@ const calculatePhysicalMtfCoreWithWorker = (inputs, token) => new Promise((resol
     resolve(physicalMtf.calculateIdealCircularPupilValidation({ ...inputs, skipConvergence: true }));
     return;
   }
-  let settled = false;
-  let worker = null;
-  const finish = (result) => {
-    if (settled) return;
-    settled = true;
-    if (worker) worker.terminate();
-    resolve(result);
-  };
-  try {
-    worker = new Worker(`physical-mtf-worker.js?v=${ANALYSIS_WORKER_VERSION}`);
-    worker.onmessage = (event) => {
-      if (event.data?.requestId !== token) return;
-      finish(event.data.result);
-    };
-    worker.onerror = () => {
-      finish(physicalMtf.calculateIdealCircularPupilValidation({ ...inputs, skipConvergence: true }));
-    };
-    worker.postMessage({ requestId: token, gridSize: inputs.gridSize });
-  } catch (error) {
-    finish(physicalMtf.calculateIdealCircularPupilValidation({ ...inputs, skipConvergence: true }));
-  }
+  physicalMtfWorkerClient.request(
+    { requestId: token, gridSize: inputs.gridSize },
+    {
+      isStale: (message) => message.requestId !== token
+    }
+  )
+    .then((message) => resolve(message.result))
+    .catch(() => resolve(physicalMtf.calculateIdealCircularPupilValidation({ ...inputs, skipConvergence: true })));
 });
 
 const schedulePhysicalMtfLabCalculation = ({ immediate = false } = {}) => {
@@ -17435,34 +17820,13 @@ const calculateGeometricMtfMainPanelInWorker = (payload, token, signature) => ne
     reject(new Error("Worker unavailable"));
     return;
   }
-  if (geometricMtfMainWorker) {
-    geometricMtfMainWorker.terminate();
-    geometricMtfMainWorker = null;
-    if (state.mtfAnalysis) state.mtfAnalysis.cancelledStaleJobs = (state.mtfAnalysis.cancelledStaleJobs || 0) + 1;
-  }
-  let settled = false;
-  const finish = (result) => {
-    if (settled) return;
-    settled = true;
-    if (geometricMtfMainWorker) {
-      geometricMtfMainWorker.terminate();
-      geometricMtfMainWorker = null;
+  geometricMtfWorkerClient.request(
+    { requestId: token, ...payload },
+    {
+      isStale: () => state.mtfAnalysis?.requestToken !== token || state.mtfAnalysis?.signature !== signature
     }
-    resolve(result);
-  };
-  const fail = (error) => {
-    if (settled) return;
-    settled = true;
-    if (geometricMtfMainWorker) {
-      geometricMtfMainWorker.terminate();
-      geometricMtfMainWorker = null;
-    }
-    reject(error);
-  };
-  try {
-    geometricMtfMainWorker = new Worker(`geometric-mtf-worker.js?v=${ANALYSIS_WORKER_VERSION}`);
-    geometricMtfMainWorker.onmessage = (event) => {
-      const response = event.data || {};
+  )
+    .then((response) => {
       if (response.requestId !== token) {
         if (state.mtfAnalysis) state.mtfAnalysis.cancelledStaleJobs = (state.mtfAnalysis.cancelledStaleJobs || 0) + 1;
         return;
@@ -17472,21 +17836,17 @@ const calculateGeometricMtfMainPanelInWorker = (payload, token, signature) => ne
         return;
       }
       if (response.status !== "complete") {
-        fail(new Error(response.error || response.reason || "Geometric MTF main worker failed"));
+        reject(new Error(response.error || response.reason || "Geometric MTF main worker failed"));
         return;
       }
       if (!isGeometricMtfMainWorkerResponseCurrent(response, payload, token, signature)) {
         if (state.mtfAnalysis) state.mtfAnalysis.cancelledStaleJobs = (state.mtfAnalysis.cancelledStaleJobs || 0) + 1;
-        fail(new Error("Geometric MTF main worker returned stale or mismatched metadata."));
+        reject(new Error("Geometric MTF main worker returned stale or mismatched metadata."));
         return;
       }
-      finish(response.result);
-    };
-    geometricMtfMainWorker.onerror = () => fail(new Error("Geometric MTF main worker error"));
-    geometricMtfMainWorker.postMessage({ requestId: token, ...payload });
-  } catch (error) {
-    fail(error);
-  }
+      resolve(response.result);
+    })
+    .catch(reject);
 });
 
 const finalizeGeometricMtfMainWorkerResult = (result, system, eligibility) => ({
@@ -17535,33 +17895,20 @@ const calculateGeometricMtfConvergenceInWorker = (payload, token) => new Promise
     reject(new Error("Worker unavailable"));
     return;
   }
-  let worker = null;
-  let settled = false;
-  const finish = (result) => {
-    if (settled) return;
-    settled = true;
-    if (worker) worker.terminate();
-    resolve(result);
-  };
-  const fail = (error) => {
-    if (settled) return;
-    settled = true;
-    if (worker) worker.terminate();
-    reject(error);
-  };
-  try {
-    worker = new Worker(`geometric-mtf-worker.js?v=${ANALYSIS_WORKER_VERSION}`);
-    worker.onmessage = (event) => {
-      if (event.data?.requestId !== token) return;
-      if (event.data.status === "complete") {
-        const result = event.data.result || {};
-        if (event.data.workerVersion !== ANALYSIS_WORKER_VERSION) {
-          finish({
+  geometricMtfWorkerClient.request(
+    { requestId: token, ...payload },
+    { isStale: (message) => message.requestId !== token }
+  )
+    .then((message) => {
+      if (message.status === "complete") {
+        const result = message.result || {};
+        if (message.workerVersion !== ANALYSIS_WORKER_VERSION) {
+          resolve({
             status: "engine-mismatch",
             label: "MTF sampling: provisional",
             diagnostics: {
               warning: "Geometric MTF worker version mismatch.",
-              workerVersion: event.data.workerVersion,
+              workerVersion: message.workerVersion,
               expectedWorkerVersion: ANALYSIS_WORKER_VERSION
             },
             comparisons: []
@@ -17569,7 +17916,7 @@ const calculateGeometricMtfConvergenceInWorker = (payload, token) => new Promise
           return;
         }
         if (result.solverContractVersion !== GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION) {
-          finish({
+          resolve({
             status: "engine-mismatch",
             label: "MTF sampling: provisional",
             diagnostics: {
@@ -17582,7 +17929,7 @@ const calculateGeometricMtfConvergenceInWorker = (payload, token) => new Promise
           return;
         }
         if (result.surfaceSignature && payload.expectedSurfaceSignature && result.surfaceSignature !== payload.expectedSurfaceSignature) {
-          finish({
+          resolve({
             status: "engine-mismatch",
             label: "MTF sampling: provisional",
             diagnostics: {
@@ -17594,18 +17941,12 @@ const calculateGeometricMtfConvergenceInWorker = (payload, token) => new Promise
           });
           return;
         }
-        finish(result);
+        resolve(result);
+        return;
       }
-      else fail(new Error(event.data.error || event.data.reason || "Geometric MTF worker failed"));
-    };
-    worker.onerror = () => fail(new Error("Geometric MTF worker error"));
-    worker.postMessage({
-      requestId: token,
-      ...payload
-    });
-  } catch (error) {
-    fail(error);
-  }
+      reject(new Error(message.error || message.reason || "Geometric MTF worker failed"));
+    })
+    .catch(reject);
 });
 
 const scheduleGeometricMtfConvergenceValidation = (lenses, system, fieldData, options = {}) => {
@@ -20705,37 +21046,37 @@ const render = () => {
 
   ensurePatentOpticalGeometry();
   syncEntrancePupilResult();
-  const system = calculateSystem(state.lenses);
-  const spectralSystems = getSpectralSystems();
+  const system = measureTiming("systemCalculation", { lensCount: state.lenses.length }, () => calculateSystem(state.lenses));
+  const spectralSystems = measureTiming("spectralSystemCalculation", {}, () => getSpectralSystems());
   const baseApertureOptions = rayTraceApertureOptions(state);
   const diagramAperturePreview = resolveDiagramAperturePreview(state.lenses, spectralSystems.d || system);
   const diagramApertureOptions = {
     ...baseApertureOptions,
     apertureDiameter: diagramAperturePreview.apertureDiameter
   };
-  const dLineRayTraceResults = traceSystemFieldSet(state.lenses, spectralSystems.d || system, {
+  const dLineRayTraceResults = measureTiming("rayTrace", { mode: "d-line-field-set" }, () => traceSystemFieldSet(state.lenses, spectralSystems.d || system, {
     ...baseApertureOptions,
     rayCount: state.rayTraceRayCount,
     wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
     spectralLineKey: "d"
-  });
-  const spectralRayTraceResults = traceSpectralFieldSet(state.lenses, spectralSystems.d || system, {
+  }));
+  const spectralRayTraceResults = measureTiming("rayTrace", { mode: "spectral-field-set" }, () => traceSpectralFieldSet(state.lenses, spectralSystems.d || system, {
     ...baseApertureOptions,
     rayCount: state.rayTraceRayCount
-  });
+  }));
   const diagramRayCount = normalizeDiagramRayDisplayMode(state.diagramRayDisplayMode) === "selected"
     ? 7
     : state.rayTraceRayCount;
-  const diagramDLineRayTraceResults = traceDiagramFieldSet(state.lenses, spectralSystems.d || system, {
+  const diagramDLineRayTraceResults = measureTiming("rayTrace", { mode: "diagram-d-line" }, () => traceDiagramFieldSet(state.lenses, spectralSystems.d || system, {
     ...diagramApertureOptions,
     rayCount: diagramRayCount,
     wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
     spectralLineKey: "d"
-  });
-  const diagramSpectralRayTraceResults = traceDiagramSpectralFieldSet(state.lenses, spectralSystems.d || system, {
+  }));
+  const diagramSpectralRayTraceResults = measureTiming("rayTrace", { mode: "diagram-spectral" }, () => traceDiagramSpectralFieldSet(state.lenses, spectralSystems.d || system, {
     ...diagramApertureOptions,
     rayCount: diagramRayCount
-  });
+  }));
   const diagramRayTraceResults = visibleDiagramRayTraceResults(diagramDLineRayTraceResults, diagramSpectralRayTraceResults);
   const needsRayTraceSpot = isPanelExpanded("rayTraceSpot");
   const needsRayFanAberrations = isPanelExpanded("rayFanAberrations");
@@ -21076,10 +21417,12 @@ const restoreRenderScrollState = (scrollState) => {
   }
 };
 
-const update = () => {
+const update = (options = {}) => {
   const scrollState = captureRenderScrollState();
-  syncCustomElementPrescription();
-  mount.innerHTML = render();
+  measureTiming("render", { scope: options.scope || "full" }, () => {
+    syncCustomElementPrescription();
+    mount.innerHTML = render();
+  });
   restoreRenderScrollState(scrollState);
   maybeQueueVisibleMtfAnalysis();
 };
@@ -21176,17 +21519,24 @@ const startOptimizerRun = () => {
 
   const stepChunk = () => {
     if (token !== optimizerRunToken || state.optimizerStatus !== "running") return;
-    const chunkEnd = Math.min(iterations, currentIteration + 5);
-    while (currentIteration < chunkEnd) {
-      currentIteration += 1;
-      if (algorithm === "coordinate" || (algorithm === "hybrid" && currentIteration > randomLimit)) {
-        runCoordinateStep();
-      } else {
-        runRandomStep();
+    measureTiming("optimizerIterationChunk", {
+      algorithm,
+      startIteration: currentIteration,
+      totalIterations: iterations
+    }, () => {
+      const chunkEnd = Math.min(iterations, currentIteration + 5);
+      while (currentIteration < chunkEnd) {
+        currentIteration += 1;
+        if (algorithm === "coordinate" || (algorithm === "hybrid" && currentIteration > randomLimit)) {
+          runCoordinateStep();
+        } else {
+          runRandomStep();
+        }
+        progress.push({ iteration: currentIteration, score: best.evaluation.score });
       }
-      progress.push({ iteration: currentIteration, score: best.evaluation.score });
-    }
+    });
     publish(currentIteration >= iterations ? "done" : "running");
+    if (currentIteration >= iterations) persistOptimizerReport(state.optimizerBest);
     update();
     if (currentIteration < iterations && token === optimizerRunToken && state.optimizerStatus === "running") {
       setTimeout(stepChunk, 0);
@@ -21356,6 +21706,10 @@ document.addEventListener("pointercancel", () => {
   stopDiagramPan(true);
 });
 document.addEventListener("pointerleave", stopHoldAdjust);
+window.addEventListener("beforeunload", () => {
+  geometricMtfWorkerClient.shutdown();
+  physicalMtfWorkerClient.shutdown();
+});
 
 mount.addEventListener("wheel", (event) => {
   const svg = event.target.closest(".ray-diagram");
@@ -22548,6 +22902,7 @@ mount.addEventListener("click", (event) => {
 
   if (action === "copy-optimizer-csv") {
     const csvText = exportOptimizerCsv(state.optimizerBest);
+    persistCsvExport("optimizer-report", csvText);
     state.optimizerCopyStatus = "Copying...";
     copyTextToClipboard(csvText)
       .then(() => {
@@ -22578,11 +22933,13 @@ mount.addEventListener("click", (event) => {
       enabled: true
     });
     const system = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
-    state.toleranceResult = runToleranceMonteCarlo(state.lenses, system, {
+    state.toleranceResult = measureTiming("toleranceMonteCarlo", {
+      runs: state.toleranceSettings.monteCarloRuns
+    }, () => runToleranceMonteCarlo(state.lenses, system, {
       settings: state.toleranceSettings,
       runs: state.toleranceSettings.monteCarloRuns,
       seed: state.toleranceSettings.seed
-    });
+    }));
     state.tolerancePreview = state.toleranceResult.worstRun?.sample || state.tolerancePreview;
     state.toleranceCopyStatus = "";
     state.toleranceExportText = "";
@@ -22605,6 +22962,7 @@ mount.addEventListener("click", (event) => {
 
   if (action === "copy-tolerance-csv") {
     const csvText = exportToleranceCsv(state.toleranceResult);
+    persistCsvExport("tolerance-monte-carlo", csvText);
     state.toleranceCopyStatus = "Copying...";
     copyTextToClipboard(csvText)
       .then(() => {
@@ -22627,6 +22985,7 @@ mount.addEventListener("click", (event) => {
       rayCount: state.stRayFanRayCount
     });
     const csvText = exportSagittalTangentialRayFanCsv(result);
+    persistCsvExport("sagittal-tangential-ray-fan", csvText);
     const rowCount = result.tangentialFans.reduce((sum, fan) => sum + fan.samples.length, 0)
       + result.sagittalFans.reduce((sum, fan) => sum + fan.samples.length, 0);
 
@@ -22918,6 +23277,7 @@ mount.addEventListener("click", (event) => {
     state.savedDesigns = state.savedDesigns.filter((design) => design.id !== deleteId);
     if (state.selectedSavedDesignId === deleteId) state.selectedSavedDesignId = "";
     persistSavedDesigns();
+    idbDelete(INDEXED_DB_STORES.designs, deleteId);
   }
 
   if (action === "toggle-svg-reference-overlay") {
@@ -28402,6 +28762,7 @@ globalThis.runOpticsSelfCheck = runOpticsSelfCheck;
 document.runOpticsSelfCheck = runOpticsSelfCheck;
 
 update();
+initPersistentStorage();
 
 if (new URLSearchParams(globalThis.location?.search || "").has("selfcheck")) {
   setTimeout(() => {

@@ -113,7 +113,13 @@ const DEFAULT_OPTIMIZER_VARIABLES = {
   gapAfter: true,
   diameter: false,
   glass: false,
-  customVd: false
+  customVd: false,
+  frontConicK: false,
+  rearConicK: false,
+  frontA4: false,
+  rearA4: false,
+  frontA6: false,
+  rearA6: false
 };
 
 const GLASS_CATALOG = {
@@ -262,6 +268,11 @@ const PANEL_FIELD_STEPS = {
   apertureStopSurfaceOffsetMm: 0.5,
   apertureStopDistanceFromSensorMm: 1,
   apertureStopDistanceFromFrontMm: 1,
+  retargetTargetEfl: 1,
+  retargetTargetFNumber: 0.1,
+  retargetTargetBfd: 1,
+  retargetMaxDiameter: 1,
+  retargetMaxTrackLength: 1,
   rayTraceRayCount: 2,
   imageCircleFocalLength: 1,
   imageCircleAngleDegrees: 0.5,
@@ -275,6 +286,22 @@ const PANEL_FIELD_STEPS = {
   stRayFanRayCount: 2,
   physicalMtfFNumber: 0.1
 };
+
+const RETARGET_SENSOR_FORMATS = [
+  { key: "fullFrame", name: "Full-frame 36 x 24 mm" },
+  { key: "apsC", name: "APS-C" },
+  { key: "mft", name: "Micro Four Thirds" }
+];
+
+const AUTO_IMPROVE_MODES = [
+  { key: "focus", label: "Improve focus at sensor plane" },
+  { key: "centerSharpness", label: "Improve centre sharpness" },
+  { key: "cornerSharpness", label: "Improve corner sharpness" },
+  { key: "mtf40", label: "Improve MTF at 40 lp/mm" },
+  { key: "fieldCurvature", label: "Improve field curvature" },
+  { key: "chromatic", label: "Improve chromatic correction" },
+  { key: "faster", label: "Make faster while preserving image quality" }
+];
 
 const DEFAULT_ANALYSIS_SETTINGS = {
   diagramViewMode: "optical",
@@ -646,7 +673,7 @@ const normalizeLens = (lens) => {
     frontBevelAngleDeg: frontBevel.angleDeg,
     rearBevelAngleDeg: rearBevel.angleDeg,
     manufacturingGeometrySource: lens.manufacturingGeometrySource || lens.diameterSource || "estimated",
-    apertureSource: ["patent", "rayEnvelope", "manual", "estimated", "svgEstimated", "patentMechanical"].includes(lens.apertureSource)
+    apertureSource: ["patent", "rayEnvelope", "manual", "estimated", "svgEstimated", "patentMechanical", "derived", "duplicated"].includes(lens.apertureSource)
       ? lens.apertureSource
       : (numericValue(lens.patentFrontClearAperture) > 0 || numericValue(lens.patentRearClearAperture) > 0)
         ? "patent"
@@ -2555,6 +2582,8 @@ const state = {
     wavefrontDiagnostics: true,
     debugTools: true,
     geometryAnalysisDiagnostics: true,
+    retargetBuild: false,
+    autoImproveBuild: true,
     optimizerBuild: true,
     toleranceBuild: true,
     sagittaUtility: true,
@@ -2646,6 +2675,10 @@ const state = {
   optimizerStepScale: 1,
   optimizerTargetFocalLength: 50,
   optimizerTargetBfd: 18,
+  optimizerTargetFNumber: 1.4,
+  optimizerUseTargetFNumber: true,
+  optimizerUseRealEntrancePupil: true,
+  optimizerFNumberWeight: 8,
   optimizerUseTargetFocalLength: true,
   optimizerUseTargetBfd: false,
   optimizerUseMtf: true,
@@ -2667,7 +2700,21 @@ const state = {
   optimizerCurrentIteration: 0,
   optimizerReportCsv: "",
   optimizerCopyStatus: "",
-  optimizerWarnings: []
+  optimizerWarnings: [],
+  retargetTargetEfl: 40,
+  retargetTargetFNumber: 1.4,
+  retargetSensorFormatKey: "fullFrame",
+  retargetTargetBfd: 18,
+  retargetMaxDiameter: 60,
+  retargetMaxTrackLength: 120,
+  retargetPreserveGroupCount: true,
+  retargetPreserveGlass: true,
+  retargetScaleApertures: true,
+  retargetStatus: "",
+  retargetLastResult: null,
+  autoImproveMode: "focus",
+  autoImproveResult: null,
+  autoImproveStatus: ""
 };
 
 const DIAGRAM_VIEW_OPTIONS = [
@@ -9267,6 +9314,143 @@ const signedRadiusClamp = (value) => {
   return sign * clamp(Math.abs(value), 5, 1000);
 };
 
+const scaleFiniteOpticalDimension = (value, scale) => (
+  Number.isFinite(toNumber(value)) && Math.abs(toNumber(value)) < 1e8
+    ? toNumber(value) * scale
+    : value
+);
+
+const calculateOptimizerFNumberMetrics = (lenses, system, options = {}) => {
+  const apertureDiameter = Math.max(0.1, toNumber(options.apertureDiameter) || state.apertureDiameter || 1);
+  const entrancePupil = options.useRealEntrancePupil === false
+    ? null
+    : calculateEntrancePupil(lenses, system, {
+      ...rayTraceApertureOptions({ ...state, apertureDiameter }),
+      ...options,
+      apertureDiameter,
+      prescription: options.prescription || (lenses === state.lenses ? state.prescription : null)
+    });
+  const entrancePupilDiameter = entrancePupil?.entrancePupilDiameter;
+  const focalLength = Math.abs(toNumber(system.effectiveFocalLength));
+  const fNumber = focalLength > 0 && entrancePupilDiameter > 0
+    ? focalLength / entrancePupilDiameter
+    : focalLength > 0
+      ? focalLength / apertureDiameter
+      : NaN;
+  return {
+    fNumber,
+    physicalStopDiameter: apertureDiameter,
+    entrancePupilDiameter: entrancePupilDiameter ?? NaN,
+    pupilMagnification: entrancePupil?.pupilMagnification ?? NaN,
+    entrancePupilWarning: entrancePupil?.warning || "",
+    usedRealEntrancePupil: options.useRealEntrancePupil !== false && entrancePupilDiameter > 0
+  };
+};
+
+const createRetargetedLensCandidate = (lenses, sourceSystem, options = {}) => {
+  const targetEfl = Math.max(1, toNumber(options.targetEfl) || Math.abs(sourceSystem.effectiveFocalLength) || 50);
+  const sourceEfl = Math.abs(toNumber(sourceSystem.effectiveFocalLength));
+  const scale = sourceEfl > 0 ? targetEfl / sourceEfl : 1;
+  const scaleApertures = options.scaleApertures !== false;
+  const warnings = [];
+  const candidateLenses = cloneOptimizerLenses(lenses).map((lens) => {
+    const scaledDiameter = scaleApertures ? scaleFiniteOpticalDimension(lens.diameter, scale) : lens.diameter;
+    const scaledClear = scaleApertures ? scaleFiniteOpticalDimension(lens.clearApertureDiameter, scale) : lens.clearApertureDiameter;
+    const scaledMechanical = scaleApertures ? scaleFiniteOpticalDimension(lens.mechanicalDiameter, scale) : lens.mechanicalDiameter;
+    const scaledVisual = scaleApertures ? scaleFiniteOpticalDimension(lens.visualDiameter, scale) : lens.visualDiameter;
+    return normalizeLens({
+      ...lens,
+      id: crypto.randomUUID(),
+      r1: scaleFiniteOpticalDimension(lens.r1, scale),
+      r2: scaleFiniteOpticalDimension(lens.r2, scale),
+      thickness: Math.max(0.1, scaleFiniteOpticalDimension(lens.thickness, scale)),
+      gapAfter: Math.max(0, scaleFiniteOpticalDimension(lens.gapAfter, scale)),
+      diameter: scaledDiameter,
+      clearApertureDiameter: scaledClear,
+      mechanicalDiameter: scaledMechanical,
+      visualDiameter: scaledVisual,
+      apertureSource: scaleApertures ? "derived" : lens.apertureSource,
+      diameterSource: scaleApertures ? "derived" : lens.diameterSource,
+      manufacturingGeometrySource: scaleApertures ? "derived" : lens.manufacturingGeometrySource,
+      provenance: "scaled-and-optimized-derived-design",
+      sourceNote: `Retargeted copy scaled by ${formatNumber(scale, 5)} from ${options.sourceDesignName || "current design"}`
+    });
+  });
+  const candidateSystem = calculateSystem(candidateLenses, SPECTRAL_LINES.d.wavelengthNm);
+  const targetFNumber = Math.max(0.5, toNumber(options.targetFNumber) || calculateFNumber(sourceSystem, state.apertureDiameter, lenses, { useEntrancePupil: true }) || 1.4);
+  let apertureDiameter = matchPatentPhysicalStopDiameter(candidateLenses, candidateSystem, {
+    ...rayTraceApertureOptions(state),
+    apertureRatio: `1:${targetFNumber}`,
+    fNumber: targetFNumber,
+    apertureDiameter: state.apertureDiameter
+  });
+  if (!(apertureDiameter > 0)) {
+    apertureDiameter = Math.abs(candidateSystem.effectiveFocalLength || targetEfl) / targetFNumber;
+    warnings.push("Entrance-pupil stop solve failed; initial copy used EFL / target f-number as a provisional stop diameter.");
+  }
+  return {
+    lenses: candidateLenses,
+    system: candidateSystem,
+    apertureDiameter,
+    scale,
+    sourceEfl,
+    targetEfl,
+    targetFNumber,
+    warnings,
+    metadata: {
+      derivedFromPreset: state.preset,
+      derivedFromDesignName: options.sourceDesignName || state.designName || PRESETS[state.preset]?.name || "Current design",
+      derivedAt: new Date().toISOString(),
+      retargetSourceEfl: sourceEfl,
+      retargetTargetEfl: targetEfl,
+      retargetTargetFNumber: targetFNumber,
+      provenance: "scaled-and-optimized-derived-design"
+    }
+  };
+};
+
+const validateOptimizerCandidate = (candidate, system, options = {}) => {
+  const reasons = [];
+  const maxTrack = Math.max(1, toNumber(options.maxTrackLength) || state.optimizerMaxTrackLength || 160);
+  const minBfd = Math.max(0, toNumber(options.minBfd) || state.optimizerMinBfd || 0);
+  const maxDiameter = Math.max(5, toNumber(options.maxDiameter) || state.optimizerMaxDiameter || 120);
+  if (!system.validCount || !Number.isFinite(system.effectiveFocalLength)) reasons.push("Invalid paraxial system or effective focal length.");
+  if (system.totalTrack > maxTrack) reasons.push(`Track length ${formatNumber(system.totalTrack, 3)} mm exceeds ${formatNumber(maxTrack, 3)} mm.`);
+  if (Number.isFinite(system.backFocalLength) && system.backFocalLength < minBfd) reasons.push(`BFD ${formatNumber(system.backFocalLength, 3)} mm is below ${formatNumber(minBfd, 3)} mm.`);
+  candidate.lenses.forEach((lens, index) => {
+    if ((toNumber(lens.diameter) || 0) > maxDiameter) reasons.push(`L${index + 1} diameter exceeds maximum.`);
+    if ((toNumber(lens.thickness) || 0) <= 0) reasons.push(`L${index + 1} thickness is invalid.`);
+    if ((toNumber(lens.gapAfter) || 0) < 0) reasons.push(`L${index + 1} air gap is negative.`);
+    if ((toNumber(lens.minimumEdgeThicknessMm) || 0) < 0) reasons.push(`L${index + 1} edge thickness setting is invalid.`);
+    if (lensHasActiveAsphere(lens) && ![lens.frontConicK, lens.rearConicK, lens.frontA4, lens.rearA4, lens.frontA6, lens.rearA6].every((value) => Number.isFinite(toNumber(value)))) {
+      reasons.push(`L${index + 1} has invalid asphere coefficients.`);
+    }
+  });
+  const apertureDiameter = Math.max(0.1, toNumber(options.apertureDiameter) || candidate.apertureDiameter || state.apertureDiameter || 1);
+  const largestDiameter = Math.max(0, ...candidate.lenses.map((lens) => toNumber(lens.diameter) || 0));
+  if (!(apertureDiameter > 0) || apertureDiameter > largestDiameter * 1.05) reasons.push("Physical stop diameter is invalid or larger than the largest clear aperture.");
+  const traces = traceSystemFieldSet(candidate.lenses, system, {
+    ...rayTraceApertureOptions(state),
+    rayCount: 5,
+    apertureDiameter,
+    wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+    spectralLineKey: "d"
+  });
+  const invalidTrace = traces.find((trace) => (trace.validRayCount || 0) < Math.max(3, Math.floor((trace.totalRayCount || 5) * 0.45)));
+  if (invalidTrace) reasons.push(`${invalidTrace.fieldName || invalidTrace.fieldKey || "Field"} ray bundle is clipped or invalid.`);
+  const fNumberMetrics = calculateOptimizerFNumberMetrics(candidate.lenses, system, {
+    ...options,
+    apertureDiameter
+  });
+  if (!(fNumberMetrics.entrancePupilDiameter > 0) && options.useRealEntrancePupil !== false) reasons.push("Entrance pupil is invalid.");
+  return {
+    valid: reasons.length === 0,
+    reasons: [...new Set(reasons)],
+    traces,
+    fNumberMetrics
+  };
+};
+
 const collectOptimizationVariables = (lenses, options = {}) => {
   const variables = [];
   lenses.forEach((lens, lensIndex) => {
@@ -9279,6 +9463,12 @@ const collectOptimizationVariables = (lenses, options = {}) => {
     if (enabled.diameter) variables.push({ type: "lens", lensIndex, field: "diameter", step: 1 * (options.stepScale || 1) });
     if (enabled.glass) variables.push({ type: "lens", lensIndex, field: "customNd", step: 0.004 * (options.stepScale || 1) });
     if (enabled.customVd) variables.push({ type: "lens", lensIndex, field: "customVd", step: 1 * (options.stepScale || 1) });
+    if (enabled.frontConicK) variables.push({ type: "lens", lensIndex, field: "frontConicK", step: 0.08 * (options.stepScale || 1), enablesFrontAsphere: true });
+    if (enabled.rearConicK) variables.push({ type: "lens", lensIndex, field: "rearConicK", step: 0.08 * (options.stepScale || 1), enablesRearAsphere: true });
+    if (enabled.frontA4) variables.push({ type: "lens", lensIndex, field: "frontA4", step: 1e-6 * (options.stepScale || 1), enablesFrontAsphere: true });
+    if (enabled.rearA4) variables.push({ type: "lens", lensIndex, field: "rearA4", step: 1e-6 * (options.stepScale || 1), enablesRearAsphere: true });
+    if (enabled.frontA6) variables.push({ type: "lens", lensIndex, field: "frontA6", step: 1e-9 * (options.stepScale || 1), enablesFrontAsphere: true });
+    if (enabled.rearA6) variables.push({ type: "lens", lensIndex, field: "rearA6", step: 1e-9 * (options.stepScale || 1), enablesRearAsphere: true });
   });
   if (options.useApertureDiameter) variables.push({ type: "aperture", field: "apertureDiameter", step: 1 * (options.stepScale || 1) });
   return variables;
@@ -9301,6 +9491,12 @@ const clampOptimizationCandidate = (candidate) => {
       next.refractiveIndex = next.customNd;
       next.customVd = clamp(toNumber(next.customVd) || 50, 20, 90);
     }
+    next.frontConicK = clamp(toNumber(next.frontConicK) || 0, -5, 2);
+    next.rearConicK = clamp(toNumber(next.rearConicK) || 0, -5, 2);
+    next.frontA4 = clamp(toNumber(next.frontA4) || 0, -5e-4, 5e-4);
+    next.rearA4 = clamp(toNumber(next.rearA4) || 0, -5e-4, 5e-4);
+    next.frontA6 = clamp(toNumber(next.frontA6) || 0, -5e-7, 5e-7);
+    next.rearA6 = clamp(toNumber(next.rearA6) || 0, -5e-7, 5e-7);
     return normalizeLens(next);
   });
   const largestDiameter = Math.max(5, ...candidate.lenses.map((lens) => toNumber(lens.diameter) || 5));
@@ -9318,6 +9514,8 @@ const mutateOptimizationCandidate = (candidate, variable, delta) => {
   } else {
     const lens = { ...next.lenses[variable.lensIndex] };
     if (variable.field === "customNd" || variable.field === "customVd") lens.glassKey = "custom";
+    if (variable.enablesFrontAsphere) lens.frontAsphereEnabled = true;
+    if (variable.enablesRearAsphere) lens.rearAsphereEnabled = true;
     lens[variable.field] = (toNumber(lens[variable.field]) || 0) + delta;
     if (variable.field === "customNd") lens.refractiveIndex = lens.customNd;
     next.lenses[variable.lensIndex] = lens;
@@ -9326,25 +9524,28 @@ const mutateOptimizationCandidate = (candidate, variable, delta) => {
 };
 
 const candidateViolatesConstraints = (candidate, system, options = {}) => {
-  const maxTrack = Math.max(1, toNumber(options.maxTrackLength) || state.optimizerMaxTrackLength || 160);
-  const minBfd = Math.max(0, toNumber(options.minBfd) || state.optimizerMinBfd || 0);
-  const maxDiameter = Math.max(5, toNumber(options.maxDiameter) || state.optimizerMaxDiameter || 120);
-  if (!system.validCount || !Number.isFinite(system.effectiveFocalLength)) return true;
-  if (system.totalTrack > maxTrack) return true;
-  if (Number.isFinite(system.backFocalLength) && system.backFocalLength < minBfd) return true;
-  if (candidate.lenses.some((lens) => (toNumber(lens.diameter) || 0) > maxDiameter || (toNumber(lens.thickness) || 0) <= 0 || (toNumber(lens.gapAfter) || 0) < 0)) return true;
-  return false;
+  return !validateOptimizerCandidate(candidate, system, options).valid;
 };
 
 const calculateMeritScore = (lenses, system, options = {}) => {
   const warnings = [];
   const apertureDiameter = toNumber(options.apertureDiameter) || state.apertureDiameter;
+  const fNumberMetrics = calculateOptimizerFNumberMetrics(lenses, system, {
+    ...options,
+    apertureDiameter,
+    useRealEntrancePupil: options.useRealEntrancePupil ?? state.optimizerUseRealEntrancePupil
+  });
   const componentScores = {};
   const metrics = {
     effectiveFocalLength: system.effectiveFocalLength,
     backFocalLength: system.backFocalLength,
-    fNumber: calculateFNumber(system, apertureDiameter, lenses, options)
+    fNumber: fNumberMetrics.fNumber,
+    physicalStopDiameter: fNumberMetrics.physicalStopDiameter,
+    entrancePupilDiameter: fNumberMetrics.entrancePupilDiameter,
+    pupilMagnification: fNumberMetrics.pupilMagnification,
+    usedRealEntrancePupil: fNumberMetrics.usedRealEntrancePupil
   };
+  if (fNumberMetrics.entrancePupilWarning) warnings.push(fNumberMetrics.entrancePupilWarning);
 
   if (options.useTargetFocalLength ?? state.optimizerUseTargetFocalLength) {
     const target = Math.max(0.1, toNumber(options.targetFocalLength) || state.optimizerTargetFocalLength || 50);
@@ -9358,6 +9559,18 @@ const calculateMeritScore = (lenses, system, options = {}) => {
     componentScores.backFocalDistance = Number.isFinite(system.backFocalLength)
       ? ((system.backFocalLength - target) / target) ** 2 * 6
       : 1000;
+  }
+
+  if (options.useTargetFNumber ?? state.optimizerUseTargetFNumber) {
+    const target = Math.max(0.5, toNumber(options.targetFNumber) || state.optimizerTargetFNumber || 1.4);
+    const weight = Math.max(0.1, toNumber(options.fNumberWeight) || state.optimizerFNumberWeight || 8);
+    componentScores.fNumber = Number.isFinite(metrics.fNumber)
+      ? ((metrics.fNumber - target) / target) ** 2 * weight
+      : 1000;
+    if (Number.isFinite(metrics.fNumber) && metrics.fNumber > target * 1.03) {
+      componentScores.fNumber += ((metrics.fNumber / target) - 1) ** 2 * weight * 3;
+      warnings.push("Candidate is slower than the target f-number.");
+    }
   }
 
   let traces = [];
@@ -9447,18 +9660,27 @@ const calculateMeritScore = (lenses, system, options = {}) => {
     warnings.push("Tolerance robustness is disabled.");
   }
 
+  if (lenses.some(lensHasActiveAsphere)) {
+    warnings.push("Active asphere candidate: geometric MTF worker results are provisional until worker asphere tracing matches the main ray tracer.");
+  }
+
   const totalScore = Object.values(componentScores).reduce((sum, value) => sum + (Number.isFinite(value) ? value : 100), 0);
   return { totalScore, componentScores, warnings, metrics };
 };
 
 const evaluateOptimizerCandidate = (candidate, options = {}) => {
   const system = calculateSystem(candidate.lenses, SPECTRAL_LINES.d.wavelengthNm);
-  if (candidateViolatesConstraints(candidate, system, options)) {
+  const validation = validateOptimizerCandidate(candidate, system, {
+    ...options,
+    apertureDiameter: candidate.apertureDiameter
+  });
+  if (!validation.valid) {
     return {
       status: "invalid",
       score: Infinity,
-      merit: { totalScore: Infinity, componentScores: {}, warnings: ["Candidate violates hard constraints."], metrics: {} },
-      system
+      merit: { totalScore: Infinity, componentScores: {}, warnings: ["Candidate violates hard constraints.", ...validation.reasons], metrics: {} },
+      system,
+      validation
     };
   }
   const merit = calculateMeritScore(candidate.lenses, system, { ...options, apertureDiameter: candidate.apertureDiameter });
@@ -9466,7 +9688,8 @@ const evaluateOptimizerCandidate = (candidate, options = {}) => {
     status: "valid",
     score: merit.totalScore,
     merit,
-    system
+    system,
+    validation
   };
 };
 
@@ -9477,6 +9700,10 @@ const optimizerOptionsFromState = () => ({
   stepScale: Math.max(0.05, toNumber(state.optimizerStepScale) || 1),
   targetFocalLength: state.optimizerTargetFocalLength,
   targetBfd: state.optimizerTargetBfd,
+  targetFNumber: state.optimizerTargetFNumber,
+  useTargetFNumber: state.optimizerUseTargetFNumber,
+  useRealEntrancePupil: state.optimizerUseRealEntrancePupil,
+  fNumberWeight: state.optimizerFNumberWeight,
   useTargetFocalLength: state.optimizerUseTargetFocalLength,
   useTargetBfd: state.optimizerUseTargetBfd,
   useMtf: state.optimizerUseMtf,
@@ -9602,6 +9829,9 @@ const exportOptimizerCsv = (result) => {
     ["rejectedCandidates", result?.rejectedCount ?? ""],
     ["bestEfl", result?.best?.evaluation?.merit?.metrics?.effectiveFocalLength ?? ""],
     ["bestBfd", result?.best?.evaluation?.merit?.metrics?.backFocalLength ?? ""],
+    ["bestFNumber", result?.best?.evaluation?.merit?.metrics?.fNumber ?? ""],
+    ["bestPhysicalStopDiameter", result?.best?.evaluation?.merit?.metrics?.physicalStopDiameter ?? ""],
+    ["bestEntrancePupilDiameter", result?.best?.evaluation?.merit?.metrics?.entrancePupilDiameter ?? ""],
     ["bestMtf40", result?.best?.evaluation?.merit?.metrics?.worstMtf40 ?? ""],
     ["bestRmsSpot", result?.best?.evaluation?.merit?.metrics?.worstRmsSpotRadius ?? ""]
   ];
@@ -13192,8 +13422,10 @@ const ANALYSIS_PANEL_REGISTRY = [
   { id: "coverageIllumination", group: "Analyse", title: "Coverage / Illumination", priority: 4 },
   { id: "wavefrontDiagnostics", group: "Advanced", title: "Wavefront Diagnostics", priority: 1, isExperimental: true },
   { id: "debugTools", group: "Advanced", title: "3D / Debug Tools", priority: 2, isExperimental: true },
-  { id: "optimizerBuild", group: "Build", title: "Lens Optimizer", priority: 1, isExperimental: true },
-  { id: "toleranceBuild", group: "Build", title: "Tolerance / Manufacturing", priority: 2, isExperimental: true },
+  { id: "retargetBuild", group: "Build", title: "Retarget Lens", priority: 1, isExperimental: true },
+  { id: "autoImproveBuild", group: "Build", title: "Auto Improve", priority: 2, isExperimental: true },
+  { id: "optimizerBuild", group: "Build", title: "Lens Optimizer", priority: 3, isExperimental: true },
+  { id: "toleranceBuild", group: "Build", title: "Tolerance / Manufacturing", priority: 4, isExperimental: true },
   { id: "sagittaUtility", group: "Utility", title: "Lens Metrology & Inverse Solver", priority: 1 }
 ];
 
@@ -20624,6 +20856,185 @@ const optimizerGoalToggle = (field, label) => `
   </label>
 `;
 
+const retargetInput = (field, label, unit = "") => `
+  <label>
+    ${label}
+    <input
+      type="text"
+      inputmode="decimal"
+      data-action="update-retarget-setting"
+      data-field="${field}"
+      value="${escapeHtml(state[field])}"
+      aria-label="${label}"
+    />
+    ${unit ? `<span class="control-unit">${unit}</span>` : ""}
+  </label>
+`;
+
+const currentDesignDisplayName = () => (
+  state.designName
+    || PRESETS[state.preset]?.name
+    || "Current design"
+);
+
+const renderRetargetLensPanel = (system) => {
+  const sourceName = currentDesignDisplayName();
+  const sourceEfl = Math.abs(toNumber(system.effectiveFocalLength));
+  const targetEfl = Math.max(1, toNumber(state.retargetTargetEfl) || sourceEfl || 50);
+  const scale = sourceEfl > 0 ? targetEfl / sourceEfl : NaN;
+  const last = state.retargetLastResult;
+  return `
+    <section class="optimizer-panel retarget-panel">
+      <div class="panel-heading">
+        <h3>Retarget Lens</h3>
+        <span class="badge">Derived custom copy</span>
+      </div>
+      <div class="optimizer-progress-grid">
+        ${metric("Source design", escapeHtml(sourceName), state.preset === "custom" ? "custom" : "preset")}
+        ${metric("Source EFL", formatNumber(sourceEfl, 3), "mm")}
+        ${metric("Initial scale", formatNumber(scale, 5), "target / source")}
+      </div>
+      <div class="optimizer-controls">
+        ${retargetInput("retargetTargetEfl", "Target EFL", "mm")}
+        ${retargetInput("retargetTargetFNumber", "Target f-number")}
+        <label>
+          Sensor format
+          <select data-action="update-retarget-setting" data-field="retargetSensorFormatKey" aria-label="Retarget sensor format">
+            ${RETARGET_SENSOR_FORMATS.map((format) => `<option value="${format.key}" ${state.retargetSensorFormatKey === format.key ? "selected" : ""}>${escapeHtml(format.name)}</option>`).join("")}
+          </select>
+        </label>
+        ${retargetInput("retargetTargetBfd", "Target BFD / sensor distance", "mm")}
+        ${retargetInput("retargetMaxDiameter", "Maximum lens diameter", "mm")}
+        ${retargetInput("retargetMaxTrackLength", "Maximum track length", "mm")}
+      </div>
+      <div class="optimizer-goals">
+        ${optimizerGoalToggle("retargetPreserveGroupCount", "Preserve original group count")}
+        ${optimizerGoalToggle("retargetPreserveGlass", "Preserve original glass")}
+        ${optimizerGoalToggle("retargetScaleApertures", "Scale clear apertures")}
+      </div>
+      <div class="optimizer-actions">
+        <button class="action-button" type="button" data-action="create-retarget-copy">Create Retargeted Copy</button>
+        ${state.retargetStatus ? `<span class="copy-status">${escapeHtml(state.retargetStatus)}</span>` : ""}
+      </div>
+      ${last ? `
+        <div class="optimizer-progress-grid">
+          ${metric("Created scale", formatNumber(last.scale, 5), "homothetic first pass")}
+          ${metric("Physical stop", formatNumber(last.apertureDiameter, 3), "mm")}
+          ${metric("Target f-number", `f/${formatNumber(last.targetFNumber, 3)}`, "entrance pupil solve")}
+        </div>
+      ` : ""}
+      <p class="diagram-note">Retargeting creates a derived custom design. It never overwrites or relabels the original patent preset. The first pass is a scaled candidate and still needs centre, mid-field, and corner optimization.</p>
+    </section>
+  `;
+};
+
+const runAutoImproveDiagnosis = (lenses = state.lenses, system = calculateSystem(state.lenses), mode = state.autoImproveMode) => {
+  const apertureOptions = { ...rayTraceApertureOptions(state), rayCount: 7, apertureDiameter: state.apertureDiameter };
+  const traces = traceSystemFieldSet(lenses, system, {
+    ...apertureOptions,
+    wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+    spectralLineKey: "d"
+  });
+  const focus = findBestRealRayFocusPlane(lenses, system, {
+    ...apertureOptions,
+    scanRangeMm: 5,
+    samples: 31
+  });
+  const longitudinal = calculateLongitudinalAberration(lenses, system, {
+    ...apertureOptions,
+    rayCount: 7
+  });
+  const distortion = calculateDistortionCurve(lenses, system, {
+    ...apertureOptions,
+    maxFieldAngleDegrees: 12,
+    fieldStepDegrees: 6,
+    rayCount: 5
+  });
+  const curvature = estimateBestFocusByField(lenses, system, {
+    ...apertureOptions,
+    maxFieldAngleDegrees: 12,
+    fieldStepDegrees: 6,
+    rayCount: 5
+  });
+  const centreTrace = traces.find((trace) => trace.fieldKey === "center");
+  const midTrace = traces.find((trace) => trace.fieldKey === "mid");
+  const cornerTrace = traces.find((trace) => trace.fieldKey === "corner");
+  const clippingRatio = traces.reduce((sum, trace) => sum + ((trace.missedRayCount || 0) / Math.max(1, trace.totalRayCount || 1)), 0) / Math.max(1, traces.length);
+  const suggestionsByMode = {
+    focus: ["Prioritize target BFD and centre spot size.", "Allow R1/R2 redistribution and rear air gaps before glass changes."],
+    centerSharpness: ["Tighten centre RMS spot merit.", "Try curvature redistribution and thickness refinement; add one controlled asphere only if spherical search stalls."],
+    cornerSharpness: ["Enable mid/corner spot and Sag/Tan balance goals.", "Allow rear-group curvature, meniscus surfaces, and air gaps."],
+    mtf40: ["Use MTF 40 lp/mm plus spot size goals.", "Run hybrid search first, then coordinate descent refinement."],
+    fieldCurvature: ["Allow rear-group air gaps and meniscus-related curvature changes.", "Compare best-focus shift between centre and corner before accepting."],
+    chromatic: ["Only allow glass nd/Vd substitutions from existing glass catalogue or custom bounded glass.", "Keep a warning that catalogue glass identity is not guaranteed."],
+    faster: ["Allow physical stop diameter and clear apertures, but keep maximum diameter and ray clipping constraints active.", "Do not treat aperture diameter alone as image-quality improvement."]
+  };
+  const warnings = [];
+  if (clippingRatio > 0.2) warnings.push("Vignetting / ray clipping is already significant; faster targets may require larger clear apertures.");
+  if (lenses.some(lensHasActiveAsphere)) warnings.push("Active asphere present: worker MTF convergence is provisional for optimizer reporting.");
+  warnings.push("Auto Improve is diagnostic-first and experimental; use optimizer Accept/Revert before treating a result as a new design.");
+  return {
+    mode,
+    traces,
+    focus,
+    longitudinal,
+    distortion,
+    curvature,
+    metrics: {
+      centreRms: centreTrace?.rmsSpotRadius ?? NaN,
+      midRms: midTrace?.rmsSpotRadius ?? NaN,
+      cornerRms: cornerTrace?.rmsSpotRadius ?? NaN,
+      focusShift: focus.focusShiftMm,
+      chromaticShift: longitudinal.chromaticShiftMm,
+      maxDistortion: Math.max(0, ...distortion.samples.map((sample) => Math.abs(sample.distortionPercent)).filter(Number.isFinite)),
+      clippingRatio
+    },
+    suggestions: suggestionsByMode[mode] || suggestionsByMode.focus,
+    warnings
+  };
+};
+
+const renderAutoImprovePanel = () => {
+  const result = state.autoImproveResult;
+  const metrics = result?.metrics || {};
+  return `
+    <section class="optimizer-panel auto-improve-panel">
+      <div class="panel-heading">
+        <h3>Auto Improve (Experimental)</h3>
+        <span class="badge">Diagnostic-first</span>
+      </div>
+      <div class="optimizer-controls">
+        <label>
+          Improvement mode
+          <select data-action="update-auto-improve-mode" aria-label="Auto improve mode">
+            ${AUTO_IMPROVE_MODES.map((mode) => `<option value="${mode.key}" ${state.autoImproveMode === mode.key ? "selected" : ""}>${escapeHtml(mode.label)}</option>`).join("")}
+          </select>
+        </label>
+      </div>
+      <div class="optimizer-actions">
+        <button class="action-button" type="button" data-action="run-auto-improve-diagnosis">Run diagnostic pass</button>
+        ${state.autoImproveStatus ? `<span class="copy-status">${escapeHtml(state.autoImproveStatus)}</span>` : ""}
+      </div>
+      ${result ? `
+        <div class="optimizer-progress-grid">
+          ${metric("Centre RMS", formatNumber(metrics.centreRms, 5), "mm")}
+          ${metric("Mid RMS", formatNumber(metrics.midRms, 5), "mm")}
+          ${metric("Corner RMS", formatNumber(metrics.cornerRms, 5), "mm")}
+          ${metric("Best-focus shift", formatNumber(metrics.focusShift, 4), "mm")}
+          ${metric("Longitudinal colour", formatNumber(metrics.chromaticShift, 4), "mm C/F")}
+          ${metric("Distortion", formatNumber(metrics.maxDistortion, 3), "% max")}
+          ${metric("Clipping", formatPercentValue(metrics.clippingRatio, 1), "field average")}
+        </div>
+        <div class="empty-analysis-note">
+          <strong>Ranked suggestion</strong>
+          <span>${result.suggestions.map(escapeHtml).join(" ")}</span>
+        </div>
+        ${result.warnings.map((warning) => `<p class="warning ray-warning">${escapeHtml(warning)}</p>`).join("")}
+      ` : `<p class="diagram-note">Run a diagnostic pass before optimizing. The app will compare centre, mid-field, corner, focus shift, colour, clipping, and distortion before suggesting variables.</p>`}
+    </section>
+  `;
+};
+
 const renderOptimizerScoreChart = (result) => {
   const width = 560;
   const height = 210;
@@ -20659,6 +21070,9 @@ const renderOptimizerComparison = (result) => {
     ["EFL", original.effectiveFocalLength, optimized.effectiveFocalLength, "mm"],
     ["BFD", original.backFocalLength, optimized.backFocalLength, "mm"],
     ["f-number", original.fNumber, optimized.fNumber, ""],
+    ["Physical stop diameter", original.physicalStopDiameter, optimized.physicalStopDiameter, "mm"],
+    ["Entrance pupil diameter", original.entrancePupilDiameter, optimized.entrancePupilDiameter, "mm"],
+    ["Pupil magnification", original.pupilMagnification, optimized.pupilMagnification, ""],
     ["RMS spot centre", original.rmsSpotCentre, optimized.rmsSpotCentre, "mm"],
     ["RMS spot corner", original.rmsSpotCorner, optimized.rmsSpotCorner, "mm"],
     ["MTF 40 centre", original.mtf40Centre, optimized.mtf40Centre, ""],
@@ -20732,6 +21146,8 @@ const renderOptimizerPanel = () => {
         ${optimizerInput("optimizerStepScale", "Step scale")}
         ${optimizerInput("optimizerTargetFocalLength", "Target EFL", "mm")}
         ${optimizerInput("optimizerTargetBfd", "Target BFD", "mm")}
+        ${optimizerInput("optimizerTargetFNumber", "Target f-number")}
+        ${optimizerInput("optimizerFNumberWeight", "F-number merit weight")}
         ${optimizerInput("optimizerMaxTrackLength", "Max track", "mm")}
         ${optimizerInput("optimizerMinBfd", "Min BFD", "mm")}
         ${optimizerInput("optimizerMaxDiameter", "Max diameter", "mm")}
@@ -20739,6 +21155,8 @@ const renderOptimizerPanel = () => {
       <div class="optimizer-goals">
         ${optimizerGoalToggle("optimizerUseTargetFocalLength", "Focal length")}
         ${optimizerGoalToggle("optimizerUseTargetBfd", "Back focal distance")}
+        ${optimizerGoalToggle("optimizerUseTargetFNumber", "Target f-number")}
+        ${optimizerGoalToggle("optimizerUseRealEntrancePupil", "Use real entrance pupil")}
         ${optimizerGoalToggle("optimizerUseSpotSize", "Spot size")}
         ${optimizerGoalToggle("optimizerUseMtf", "MTF 40 lp/mm")}
         ${optimizerGoalToggle("optimizerUseStBalance", "Sag/Tan balance")}
@@ -20746,8 +21164,9 @@ const renderOptimizerPanel = () => {
         ${optimizerGoalToggle("optimizerUseDistortion", "Distortion")}
         ${optimizerGoalToggle("optimizerUseTransmission", "Transmission")}
         ${optimizerGoalToggle("optimizerUseToleranceRobustness", "Tolerance robustness")}
-        ${optimizerGoalToggle("optimizerUseApertureDiameter", "Aperture diameter")}
+        ${optimizerGoalToggle("optimizerUseApertureDiameter", "Physical stop diameter variable")}
       </div>
+      <p class="diagram-note">Physical stop diameter is an optimizer variable only. Speed is scored by the target f-number merit using the real entrance pupil when enabled.</p>
       <div class="optimizer-actions">
         <button class="action-button" type="button" data-action="run-optimizer" ${state.optimizerStatus === "running" ? "disabled" : ""}>Run optimizer</button>
         <button class="action-button" type="button" data-action="stop-optimizer" ${state.optimizerStatus === "running" ? "" : "disabled"}>Stop optimizer</button>
@@ -20764,6 +21183,10 @@ const renderOptimizerPanel = () => {
         ${metric("Improvement", formatNumber(optimizerImprovementPercent(result), 2), "%")}
         ${metric("Best EFL", formatNumber(metrics.effectiveFocalLength, 3), "mm")}
         ${metric("Best BFD", formatNumber(metrics.backFocalLength, 3), "mm")}
+        ${metric("Best f-number", `f/${formatNumber(metrics.fNumber, 3)}`, "entrance pupil")}
+        ${metric("Physical stop", formatNumber(metrics.physicalStopDiameter, 3), "mm")}
+        ${metric("Entrance pupil", formatNumber(metrics.entrancePupilDiameter, 3), "mm")}
+        ${metric("Pupil mag.", formatNumber(metrics.pupilMagnification, 4), "entrance / stop")}
         ${metric("Best MTF 40", formatNumber(metrics.worstMtf40, 4), "worst field")}
         ${metric("Best RMS spot", formatNumber(metrics.worstRmsSpotRadius, 5), "mm")}
         ${metric("Best RMS OPD", formatNumber(metrics.rmsOpdWaves, 5), "waves")}
@@ -21325,6 +21748,12 @@ const render = () => {
             `)}
 
             ${renderWorkflowGroup("Build", `
+              ${renderWorkflowPanel("retargetBuild", isPanelExpanded("retargetBuild") ? renderRetargetLensPanel(system) : "", {
+                summary: `${formatNumber(state.retargetTargetEfl, 1)} mm · f/${formatNumber(state.retargetTargetFNumber, 2)}`
+              })}
+              ${renderWorkflowPanel("autoImproveBuild", isPanelExpanded("autoImproveBuild") ? renderAutoImprovePanel() : "", {
+                summary: AUTO_IMPROVE_MODES.find((mode) => mode.key === state.autoImproveMode)?.label || "Diagnostic-first"
+              })}
               ${renderWorkflowPanel("optimizerBuild", isPanelExpanded("optimizerBuild") ? renderOptimizerPanel() : "", { summary: state.optimizerStatus })}
               ${renderWorkflowPanel("toleranceBuild", isPanelExpanded("toleranceBuild") ? renderToleranceSimulationPanel() : "", {
                 summary: state.toleranceResult ? `${formatNumber(state.toleranceResult.passRate * 100, 1)}% pass` : "Monte Carlo"
@@ -21843,6 +22272,8 @@ mount.addEventListener("input", (event) => {
       "optimizerStepScale",
       "optimizerTargetFocalLength",
       "optimizerTargetBfd",
+      "optimizerTargetFNumber",
+      "optimizerFNumberWeight",
       "optimizerMaxTrackLength",
       "optimizerMinBfd",
       "optimizerMaxDiameter"
@@ -21855,12 +22286,35 @@ mount.addEventListener("input", (event) => {
         : toNumber(event.target.value);
       if (field === "optimizerIterations") state.optimizerIterations = Math.round(clamp(state.optimizerIterations || 25, 0, 250));
       if (field === "optimizerStepScale") state.optimizerStepScale = Math.max(0.05, state.optimizerStepScale || 1);
+      if (field === "optimizerTargetFNumber") state.optimizerTargetFNumber = Math.max(0.5, state.optimizerTargetFNumber || 1.4);
+      if (field === "optimizerFNumberWeight") state.optimizerFNumberWeight = Math.max(0.1, state.optimizerFNumberWeight || 8);
     }
     state.optimizerCopyStatus = "";
     state.optimizerReportCsv = "";
     update();
 
     const sameInput = mount.querySelector(`[data-action="update-optimizer-setting"][data-field="${field}"]`);
+    if (sameInput) sameInput.focus();
+    return;
+  }
+
+  if (action === "update-retarget-setting") {
+    const field = event.target.dataset.field;
+    if (field === "retargetSensorFormatKey") {
+      state.retargetSensorFormatKey = RETARGET_SENSOR_FORMATS.some((format) => format.key === event.target.value)
+        ? event.target.value
+        : "fullFrame";
+    } else if (field in state) {
+      state[field] = toNumber(event.target.value);
+      if (field === "retargetTargetEfl") state.retargetTargetEfl = Math.max(1, state.retargetTargetEfl || 40);
+      if (field === "retargetTargetFNumber") state.retargetTargetFNumber = Math.max(0.5, state.retargetTargetFNumber || 1.4);
+      if (field === "retargetMaxDiameter") state.retargetMaxDiameter = Math.max(5, state.retargetMaxDiameter || 60);
+      if (field === "retargetMaxTrackLength") state.retargetMaxTrackLength = Math.max(1, state.retargetMaxTrackLength || 120);
+    }
+    state.retargetStatus = "";
+    update();
+
+    const sameInput = mount.querySelector(`[data-action="update-retarget-setting"][data-field="${field}"]`);
     if (sameInput) sameInput.focus();
     return;
   }
@@ -22407,6 +22861,27 @@ mount.addEventListener("change", (event) => {
     return;
   }
 
+  if (event.target.dataset.action === "update-retarget-setting") {
+    const field = event.target.dataset.field;
+    if (field === "retargetSensorFormatKey") {
+      state.retargetSensorFormatKey = RETARGET_SENSOR_FORMATS.some((format) => format.key === event.target.value)
+        ? event.target.value
+        : "fullFrame";
+    }
+    state.retargetStatus = "";
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-auto-improve-mode") {
+    state.autoImproveMode = AUTO_IMPROVE_MODES.some((mode) => mode.key === event.target.value)
+      ? event.target.value
+      : "focus";
+    state.autoImproveStatus = "";
+    update();
+    return;
+  }
+
   if (event.target.dataset.action === "update-aperture-stop") {
     rememberState();
     state.apertureStopIndex = event.target.value;
@@ -22861,6 +23336,78 @@ mount.addEventListener("click", (event) => {
   if (!button) return;
 
   const action = button.dataset.action;
+
+  if (action === "create-retarget-copy") {
+    const sourceSystem = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const target = createRetargetedLensCandidate(state.lenses, sourceSystem, {
+      targetEfl: state.retargetTargetEfl,
+      targetFNumber: state.retargetTargetFNumber,
+      targetBfd: state.retargetTargetBfd,
+      maxDiameter: state.retargetMaxDiameter,
+      maxTrackLength: state.retargetMaxTrackLength,
+      preserveGroupCount: state.retargetPreserveGroupCount,
+      preserveGlass: state.retargetPreserveGlass,
+      scaleApertures: state.retargetScaleApertures,
+      sensorFormatKey: state.retargetSensorFormatKey,
+      sourceDesignName: currentDesignDisplayName()
+    });
+    rememberState();
+    const derivedName = `${target.metadata.derivedFromDesignName} — derived ${formatNumber(target.targetEfl, 0)}mm target`;
+    state.lenses = target.lenses.map((lens) => normalizeLens({
+      ...lens,
+      derivedFromPreset: target.metadata.derivedFromPreset,
+      derivedFromDesignName: target.metadata.derivedFromDesignName,
+      derivedAt: target.metadata.derivedAt,
+      retargetSourceEfl: target.metadata.retargetSourceEfl,
+      retargetTargetEfl: target.metadata.retargetTargetEfl,
+      retargetTargetFNumber: target.metadata.retargetTargetFNumber,
+      provenance: target.metadata.provenance
+    }));
+    state.prescription = normalizePrescription({
+      prescriptionType: "element",
+      sourceType: "custom",
+      derivedFromPreset: target.metadata.derivedFromPreset,
+      derivedFromDesignName: target.metadata.derivedFromDesignName,
+      derivedAt: target.metadata.derivedAt,
+      retargetSourceEfl: target.metadata.retargetSourceEfl,
+      retargetTargetEfl: target.metadata.retargetTargetEfl,
+      retargetTargetFNumber: target.metadata.retargetTargetFNumber,
+      provenance: target.metadata.provenance,
+      lenses: state.lenses
+    });
+    state.preset = "custom";
+    state.designName = derivedName;
+    state.apertureDiameter = Math.max(0.1, target.apertureDiameter);
+    state.optimizerTargetFocalLength = target.targetEfl;
+    state.optimizerTargetFNumber = target.targetFNumber;
+    state.optimizerTargetBfd = Math.max(0, toNumber(state.retargetTargetBfd) || state.optimizerTargetBfd || 18);
+    state.optimizerMaxDiameter = Math.max(5, toNumber(state.retargetMaxDiameter) || state.optimizerMaxDiameter || 120);
+    state.optimizerMaxTrackLength = Math.max(1, toNumber(state.retargetMaxTrackLength) || state.optimizerMaxTrackLength || 160);
+    state.optimizerUseTargetFocalLength = true;
+    state.optimizerUseTargetFNumber = true;
+    state.optimizerUseRealEntrancePupil = true;
+    state.retargetLastResult = {
+      ...target.metadata,
+      scale: target.scale,
+      apertureDiameter: target.apertureDiameter,
+      targetFNumber: target.targetFNumber,
+      warnings: target.warnings
+    };
+    state.retargetStatus = "Retargeted custom copy created.";
+    state.optimizerStatus = "idle";
+    state.optimizerBest = null;
+    resetGeneratedAnalysisState();
+    update();
+    return;
+  }
+
+  if (action === "run-auto-improve-diagnosis") {
+    const system = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
+    state.autoImproveResult = runAutoImproveDiagnosis(state.lenses, system, state.autoImproveMode);
+    state.autoImproveStatus = "Diagnostic pass complete.";
+    update();
+    return;
+  }
 
   if (action === "run-optimizer") {
     startOptimizerRun();
@@ -23359,8 +23906,12 @@ const runOpticsSelfCheck = (options = {}) => {
     stepScale: 0.5,
     targetFocalLength: 50,
     targetBfd: 18,
+    targetFNumber: 1.4,
     useTargetFocalLength: true,
     useTargetBfd: false,
+    useTargetFNumber: false,
+    useRealEntrancePupil: true,
+    fNumberWeight: 8,
     useSpotSize: false,
     useMtf: false,
     useStBalance: false,
@@ -23403,6 +23954,26 @@ const runOpticsSelfCheck = (options = {}) => {
       "geometricMtfConvergenceToken",
       "geometricMtfConvergenceLastResult",
       "geometricMtfConvergenceLastKey",
+      "optimizerTargetFocalLength",
+      "optimizerTargetBfd",
+      "optimizerTargetFNumber",
+      "optimizerUseTargetFNumber",
+      "optimizerUseRealEntrancePupil",
+      "optimizerFNumberWeight",
+      "retargetTargetEfl",
+      "retargetTargetFNumber",
+      "retargetSensorFormatKey",
+      "retargetTargetBfd",
+      "retargetMaxDiameter",
+      "retargetMaxTrackLength",
+      "retargetPreserveGroupCount",
+      "retargetPreserveGlass",
+      "retargetScaleApertures",
+      "retargetStatus",
+      "retargetLastResult",
+      "autoImproveMode",
+      "autoImproveResult",
+      "autoImproveStatus",
       ...Object.keys(DEFAULT_ANALYSIS_SETTINGS)
     ];
     const cloneValue = (value) => value === undefined ? undefined : JSON.parse(JSON.stringify(value));
@@ -27025,6 +27596,143 @@ const runOpticsSelfCheck = (options = {}) => {
     const lenses = clonePresetLenses("manual");
     const result = runOptimizer(lenses, { ...optimizerQuickOptions, iterations: 25 });
     return result.progress.length === 26 && Number.isFinite(result.best.evaluation.score);
+  });
+
+  test("retarget 50 mm to 40 mm creates derived custom copy without mutating preset data", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    const presetBefore = JSON.stringify(PRESETS[DEFAULT_PRESET_KEY]);
+    const sourceSystem = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const target = createRetargetedLensCandidate(state.lenses, sourceSystem, {
+      targetEfl: 40,
+      targetFNumber: 1.4,
+      sourceDesignName: PRESETS[DEFAULT_PRESET_KEY].name
+    });
+    state.lenses = target.lenses;
+    state.preset = "custom";
+    state.designName = `${target.metadata.derivedFromDesignName} — derived 40mm target`;
+    return state.preset === "custom"
+      && target.metadata.provenance === "scaled-and-optimized-derived-design"
+      && target.metadata.derivedFromPreset === DEFAULT_PRESET_KEY
+      && JSON.stringify(PRESETS[DEFAULT_PRESET_KEY]) === presetBefore;
+  }));
+
+  test("retarget scaling scales radii thicknesses and air gaps", () => withTemporaryState(() => {
+    const lenses = clonePresetLenses("manual");
+    const sourceSystem = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const targetEfl = Math.abs(sourceSystem.effectiveFocalLength) * 0.8;
+    const target = createRetargetedLensCandidate(lenses, sourceSystem, {
+      targetEfl,
+      targetFNumber: 2,
+      scaleApertures: true
+    });
+    const scale = target.scale;
+    return Math.abs(target.lenses[0].r1 - normalizeLens(lenses[0]).r1 * scale) < 1e-9
+      && Math.abs(target.lenses[0].thickness - normalizeLens(lenses[0]).thickness * scale) < 1e-9
+      && Math.abs(target.lenses[0].gapAfter - normalizeLens(lenses[0]).gapAfter * scale) < 1e-9
+      && Math.abs(target.lenses[0].diameter - normalizeLens(lenses[0]).diameter * scale) < 1e-9;
+  }));
+
+  test("target f-number merit uses real entrance pupil when enabled", () => {
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const matchedStop = matchPatentPhysicalStopDiameter(lenses, system, {
+      ...rayTraceApertureOptions(state),
+      apertureStopMode: "auto",
+      apertureStopIndex: "frontGroup",
+      apertureRatio: "1:2"
+    });
+    const merit = calculateMeritScore(lenses, system, {
+      ...optimizerQuickOptions,
+      apertureDiameter: matchedStop,
+      apertureStopMode: "auto",
+      apertureStopIndex: "frontGroup",
+      targetFNumber: 2,
+      useTargetFNumber: true,
+      useRealEntrancePupil: true,
+      useTargetFocalLength: false,
+      useSpotSize: false
+    });
+    return merit.metrics.usedRealEntrancePupil !== false
+      && Number.isFinite(merit.metrics.entrancePupilDiameter)
+      && Math.abs(merit.metrics.fNumber - 2) < 0.05;
+  });
+
+  test("faster aperture cannot be achieved by shrinking the physical stop", () => {
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const largeStop = calculateMeritScore(lenses, system, {
+      ...optimizerQuickOptions,
+      apertureDiameter: 24,
+      apertureStopMode: "auto",
+      apertureStopIndex: "frontGroup",
+      targetFNumber: 1.4,
+      useTargetFNumber: true,
+      useRealEntrancePupil: true,
+      useTargetFocalLength: false,
+      useSpotSize: false
+    });
+    const smallStop = calculateMeritScore(lenses, system, {
+      ...optimizerQuickOptions,
+      apertureDiameter: 8,
+      apertureStopMode: "auto",
+      apertureStopIndex: "frontGroup",
+      targetFNumber: 1.4,
+      useTargetFNumber: true,
+      useRealEntrancePupil: true,
+      useTargetFocalLength: false,
+      useSpotSize: false
+    });
+    return smallStop.metrics.fNumber > largeStop.metrics.fNumber
+      && smallStop.componentScores.fNumber > largeStop.componentScores.fNumber;
+  });
+
+  test("optimizer rejects clipped or impossible candidate geometry", () => {
+    const lenses = clonePresetLenses("manual").map((lens) => ({ ...lens, diameter: 3 }));
+    const candidate = clampOptimizationCandidate({ lenses, apertureDiameter: 80 });
+    const system = calculateSystem(candidate.lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const validation = validateOptimizerCandidate(candidate, system, { ...optimizerQuickOptions, apertureDiameter: 80 });
+    return !validation.valid && validation.reasons.length > 0;
+  });
+
+  test("active asphere candidate reports provisional MTF status", () => {
+    const lenses = clonePresetLenses("manual").map((lens, index) => (
+      index === 0 ? { ...lens, frontAsphereEnabled: true, frontA4: 1e-6 } : lens
+    ));
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const merit = calculateMeritScore(lenses, system, {
+      ...optimizerQuickOptions,
+      useMtf: true,
+      useSpotSize: false
+    });
+    return merit.warnings.some((warning) => warning.includes("Active asphere candidate"));
+  });
+
+  test("retargeted design can optimize EFL BFD and f-number together", () => {
+    const lenses = clonePresetLenses("manual");
+    const sourceSystem = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const retargeted = createRetargetedLensCandidate(lenses, sourceSystem, {
+      targetEfl: 40,
+      targetFNumber: 2
+    });
+    const result = runOptimizer(retargeted.lenses, {
+      ...optimizerQuickOptions,
+      iterations: 5,
+      apertureDiameter: retargeted.apertureDiameter,
+      targetFocalLength: 40,
+      targetBfd: Math.max(0, retargeted.system.backFocalLength || 10),
+      targetFNumber: 2,
+      useTargetFocalLength: true,
+      useTargetBfd: true,
+      useTargetFNumber: true,
+      useRealEntrancePupil: true,
+      useSpotSize: false,
+      useMtf: false
+    });
+    const metrics = result.best.evaluation.merit.metrics;
+    return Number.isFinite(result.best.evaluation.score)
+      && Number.isFinite(metrics.effectiveFocalLength)
+      && Number.isFinite(metrics.backFocalLength)
+      && Number.isFinite(metrics.fNumber);
   });
 
   test("ray tracing still works with aperture stop and d-line glass", () => {

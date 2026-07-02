@@ -4784,15 +4784,18 @@ select {
   font-weight: 850;
 }
 
-.ray-diagram.render-patentIllustration .optical-layout-fill {
+.ray-diagram.render-patentIllustration .optical-layout-fill,
+.ray-diagram.render-patentIllustration .patent-illustration-fill {
   fill: rgba(121, 187, 217, 0.13);
 }
 
-.ray-diagram.render-patentIllustration .optical-layout-fill.glass-tone-1 {
+.ray-diagram.render-patentIllustration .optical-layout-fill.glass-tone-1,
+.ray-diagram.render-patentIllustration .patent-illustration-fill.glass-tone-1 {
   fill: rgba(91, 168, 151, 0.11);
 }
 
-.ray-diagram.render-patentIllustration .optical-layout-fill.glass-tone-2 {
+.ray-diagram.render-patentIllustration .optical-layout-fill.glass-tone-2,
+.ray-diagram.render-patentIllustration .patent-illustration-fill.glass-tone-2 {
   fill: rgba(74, 139, 169, 0.12);
 }
 
@@ -6929,7 +6932,8 @@ textarea,
   opacity: 0.25;
 }
 
-.top-diagram .ray-diagram.render-patentIllustration .optical-layout-fill {
+.top-diagram .ray-diagram.render-patentIllustration .optical-layout-fill,
+.top-diagram .ray-diagram.render-patentIllustration .patent-illustration-fill {
   fill: rgba(121, 187, 217, 0.13);
 }
 

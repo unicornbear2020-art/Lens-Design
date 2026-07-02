@@ -233,6 +233,7 @@ const DEFAULT_CHIP_ZONE_WIDTH_MM = 0.5;
 const DEFAULT_MINIMUM_EDGE_THICKNESS_MM = 0.2;
 const DEFAULT_MINIMUM_FLAT_LAND_MM = 0.2;
 const DEFAULT_BEVEL_ANGLE_DEG = 45;
+const DEFAULT_EDGE_TREATMENT_MODE = "truncatedFlatLand";
 const PATENT_CLEAR_APERTURE_NUMERICAL_MARGIN_MM = 0.05;
 const DEFAULT_CEMENTED_INTERFACE_BEVEL_FACE_WIDTH_MM = 0.15;
 const DEFAULT_CEMENTED_INTERFACE_BEVEL_ANGLE_DEG = 45;
@@ -240,6 +241,10 @@ const OPTICAL_SIDE_VIEW_DEFAULT_ZOOM = 1.17;
 
 const automaticBevelFaceWidthMm = (diameter) => (
   diameter <= 25.4 ? 0.25 : diameter <= 50 ? 0.3 : 0.4
+);
+
+const normalizeEdgeTreatmentMode = (mode) => (
+  mode === "mathematicalCurve" ? "mathematicalCurve" : DEFAULT_EDGE_TREATMENT_MODE
 );
 
 const PANEL_FIELD_STEPS = {
@@ -287,11 +292,12 @@ const PANEL_FIELD_STEPS = {
   physicalMtfFNumber: 0.1
 };
 
-const RETARGET_SENSOR_FORMATS = [
-  { key: "fullFrame", name: "Full-frame 36 x 24 mm" },
-  { key: "apsC", name: "APS-C" },
-  { key: "mft", name: "Micro Four Thirds" }
+const CANONICAL_SENSOR_FORMATS = [
+  { key: "fullFrame", name: "Full-frame 36 x 24 mm", width: 36, height: 24, diagonal: FULL_FRAME_SENSOR.diagonal },
+  { key: "apsC", name: "APS-C", width: 23.5, height: 15.6, diagonal: 28.2 },
+  { key: "mft", name: "Micro Four Thirds", width: 17.3, height: 13, diagonal: 21.6 }
 ];
+const RETARGET_SENSOR_FORMATS = CANONICAL_SENSOR_FORMATS;
 
 const AUTO_IMPROVE_MODES = [
   { key: "focus", label: "Improve focus at sensor plane" },
@@ -333,6 +339,8 @@ const DEFAULT_ANALYSIS_SETTINGS = {
   apertureStopDistanceFromFrontMm: 0,
   apertureDiameter: 25,
   matchPatentFNumber: true,
+  derivedApertureStopSpec: null,
+  optimizerAllowStopShiftInAnchorGap: false,
   rayTraceRayCount: 9,
   spotDisplayMode: "rgb",
   rayFanFieldPreset: "center",
@@ -664,6 +672,7 @@ const normalizeLens = (lens) => {
     chipZoneWidthMm,
     minimumEdgeThicknessMm,
     minimumFlatLandMm,
+    edgeTreatmentMode: normalizeEdgeTreatmentMode(lens.edgeTreatmentMode),
     frontBevel,
     rearBevel,
     frontBevelEnabled: frontBevel.enabled,
@@ -900,25 +909,33 @@ const normalizePatentSurface = (surface = {}, index = 0) => ({
 
 const normalizeApertureStopSpec = (spec = null) => {
   if (!spec || typeof spec !== "object") return null;
-  const kind = ["surface", "airGap", "axial"].includes(spec.kind) ? spec.kind : null;
+  const kind = ["surface", "airGap", "axial", "elementGap", "elementSurfaceOffset"].includes(spec.kind) ? spec.kind : null;
   if (!kind) return null;
   const surfaceNumber = numericValue(spec.surfaceNumber);
   const afterSurfaceNumber = numericValue(spec.afterSurfaceNumber);
+  const afterLensIndex = numericValue(spec.afterLensIndex);
+  const lensIndex = numericValue(spec.lensIndex);
   const fraction = numericValue(spec.fraction);
   const axialOffsetMm = numericValue(spec.axialOffsetMm);
+  const offsetTowardSensorMm = numericValue(spec.offsetTowardSensorMm);
   const x = numericValue(spec.x);
   return {
     kind,
     surfaceNumber: Number.isFinite(surfaceNumber) ? Math.round(surfaceNumber) : null,
     afterSurfaceNumber: Number.isFinite(afterSurfaceNumber) ? Math.round(afterSurfaceNumber) : null,
+    afterLensIndex: Number.isFinite(afterLensIndex) ? Math.round(afterLensIndex) : null,
+    lensIndex: Number.isFinite(lensIndex) ? Math.round(lensIndex) : null,
+    side: spec.side === "front" ? "front" : "rear",
     fraction: Math.min(1, Math.max(0, Number.isFinite(fraction) ? fraction : 0.5)),
     axialOffsetMm: Number.isFinite(axialOffsetMm) ? axialOffsetMm : 0,
+    offsetTowardSensorMm: Number.isFinite(offsetTowardSensorMm) ? Math.max(0, offsetTowardSensorMm) : 0,
     x: Number.isFinite(x) ? x : null,
-    sourceLevel: ["patent", "production", "estimated", "manual"].includes(spec.sourceLevel) ? spec.sourceLevel : "estimated",
+    sourceLevel: ["patent", "production", "estimated", "manual", "derived"].includes(spec.sourceLevel) ? spec.sourceLevel : "estimated",
     confidence: ["verified", "probable", "unverified"].includes(spec.confidence) ? spec.confidence : "unverified",
     sourceLabel: spec.sourceLabel || "",
     sourceUrl: spec.sourceUrl || "",
-    note: spec.note || ""
+    note: spec.note || "",
+    topologyLocked: spec.topologyLocked === true
   };
 };
 
@@ -2262,6 +2279,7 @@ const normalizePrescription = (prescription = {}) => {
       diameterNote: prescription.diameterNote || "",
       diameterProfile: normalizeDiameterProfile(prescription.diameterProfile),
       apertureStopSpec: normalizeApertureStopSpec(prescription.apertureStopSpec),
+      derivedApertureStopSpec: normalizeApertureStopSpec(prescription.derivedApertureStopSpec),
       surfaces: (prescription.surfaces || []).map(normalizePatentSurface)
     };
   }
@@ -2315,6 +2333,19 @@ const normalizePrescription = (prescription = {}) => {
 
   return {
     prescriptionType: "element",
+    sourceType: prescription.sourceType || null,
+    sourcePatent: prescription.sourcePatent || null,
+    example: prescription.example || null,
+    derivedFromPreset: prescription.derivedFromPreset || null,
+    derivedFromDesignName: prescription.derivedFromDesignName || null,
+    derivedAt: prescription.derivedAt || null,
+    retargetSourceEfl: normalizePatentSurfaceValue(prescription.retargetSourceEfl),
+    retargetTargetEfl: normalizePatentSurfaceValue(prescription.retargetTargetEfl),
+    retargetTargetFNumber: normalizePatentSurfaceValue(prescription.retargetTargetFNumber),
+    retargetSensorFormatKey: prescription.retargetSensorFormatKey || null,
+    provenance: prescription.provenance || null,
+    apertureStopSpec: normalizeApertureStopSpec(prescription.apertureStopSpec),
+    derivedApertureStopSpec: normalizeApertureStopSpec(prescription.derivedApertureStopSpec),
     lenses: (prescription.lenses || []).map((lens) => normalizePresetLens({
       id: lens.id || crypto.randomUUID(),
       ...lens
@@ -3161,7 +3192,11 @@ const snapshotState = () => ({
   mtfEngine: state.mtfEngine,
   mtfLsfQuality: state.mtfLsfQuality,
   mtfPupilSampleCount: effectiveMtfPupilSampleCount(),
-  mtfFieldFocusPolicy: state.mtfFieldFocusPolicy
+  mtfFieldFocusPolicy: state.mtfFieldFocusPolicy,
+  apertureStopMode: state.apertureStopMode,
+  apertureStopIndex: state.apertureStopIndex,
+  derivedApertureStopSpec: normalizeApertureStopSpec(state.derivedApertureStopSpec),
+  optimizerAllowStopShiftInAnchorGap: state.optimizerAllowStopShiftInAnchorGap
 });
 
 const restoreSnapshot = (snapshot) => {
@@ -3209,6 +3244,11 @@ const restoreSnapshot = (snapshot) => {
   state.mtfLsfQuality = normalizeGeometricLsfQuality(snapshot.mtfLsfQuality);
   state.mtfPupilSampleCount = effectiveMtfPupilSampleCount(snapshot.mtfPupilSampleCount);
   state.mtfFieldFocusPolicy = snapshot.mtfFieldFocusPolicy === "centerRefocus" ? "centerRefocus" : "fixed";
+  state.apertureStopMode = snapshot.apertureStopMode || state.apertureStopMode || DEFAULT_ANALYSIS_SETTINGS.apertureStopMode;
+  state.apertureStopIndex = snapshot.apertureStopIndex || state.apertureStopIndex || DEFAULT_ANALYSIS_SETTINGS.apertureStopIndex;
+  state.derivedApertureStopSpec = normalizeApertureStopSpec(snapshot.derivedApertureStopSpec)
+    || normalizeApertureStopSpec(state.prescription?.derivedApertureStopSpec);
+  state.optimizerAllowStopShiftInAnchorGap = snapshot.optimizerAllowStopShiftInAnchorGap === true;
 };
 
 const rememberState = () => {
@@ -3269,6 +3309,19 @@ const serializePrescription = () => {
 
   return {
     prescriptionType: "element",
+    sourceType: state.prescription?.sourceType || "custom",
+    sourcePatent: state.prescription?.sourcePatent || null,
+    example: state.prescription?.example || null,
+    derivedFromPreset: state.prescription?.derivedFromPreset || null,
+    derivedFromDesignName: state.prescription?.derivedFromDesignName || null,
+    derivedAt: state.prescription?.derivedAt || null,
+    retargetSourceEfl: state.prescription?.retargetSourceEfl ?? null,
+    retargetTargetEfl: state.prescription?.retargetTargetEfl ?? null,
+    retargetTargetFNumber: state.prescription?.retargetTargetFNumber ?? null,
+    retargetSensorFormatKey: state.prescription?.retargetSensorFormatKey || null,
+    provenance: state.prescription?.provenance || null,
+    apertureStopSpec: normalizeApertureStopSpec(state.prescription?.apertureStopSpec || state.derivedApertureStopSpec),
+    derivedApertureStopSpec: normalizeApertureStopSpec(state.prescription?.derivedApertureStopSpec || state.derivedApertureStopSpec),
     lenses: serializeDesign()
   };
 };
@@ -3313,7 +3366,11 @@ const saveCurrentDesign = ({ preferExisting = false } = {}) => {
       mtfEngine: state.mtfEngine,
       mtfLsfQuality: state.mtfLsfQuality,
       mtfPupilSampleCount: effectiveMtfPupilSampleCount(),
-      mtfFieldFocusPolicy: state.mtfFieldFocusPolicy
+      mtfFieldFocusPolicy: state.mtfFieldFocusPolicy,
+      apertureStopMode: state.apertureStopMode,
+      apertureStopIndex: state.apertureStopIndex,
+      derivedApertureStopSpec: normalizeApertureStopSpec(state.derivedApertureStopSpec),
+      optimizerAllowStopShiftInAnchorGap: state.optimizerAllowStopShiftInAnchorGap
     },
     prescription: serializePrescription(),
     lenses: serializeDesign()
@@ -3362,6 +3419,8 @@ const loadDesign = (design) => {
       lenses: state.lenses
     });
   }
+  state.derivedApertureStopSpec = normalizeApertureStopSpec(state.prescription?.derivedApertureStopSpec);
+  if (state.derivedApertureStopSpec) state.apertureStopMode = "derivedTopology";
   if (design.analysisSettings) {
     state.diagramViewMode = normalizeDiagramViewMode(design.analysisSettings.diagramViewMode);
     state.productionSilhouetteSource = ["generated", "svgReference"].includes(design.analysisSettings.productionSilhouetteSource)
@@ -3422,6 +3481,11 @@ const loadDesign = (design) => {
     state.mtfLsfQuality = normalizeGeometricLsfQuality(design.analysisSettings.mtfLsfQuality);
     state.mtfPupilSampleCount = effectiveMtfPupilSampleCount(design.analysisSettings.mtfPupilSampleCount);
     state.mtfFieldFocusPolicy = design.analysisSettings.mtfFieldFocusPolicy === "centerRefocus" ? "centerRefocus" : "fixed";
+    state.apertureStopMode = design.analysisSettings.apertureStopMode || state.apertureStopMode || DEFAULT_ANALYSIS_SETTINGS.apertureStopMode;
+    state.apertureStopIndex = design.analysisSettings.apertureStopIndex || state.apertureStopIndex || DEFAULT_ANALYSIS_SETTINGS.apertureStopIndex;
+    state.derivedApertureStopSpec = normalizeApertureStopSpec(design.analysisSettings.derivedApertureStopSpec)
+      || normalizeApertureStopSpec(state.prescription?.derivedApertureStopSpec);
+    state.optimizerAllowStopShiftInAnchorGap = design.analysisSettings.optimizerAllowStopShiftInAnchorGap === true;
   }
   state.designName = design.name;
   state.selectedSavedDesignId = design.id;
@@ -3450,6 +3514,8 @@ const serializeProjectJson = () => ({
     apertureStopSurfaceOffsetMm: state.apertureStopSurfaceOffsetMm,
     apertureStopDistanceFromSensorMm: state.apertureStopDistanceFromSensorMm,
     apertureStopDistanceFromFrontMm: state.apertureStopDistanceFromFrontMm,
+    derivedApertureStopSpec: normalizeApertureStopSpec(state.derivedApertureStopSpec),
+    optimizerAllowStopShiftInAnchorGap: state.optimizerAllowStopShiftInAnchorGap,
     apertureDiameter: state.apertureDiameter,
     rayTraceRayCount: state.rayTraceRayCount,
     mtfEngine: state.mtfEngine,
@@ -3492,7 +3558,10 @@ const syncCustomElementPrescription = () => {
   if (state.prescription?.prescriptionType === "surface") return;
   if (state.prescription?.prescriptionType === "visualOnly") return;
   state.prescription = normalizePrescription({
+    ...state.prescription,
     prescriptionType: "element",
+    apertureStopSpec: state.prescription?.apertureStopSpec || state.derivedApertureStopSpec,
+    derivedApertureStopSpec: state.prescription?.derivedApertureStopSpec || state.derivedApertureStopSpec,
     lenses: state.lenses
   });
 };
@@ -4457,7 +4526,13 @@ const renderOptimizerLensControl = (lens) => {
     gapAfter: "Gap",
     diameter: "Diameter",
     glass: "Glass / index",
-    customVd: "Vd"
+    customVd: "Vd",
+    frontConicK: "Front K",
+    rearConicK: "Rear K",
+    frontA4: "Front A4",
+    rearA4: "Rear A4",
+    frontA6: "Front A6",
+    rearA6: "Rear A6"
   };
 
   return `
@@ -5357,60 +5432,14 @@ const buildSequentialPatentTraceSurfaces = (prescription, options = {}) => {
     patentSurfaces,
     patentSurfaceXMap: xMap,
     apertureStopSpec: stopConfiguration.apertureStopSpec,
+    derivedApertureStopSpec: stopConfiguration.derivedApertureStopSpec,
     prescription: normalizedPrescription
   });
-  const matchingSurface = stopResolution.matchingSurface || specResolution?.matchingSurface || traceSurfaces.find((surface) => surface.isStop);
-
-  if (matchingSurface) {
-    matchingSurface.isStop = true;
-    matchingSurface.isRefracting = false;
-    matchingSurface.stopSemiDiameter = stopSemiDiameter;
-    matchingSurface.semiDiameter = Math.min(matchingSurface.semiDiameter, stopSemiDiameter);
-    matchingSurface.clearApertureDiameter = matchingSurface.semiDiameter * 2;
-    matchingSurface.stopSource = stopResolution.source || specResolution?.source;
-    matchingSurface.stopLabel = stopResolution.label || specResolution?.label;
-    matchingSurface.stopWarning = stopResolution.warning || specResolution?.warning;
-    matchingSurface.stopSourceLevel = stopResolution.sourceLevel || specResolution?.sourceLevel;
-    matchingSurface.stopConfidence = stopResolution.confidence || specResolution?.confidence;
-    matchingSurface.stopSourceBadge = stopResolution.sourceBadge || specResolution?.sourceBadge;
-    matchingSurface.nAfter = matchingSurface.nBefore;
-  } else if (Number.isFinite(stopResolution.x)) {
-    traceSurfaces.push({
-      x: stopResolution.x,
-      radius: 0,
-      patentRadius: Infinity,
-      asphere: null,
-      semiDiameter: stopSemiDiameter,
-      clearApertureDiameter: stopSemiDiameter * 2,
-      mechanicalDiameter: stopSemiDiameter * 2,
-      visualDiameter: stopSemiDiameter * 2,
-      apertureSource: "manual",
-      diameterSource: "manual",
-      nBefore: 1,
-      nAfter: 1,
-      glassName: "--",
-      glassFamily: "--",
-      coatingKey: "--",
-      coatingName: "Aperture stop",
-      decenterY: 0,
-      decenterZ: 0,
-      tiltY: 0,
-      tiltZ: 0,
-      wavelengthNm,
-      spectralLineKey,
-      lensIndex: null,
-      surfaceIndex: "stop",
-      patentSurfaceNumber: stopResolution.patentSurfaceNumber ?? null,
-      label: stopResolution.label || "Aperture stop",
-      stopLabel: stopResolution.label || "Aperture stop",
-      isStop: true,
-      isRefracting: false,
+  if (Number.isFinite(stopResolution.x)) {
+    insertResolvedApertureStopPlane(traceSurfaces, stopResolution, {
       stopSemiDiameter,
-      stopSource: stopResolution.source,
-      stopWarning: stopResolution.warning,
-      stopSourceLevel: stopResolution.sourceLevel,
-      stopConfidence: stopResolution.confidence,
-      stopSourceBadge: stopResolution.sourceBadge
+      wavelengthNm,
+      spectralLineKey
     });
   }
 
@@ -5422,7 +5451,8 @@ const buildSequentialPatentTraceSurfaces = (prescription, options = {}) => {
 };
 
 const resolvePresetApertureStopSpec = (prescription = state.prescription, preset = PRESETS[state.preset]) => (
-  normalizeApertureStopSpec(prescription?.apertureStopSpec)
+  normalizeApertureStopSpec(prescription?.derivedApertureStopSpec)
+    || normalizeApertureStopSpec(prescription?.apertureStopSpec)
     || normalizeApertureStopSpec(preset?.apertureStopSpec)
 );
 
@@ -5441,10 +5471,33 @@ const getAirGapStopX = ({ afterSurfaceNumber, fraction = 0.5, patentSurfaceXMap 
   return currentSurfaceX + ((nextSurfaceX - currentSurfaceX) * safeFraction);
 };
 
+const getElementGapStopX = ({ afterLensIndex, fraction = 0.5, positions = [], lenses = [] }) => {
+  const index = Math.round(toNumber(afterLensIndex));
+  if (!Number.isFinite(index) || index < 0 || index >= lenses.length - 1) return NaN;
+  const current = positions[index];
+  const next = positions[index + 1];
+  if (!current || !next) return NaN;
+  const currentRearX = current.start;
+  const nextFrontX = next.end;
+  const vertexGap = currentRearX - nextFrontX;
+  if (!(vertexGap > 0.000001)) return NaN;
+  const safeFraction = clamp(Number.isFinite(toNumber(fraction)) ? toNumber(fraction) : 0.5, 0, 1);
+  return currentRearX + ((nextFrontX - currentRearX) * safeFraction);
+};
+
+const getElementSurfaceOffsetStopX = ({ lensIndex, side = "rear", offsetTowardSensorMm = 0, positions = [] }) => {
+  const index = Math.round(toNumber(lensIndex));
+  const position = Number.isFinite(index) ? positions[index] : null;
+  if (!position) return NaN;
+  const surfaceX = side === "front" ? position.end : position.start;
+  return surfaceX - Math.max(0, toNumber(offsetTowardSensorMm) || 0);
+};
+
 const apertureStopSourceBadge = (sourceLevel = "estimated", confidence = "unverified") => {
   if (sourceLevel === "manual") return "Manual";
   if (sourceLevel === "patent") return confidence === "verified" ? "Verified" : "Patent";
   if (sourceLevel === "production") return confidence === "verified" ? "Production" : "Production?";
+  if (sourceLevel === "derived") return "Derived";
   if (sourceLevel === "estimated") return "Estimated";
   return "Warning";
 };
@@ -5455,12 +5508,16 @@ const stopLabelFromSpec = (spec) => {
     ? "Production-confirmed stop"
     : spec.sourceLevel === "patent"
       ? "Patent stop"
+      : spec.sourceLevel === "derived"
+        ? "Derived physical stop"
       : "Estimated stop";
   if (spec.kind === "surface") return `${sourcePrefix}: surface ${spec.surfaceNumber}`;
   if (spec.kind === "airGap" && spec.sourceLevel === "patent") {
     return `Patent-confirmed stop gap: S${spec.afterSurfaceNumber}–S${toNumber(spec.afterSurfaceNumber) + 1}`;
   }
   if (spec.kind === "airGap") return `${sourcePrefix}: gap S${spec.afterSurfaceNumber}–S${toNumber(spec.afterSurfaceNumber) + 1}`;
+  if (spec.kind === "elementGap") return `${sourcePrefix}: gap L${toNumber(spec.afterLensIndex) + 1}–L${toNumber(spec.afterLensIndex) + 2}`;
+  if (spec.kind === "elementSurfaceOffset") return `${sourcePrefix}: L${toNumber(spec.lensIndex) + 1} ${spec.side} offset`;
   return `${sourcePrefix}: axial coordinate`;
 };
 
@@ -5482,6 +5539,20 @@ const resolveStopSpecPosition = (spec, context = {}) => {
       afterSurfaceNumber: normalized.afterSurfaceNumber,
       fraction: normalized.fraction,
       patentSurfaceXMap
+    });
+  } else if (normalized.kind === "elementGap") {
+    x = getElementGapStopX({
+      afterLensIndex: normalized.afterLensIndex,
+      fraction: normalized.fraction,
+      positions: context.positions || [],
+      lenses: context.lenses || []
+    });
+  } else if (normalized.kind === "elementSurfaceOffset") {
+    x = getElementSurfaceOffsetStopX({
+      lensIndex: normalized.lensIndex,
+      side: normalized.side,
+      offsetTowardSensorMm: normalized.offsetTowardSensorMm,
+      positions: context.positions || []
     });
   } else if (normalized.kind === "axial") {
     x = Number.isFinite(normalized.x) ? normalized.x : normalized.axialOffsetMm;
@@ -5595,7 +5666,11 @@ const resolveApertureStopConfiguration = (
     apertureDiameter: Math.max(0.1, toNumber(mergedSettings.apertureDiameter) || 0.1),
     prescription,
     patentSurfaces,
-    apertureStopSpec: resolvePresetApertureStopSpec(prescription, PRESETS[mergedSettings.preset] || PRESETS[state.preset])
+    apertureStopSpec: normalizeApertureStopSpec(mergedSettings.apertureStopSpec)
+      || normalizeApertureStopSpec(mergedSettings.derivedApertureStopSpec)
+      || resolvePresetApertureStopSpec(prescription, PRESETS[mergedSettings.preset] || PRESETS[state.preset]),
+    derivedApertureStopSpec: normalizeApertureStopSpec(mergedSettings.derivedApertureStopSpec)
+      || normalizeApertureStopSpec(prescription?.derivedApertureStopSpec)
   };
 };
 
@@ -5680,10 +5755,28 @@ const resolveApertureStopPosition = (settingsSource = state, surfaces = [], cont
     : []);
   const patentSurfaceXMap = context.patentSurfaceXMap;
   const specResolution = resolveStopSpecPosition(
-    settingsSource.apertureStopSpec || context.apertureStopSpec || resolvePresetApertureStopSpec(settingsSource.prescription || state.prescription),
-    { patentSurfaceXMap, sortedSurfaces }
+    settingsSource.apertureStopSpec
+      || settingsSource.derivedApertureStopSpec
+      || context.apertureStopSpec
+      || context.derivedApertureStopSpec
+      || resolvePresetApertureStopSpec(settingsSource.prescription || context.prescription || state.prescription),
+    {
+      patentSurfaceXMap,
+      sortedSurfaces,
+      positions: context.positions || [],
+      lenses: context.lenses || state.lenses
+    }
   );
   const legacyResolution = legacyPatentStopResolution(patentSurfaces, patentSurfaceXMap, sortedSurfaces);
+
+  if (settings.apertureStopMode === "derivedTopology") {
+    if (specResolution) return specResolution;
+    return {
+      ...fallback,
+      mode: "derivedTopology",
+      warning: "Derived stop topology could not be reconstructed; select an interior stop gap manually."
+    };
+  }
 
   if (settings.apertureStopMode === "patentStop") {
     if (specResolution && specResolution.sourceLevel !== "estimated") return specResolution;
@@ -5697,6 +5790,8 @@ const resolveApertureStopPosition = (settingsSource = state, surfaces = [], cont
     return estimateCentralApertureStop(patentSurfaces, patentSurfaceXMap, sortedSurfaces);
   }
 
+  if (settings.apertureStopMode === "auto" && specResolution) return specResolution;
+
   if (settings.apertureStopMode === "auto" && isSurfacePrescription) {
     if (specResolution) return specResolution;
     if (legacyResolution) return legacyResolution;
@@ -5704,6 +5799,101 @@ const resolveApertureStopPosition = (settingsSource = state, surfaces = [], cont
   }
 
   return fallback;
+};
+
+const mediumIndexAtStopPlane = (surfaces = [], stopX = 0) => {
+  const sorted = [...surfaces]
+    .filter((surface) => !surface.isStop)
+    .sort((left, right) => right.x - left.x);
+  let medium = 1;
+  sorted.forEach((surface) => {
+    if (surface.x > stopX + 0.000001 && Number.isFinite(toNumber(surface.nAfter))) {
+      medium = Math.max(1, toNumber(surface.nAfter));
+    }
+  });
+  return medium;
+};
+
+const decorateApertureStopPlane = (surface, stopResolution, stopSemiDiameter) => {
+  surface.isStop = true;
+  surface.isRefracting = false;
+  surface.stopSemiDiameter = stopSemiDiameter;
+  surface.semiDiameter = stopSemiDiameter;
+  surface.clearApertureDiameter = stopSemiDiameter * 2;
+  surface.mechanicalDiameter = stopSemiDiameter * 2;
+  surface.visualDiameter = stopSemiDiameter * 2;
+  surface.stopSource = stopResolution.source;
+  surface.stopLabel = stopResolution.label;
+  surface.stopWarning = stopResolution.warning;
+  surface.stopSourceLevel = stopResolution.sourceLevel;
+  surface.stopConfidence = stopResolution.confidence;
+  surface.stopSourceBadge = stopResolution.sourceBadge;
+  surface.patentSurfaceNumber = stopResolution.patentSurfaceNumber ?? surface.patentSurfaceNumber ?? null;
+  surface.nAfter = surface.nBefore;
+  return surface;
+};
+
+const createApertureStopPlane = ({
+  stopResolution,
+  stopSemiDiameter,
+  surfaces = [],
+  wavelengthNm = SPECTRAL_LINES.d.wavelengthNm,
+  spectralLineKey = "d"
+}) => {
+  const stopX = Number.isFinite(stopResolution?.x) ? stopResolution.x : 0;
+  const medium = mediumIndexAtStopPlane(surfaces, stopX);
+  return decorateApertureStopPlane({
+    x: stopX,
+    radius: 0,
+    patentRadius: Infinity,
+    asphere: createAsphereDescriptor({}, "front", 0),
+    semiDiameter: stopSemiDiameter,
+    clearApertureDiameter: stopSemiDiameter * 2,
+    mechanicalDiameter: stopSemiDiameter * 2,
+    visualDiameter: stopSemiDiameter * 2,
+    apertureSource: "manual",
+    diameterSource: "manual",
+    nBefore: medium,
+    nAfter: medium,
+    glassName: "--",
+    glassFamily: "Stop plane",
+    coatingKey: "--",
+    coatingName: "Aperture stop",
+    decenterY: 0,
+    decenterZ: 0,
+    tiltY: 0,
+    tiltZ: 0,
+    wavelengthNm,
+    spectralLineKey,
+    lensIndex: null,
+    surfaceIndex: "stop",
+    label: stopResolution.label || "Aperture stop",
+    stopLabel: stopResolution.label || "Aperture stop",
+    isStop: true,
+    isRefracting: false
+  }, stopResolution, stopSemiDiameter);
+};
+
+const insertResolvedApertureStopPlane = (surfaces, stopResolution, options = {}) => {
+  const stopSemiDiameter = Math.max(0.05, toNumber(options.stopSemiDiameter) || 0.05);
+  const existingStop = surfaces.find((surface) => (
+    surface.isStop
+    && surface.isRefracting === false
+    && Math.abs(surface.x - stopResolution.x) < 0.000001
+  ));
+  if (existingStop) {
+    decorateApertureStopPlane(existingStop, stopResolution, stopSemiDiameter);
+    return existingStop;
+  }
+  const stopPlane = createApertureStopPlane({
+    stopResolution,
+    stopSemiDiameter,
+    surfaces,
+    wavelengthNm: options.wavelengthNm,
+    spectralLineKey: options.spectralLineKey
+  });
+  surfaces.push(stopPlane);
+  return stopPlane;
 };
 
 const buildSurfaceList = (lenses, system, options = {}) => {
@@ -5842,55 +6032,13 @@ const buildSurfaceList = (lenses, system, options = {}) => {
     patentSurfaces,
     patentSurfaceXMap,
     apertureStopSpec: stopConfiguration.apertureStopSpec,
+    derivedApertureStopSpec: stopConfiguration.derivedApertureStopSpec,
     prescription: stopConfiguration.prescription
   });
-  const matchingSurface = stopResolution.matchingSurface;
-
-  if (matchingSurface) {
-    matchingSurface.isStop = true;
-    matchingSurface.stopSemiDiameter = stopSemiDiameter;
-    matchingSurface.semiDiameter = Math.min(matchingSurface.semiDiameter, stopSemiDiameter);
-    matchingSurface.stopSource = stopResolution.source;
-    matchingSurface.stopLabel = stopResolution.label;
-    matchingSurface.stopWarning = stopResolution.warning;
-    matchingSurface.stopSourceLevel = stopResolution.sourceLevel;
-    matchingSurface.stopConfidence = stopResolution.confidence;
-    matchingSurface.stopSourceBadge = stopResolution.sourceBadge;
-  } else {
-    surfaces.push({
-      x: Number.isFinite(stopResolution.x) ? stopResolution.x : stopOption.x,
-      radius: 0,
-      asphere: createAsphereDescriptor({}, "front", 0),
-      semiDiameter: stopSemiDiameter,
-      clearApertureDiameter: stopSemiDiameter * 2,
-      mechanicalDiameter: stopSemiDiameter * 2,
-      apertureSource: "manual",
-      nBefore: 1,
-      nAfter: 1,
-      glassName: "--",
-      glassFamily: "--",
-      coatingKey: "--",
-      coatingName: "--",
-      decenterY: 0,
-      decenterZ: 0,
-      tiltY: 0,
-      tiltZ: 0,
-      wavelengthNm,
-      spectralLineKey,
-      lensIndex: null,
-      surfaceIndex: "stop",
-      label: stopResolution.label || "Aperture stop",
-      stopLabel: stopResolution.label || "Aperture stop",
-      isStop: true,
-      stopSemiDiameter,
-      stopSource: stopResolution.source,
-      stopWarning: stopResolution.warning,
-      stopSourceLevel: stopResolution.sourceLevel,
-      stopConfidence: stopResolution.confidence,
-      stopSourceBadge: stopResolution.sourceBadge,
-      patentSurfaceNumber: stopResolution.patentSurfaceNumber ?? null
-    });
-  }
+  insertResolvedApertureStopPlane(surfaces, {
+    ...stopResolution,
+    x: Number.isFinite(stopResolution.x) ? stopResolution.x : stopOption.x
+  }, { stopSemiDiameter, wavelengthNm, spectralLineKey });
 
   const sortedSurfaces = surfaces.sort((left, right) => right.x - left.x);
   const limitingSemiDiameter = Math.min(...sortedSurfaces.map((surface) => surface.semiDiameter));
@@ -6371,7 +6519,34 @@ const rayTraceApertureOptions = (options = {}) => {
     apertureStopDistanceFromSensorMm: configuration.apertureStopDistanceFromSensorMm,
     apertureStopDistanceFromFrontMm: configuration.apertureStopDistanceFromFrontMm,
     apertureDiameter: configuration.apertureDiameter,
+    apertureStopSpec: configuration.apertureStopSpec,
+    derivedApertureStopSpec: configuration.derivedApertureStopSpec,
     prescription: configuration.prescription
+  };
+};
+
+const resolvedCandidateApertureOptions = (candidate = {}, options = {}) => {
+  const prescription = candidate.prescription || options.prescription || state.prescription;
+  const apertureStopSpec = normalizeApertureStopSpec(candidate.apertureStopSpec)
+    || normalizeApertureStopSpec(candidate.derivedApertureStopSpec)
+    || normalizeApertureStopSpec(prescription?.derivedApertureStopSpec)
+    || normalizeApertureStopSpec(prescription?.apertureStopSpec)
+    || normalizeApertureStopSpec(state.derivedApertureStopSpec);
+  return {
+    ...rayTraceApertureOptions({
+      ...state,
+      ...options,
+      apertureDiameter: candidate.apertureDiameter || options.apertureDiameter || state.apertureDiameter,
+      apertureStopMode: apertureStopSpec ? "derivedTopology" : (options.apertureStopMode || state.apertureStopMode),
+      apertureStopSpec,
+      derivedApertureStopSpec: apertureStopSpec,
+      prescription
+    }),
+    apertureDiameter: candidate.apertureDiameter || options.apertureDiameter || state.apertureDiameter,
+    apertureStopMode: apertureStopSpec ? "derivedTopology" : (options.apertureStopMode || state.apertureStopMode),
+    apertureStopSpec,
+    derivedApertureStopSpec: apertureStopSpec,
+    prescription
   };
 };
 
@@ -8284,7 +8459,7 @@ const calculateSagittalRayFan3D = (lenses, system, options = {}) => (
   calculateRayFan3DCore(lenses, system, options, "sagittal")
 );
 
-const traceSystemFieldSet = (lenses, system, options = {}) => RAY_TRACE_FIELDS.map((field) => ({
+const traceSystemFieldSet = (lenses, system, options = {}) => (options.fieldDefinitions || RAY_TRACE_FIELDS).map((field) => ({
   ...traceSystemRealRays(lenses, system, {
     ...rayTraceApertureOptions(options),
     fieldAngleDegrees: field.angle,
@@ -8383,14 +8558,41 @@ const visibleDiagramRayTraceResults = (dLineResults, spectralResults) => (
     : dLineResults
 );
 
-const SENSOR_FORMATS = [
-  { key: "fullFrame", name: "Full-frame", width: 36, height: 24, diagonal: FULL_FRAME_SENSOR.diagonal },
-  { key: "apsC", name: "APS-C", width: 23.5, height: 15.6, diagonal: 28.2 },
-  { key: "mft", name: "Micro Four Thirds", width: 17.3, height: 13, diagonal: 21.6 }
-];
+const SENSOR_FORMATS = CANONICAL_SENSOR_FORMATS;
+
+const resolveSensorFormat = (key = "fullFrame") => (
+  CANONICAL_SENSOR_FORMATS.find((format) => format.key === key) || CANONICAL_SENSOR_FORMATS[0]
+);
+
+const fieldAngleForSensor = (sensorInput, focalLength, axis = "diagonal") => {
+  const sensor = typeof sensorInput === "string" ? resolveSensorFormat(sensorInput) : resolveSensorFormat(sensorInput?.key);
+  const size = axis === "horizontal"
+    ? sensor.width
+    : axis === "vertical"
+      ? sensor.height
+      : sensor.diagonal;
+  const focal = Math.abs(toNumber(focalLength));
+  return focal > 0 ? Math.atan(size / (2 * focal)) * 180 / Math.PI : 0;
+};
+
+const fieldDefinitionsForSensor = (sensorKey, focalLength) => {
+  const sensor = resolveSensorFormat(sensorKey);
+  const cornerAngle = fieldAngleForSensor(sensor, focalLength, "diagonal");
+  return [
+    { key: "center", name: "Centre field", angle: 0 },
+    { key: "mid", name: `${sensor.name} mid field`, angle: cornerAngle * 0.5 },
+    { key: "corner", name: `${sensor.name} corner`, angle: cornerAngle }
+  ];
+};
+
+const optimizerFieldDefinitions = (system, options = {}) => (
+  options.sensorFormatKey
+    ? fieldDefinitionsForSensor(options.sensorFormatKey, Math.abs(toNumber(system.effectiveFocalLength)) || toNumber(options.targetFocalLength) || 50)
+    : RAY_TRACE_FIELDS
+);
 
 const activeMtfSensorFormat = () => (
-  SENSOR_FORMATS.find((format) => format.key === state.mtfSensorFormatKey) || SENSOR_FORMATS[0]
+  resolveSensorFormat(state.mtfSensorFormatKey)
 );
 
 const fieldImageHeight = (system, angleDegrees, trace) => {
@@ -9320,6 +9522,143 @@ const scaleFiniteOpticalDimension = (value, scale) => (
     : value
 );
 
+const deriveElementStopAnchorFromSource = ({
+  lenses = state.lenses,
+  system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm),
+  prescription = state.prescription,
+  apertureSettings = state
+} = {}) => {
+  const options = rayTraceApertureOptions({
+    ...apertureSettings,
+    prescription,
+    apertureStopSpec: apertureSettings.apertureStopSpec || prescription?.apertureStopSpec,
+    derivedApertureStopSpec: apertureSettings.derivedApertureStopSpec || prescription?.derivedApertureStopSpec
+  });
+  const surfaces = buildSurfaceList(lenses, system, options);
+  const stop = surfaces.find((surface) => surface.isStop);
+  const positions = lensPositions(system, lenses);
+  if (!stop || !Number.isFinite(stop.x)) {
+    return {
+      spec: null,
+      error: "Derived stop topology could not be reconstructed; select an interior stop gap manually."
+    };
+  }
+
+  for (let index = 0; index < lenses.length - 1; index += 1) {
+    const current = positions[index];
+    const next = positions[index + 1];
+    const vertexGap = current && next ? current.start - next.end : NaN;
+    const cemented = lenses[index]?.patentRearCementedToNextGlass === true || vertexGap <= 0.000001;
+    if (!current || !next || cemented) continue;
+    const highX = current.start;
+    const lowX = next.end;
+    if (stop.x <= highX + 0.000001 && stop.x >= lowX - 0.000001) {
+      const fraction = clamp((highX - stop.x) / Math.max(0.000001, highX - lowX), 0, 1);
+      return {
+        spec: normalizeApertureStopSpec({
+          kind: "elementGap",
+          afterLensIndex: index,
+          fraction,
+          sourceLevel: stop.stopSourceLevel || "derived",
+          confidence: stop.stopConfidence || "probable",
+          sourceLabel: stop.stopSource || stop.stopLabel || `Derived from source gap after L${index + 1}`,
+          sourceUrl: "",
+          note: `Derived Retarget stop topology from source physical diaphragm; remains in gap L${index + 1}–L${index + 2}.`,
+          topologyLocked: true
+        }),
+        error: ""
+      };
+    }
+  }
+
+  return {
+    spec: null,
+    error: "Derived stop topology could not be reconstructed; select an interior stop gap manually."
+  };
+};
+
+const synthesizeClearApertureEnvelope = ({
+  lenses = [],
+  system = null,
+  stopSpec = null,
+  physicalStopDiameter = state.apertureDiameter,
+  sensorFormatKey = state.retargetSensorFormatKey,
+  fieldDefinitions = null,
+  maxDiameter = state.retargetMaxDiameter
+} = {}) => {
+  const targetSystem = system || calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+  const apertureDiameter = Math.max(0.1, toNumber(physicalStopDiameter) || state.apertureDiameter || 1);
+  const limitDiameter = Math.max(1, toNumber(maxDiameter) || 120);
+  const oversizedDiameter = Math.max(limitDiameter * 1.5, apertureDiameter * 2.5, 80);
+  const temporaryLenses = lenses.map((lens) => normalizeLens({
+    ...lens,
+    diameter: Math.max(toNumber(lens.diameter) || 0, oversizedDiameter),
+    clearApertureDiameter: Math.max(toNumber(lens.clearApertureDiameter) || 0, oversizedDiameter),
+    mechanicalDiameter: Math.max(toNumber(lens.mechanicalDiameter) || 0, oversizedDiameter),
+    visualDiameter: Math.max(toNumber(lens.visualDiameter) || 0, oversizedDiameter)
+  }));
+  const prescription = normalizePrescription({
+    prescriptionType: "element",
+    apertureStopSpec: stopSpec,
+    derivedApertureStopSpec: stopSpec,
+    lenses: temporaryLenses
+  });
+  const traces = traceSystemFieldSet(temporaryLenses, targetSystem, {
+    apertureStopMode: "derivedTopology",
+    apertureStopSpec: stopSpec,
+    derivedApertureStopSpec: stopSpec,
+    prescription,
+    apertureDiameter,
+    fieldDefinitions: fieldDefinitions || optimizerFieldDefinitions(targetSystem, { sensorFormatKey }),
+    rayCount: 9,
+    wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+    spectralLineKey: "d"
+  });
+  const requiredByLens = Array(lenses.length).fill(0);
+  traces.forEach((trace) => {
+    (trace.rays || []).forEach((ray) => {
+      if (!Array.isArray(ray.path)) return;
+      (trace.surfaces || []).forEach((surface, surfaceIndex) => {
+        if (surface.isStop || surface.lensIndex === null || surface.lensIndex === undefined) return;
+        const point = ray.path[surfaceIndex + 1];
+        if (point && Number.isFinite(point.y)) {
+          requiredByLens[surface.lensIndex] = Math.max(requiredByLens[surface.lensIndex], Math.abs(point.y));
+        }
+      });
+    });
+  });
+  const warnings = [];
+  const updatedLenses = lenses.map((lens, index) => {
+    const measuredRadius = requiredByLens[index];
+    if (!(measuredRadius > 0)) {
+      warnings.push(`L${index + 1}: no valid ray envelope was measured; existing clear aperture retained.`);
+      return normalizeLens(lens);
+    }
+    const clearDiameter = (measuredRadius + Math.max(PATENT_APERTURE_MARGIN_MIN_MM, measuredRadius * PATENT_APERTURE_MARGIN_RATIO)) * 2;
+    const bevelAllowance = 2 * (toNumber(lens.chipZoneWidthMm) || 0.5) + 1.0;
+    const mechanicalDiameter = Math.max(clearDiameter, clearDiameter + bevelAllowance);
+    if (clearDiameter > limitDiameter || mechanicalDiameter > limitDiameter) {
+      warnings.push(`L${index + 1}: target f-number requires ${formatNumber(clearDiameter, 2)} mm clear aperture, exceeding ${formatNumber(limitDiameter, 2)} mm maximum diameter.`);
+    }
+    return normalizeLens({
+      ...lens,
+      diameter: Math.max(toNumber(lens.diameter) || 0, clearDiameter),
+      clearApertureDiameter: Math.max(toNumber(lens.clearApertureDiameter) || 0, clearDiameter),
+      mechanicalDiameter: Math.max(toNumber(lens.mechanicalDiameter) || 0, mechanicalDiameter),
+      visualDiameter: Math.max(toNumber(lens.visualDiameter) || 0, clearDiameter),
+      apertureSource: "rayEnvelope",
+      diameterSource: "rayEnvelope",
+      manufacturingGeometrySource: "derived"
+    });
+  });
+  return {
+    lenses: updatedLenses,
+    warnings,
+    feasible: warnings.every((warning) => !warning.includes("exceeding")),
+    traces
+  };
+};
+
 const calculateOptimizerFNumberMetrics = (lenses, system, options = {}) => {
   const apertureDiameter = Math.max(0.1, toNumber(options.apertureDiameter) || state.apertureDiameter || 1);
   const entrancePupil = options.useRealEntrancePupil === false
@@ -9347,13 +9686,49 @@ const calculateOptimizerFNumberMetrics = (lenses, system, options = {}) => {
   };
 };
 
+const countActiveAsphericSurfaces = (lenses = []) => lenses.reduce((count, lens) => (
+  count
+  + (createAsphereDescriptor(lens, "front", toNumber(lens.r1) || 0).active ? 1 : 0)
+  + (createAsphereDescriptor(lens, "rear", toNumber(lens.r2) || 0).active ? 1 : 0)
+), 0);
+
+const optimizerApprovedAsphereSurfaceKeys = (lenses = []) => {
+  if (!lenses.length) return new Set();
+  let highest = { key: "front:0", power: 0 };
+  lenses.forEach((lens, index) => {
+    const nd = toNumber(lens.customNd) || toNumber(lens.refractiveIndex) || 1.5;
+    [
+      ["front", lens.r1],
+      ["rear", lens.r2]
+    ].forEach(([side, radius]) => {
+      const r = Math.abs(toNumber(radius));
+      if (r > 0.000001 && Number.isFinite(r)) {
+        const power = Math.abs((nd - 1) / r);
+        if (power > highest.power) highest = { key: `${side}:${index}`, power };
+      }
+    });
+  });
+  return new Set([
+    "front:0",
+    `rear:${lenses.length - 1}`,
+    highest.key
+  ]);
+};
+
 const createRetargetedLensCandidate = (lenses, sourceSystem, options = {}) => {
   const targetEfl = Math.max(1, toNumber(options.targetEfl) || Math.abs(sourceSystem.effectiveFocalLength) || 50);
   const sourceEfl = Math.abs(toNumber(sourceSystem.effectiveFocalLength));
   const scale = sourceEfl > 0 ? targetEfl / sourceEfl : 1;
   const scaleApertures = options.scaleApertures !== false;
   const warnings = [];
-  const candidateLenses = cloneOptimizerLenses(lenses).map((lens) => {
+  const derivedStop = deriveElementStopAnchorFromSource({
+    lenses,
+    system: sourceSystem,
+    prescription: options.sourcePrescription || state.prescription,
+    apertureSettings: options.apertureSettings || state
+  });
+  if (!derivedStop.spec) warnings.push(derivedStop.error);
+  let candidateLenses = cloneOptimizerLenses(lenses).map((lens) => {
     const scaledDiameter = scaleApertures ? scaleFiniteOpticalDimension(lens.diameter, scale) : lens.diameter;
     const scaledClear = scaleApertures ? scaleFiniteOpticalDimension(lens.clearApertureDiameter, scale) : lens.clearApertureDiameter;
     const scaledMechanical = scaleApertures ? scaleFiniteOpticalDimension(lens.mechanicalDiameter, scale) : lens.mechanicalDiameter;
@@ -9378,20 +9753,61 @@ const createRetargetedLensCandidate = (lenses, sourceSystem, options = {}) => {
   });
   const candidateSystem = calculateSystem(candidateLenses, SPECTRAL_LINES.d.wavelengthNm);
   const targetFNumber = Math.max(0.5, toNumber(options.targetFNumber) || calculateFNumber(sourceSystem, state.apertureDiameter, lenses, { useEntrancePupil: true }) || 1.4);
-  let apertureDiameter = matchPatentPhysicalStopDiameter(candidateLenses, candidateSystem, {
-    ...rayTraceApertureOptions(state),
-    apertureRatio: `1:${targetFNumber}`,
-    fNumber: targetFNumber,
-    apertureDiameter: state.apertureDiameter
+  const candidatePrescription = normalizePrescription({
+    prescriptionType: "element",
+    sourceType: "custom",
+    apertureStopSpec: derivedStop.spec,
+    derivedApertureStopSpec: derivedStop.spec,
+    lenses: candidateLenses
   });
-  if (!(apertureDiameter > 0)) {
+  let apertureDiameter = derivedStop.spec
+    ? matchPatentPhysicalStopDiameter(candidateLenses, candidateSystem, {
+      ...rayTraceApertureOptions({
+        ...state,
+        apertureStopMode: "derivedTopology",
+        apertureStopSpec: derivedStop.spec,
+        derivedApertureStopSpec: derivedStop.spec,
+        prescription: candidatePrescription
+      }),
+      apertureRatio: `1:${targetFNumber}`,
+      fNumber: targetFNumber,
+      apertureDiameter: state.apertureDiameter
+    })
+    : Math.max(0.1, toNumber(state.apertureDiameter) || 1);
+  if (derivedStop.spec && !(apertureDiameter > 0)) {
     apertureDiameter = Math.abs(candidateSystem.effectiveFocalLength || targetEfl) / targetFNumber;
     warnings.push("Entrance-pupil stop solve failed; initial copy used EFL / target f-number as a provisional stop diameter.");
+  } else if (!derivedStop.spec) {
+    warnings.push("Retarget f-number solving was disabled because no valid source stop topology was reconstructed.");
+  }
+  if (derivedStop.spec) {
+    const envelope = synthesizeClearApertureEnvelope({
+      lenses: candidateLenses,
+      system: candidateSystem,
+      stopSpec: derivedStop.spec,
+      physicalStopDiameter: apertureDiameter,
+      sensorFormatKey: options.sensorFormatKey || state.retargetSensorFormatKey || "fullFrame",
+      fieldDefinitions: optimizerFieldDefinitions(candidateSystem, { sensorFormatKey: options.sensorFormatKey || state.retargetSensorFormatKey }),
+      maxDiameter: options.maxDiameter || state.retargetMaxDiameter
+    });
+    candidateLenses = envelope.lenses;
+    warnings.push(...envelope.warnings);
+    if (!envelope.feasible) {
+      warnings.push("Target f-number cannot be supported within the maximum diameter using the preserved stop topology.");
+    }
   }
   return {
     lenses: candidateLenses,
-    system: candidateSystem,
+    system: calculateSystem(candidateLenses, SPECTRAL_LINES.d.wavelengthNm),
     apertureDiameter,
+    apertureStopSpec: derivedStop.spec,
+    derivedApertureStopSpec: derivedStop.spec,
+    prescription: normalizePrescription({
+      ...candidatePrescription,
+      lenses: candidateLenses,
+      apertureStopSpec: derivedStop.spec,
+      derivedApertureStopSpec: derivedStop.spec
+    }),
     scale,
     sourceEfl,
     targetEfl,
@@ -9404,6 +9820,9 @@ const createRetargetedLensCandidate = (lenses, sourceSystem, options = {}) => {
       retargetSourceEfl: sourceEfl,
       retargetTargetEfl: targetEfl,
       retargetTargetFNumber: targetFNumber,
+      retargetSensorFormatKey: options.sensorFormatKey || state.retargetSensorFormatKey || "fullFrame",
+      derivedApertureStopSpec: derivedStop.spec,
+      stopTopologyStatus: derivedStop.spec ? "derived" : "unresolved",
       provenance: "scaled-and-optimized-derived-design"
     }
   };
@@ -9417,8 +9836,26 @@ const validateOptimizerCandidate = (candidate, system, options = {}) => {
   if (!system.validCount || !Number.isFinite(system.effectiveFocalLength)) reasons.push("Invalid paraxial system or effective focal length.");
   if (system.totalTrack > maxTrack) reasons.push(`Track length ${formatNumber(system.totalTrack, 3)} mm exceeds ${formatNumber(maxTrack, 3)} mm.`);
   if (Number.isFinite(system.backFocalLength) && system.backFocalLength < minBfd) reasons.push(`BFD ${formatNumber(system.backFocalLength, 3)} mm is below ${formatNumber(minBfd, 3)} mm.`);
+  if (countActiveAsphericSurfaces(candidate.lenses) > 1) reasons.push("More than one active aspheric surface is not allowed in this optimizer stage.");
+  const candidateStopSpec = normalizeApertureStopSpec(options.apertureStopSpec)
+    || normalizeApertureStopSpec(options.derivedApertureStopSpec)
+    || normalizeApertureStopSpec(candidate.apertureStopSpec)
+    || normalizeApertureStopSpec(candidate.derivedApertureStopSpec);
+  if (options.apertureStopMode === "derivedTopology" && !candidateStopSpec) {
+    reasons.push("Derived stop topology is missing; select an interior stop gap manually before optimization.");
+  }
+  if (candidateStopSpec?.kind === "elementGap") {
+    const stopX = getElementGapStopX({
+      afterLensIndex: candidateStopSpec.afterLensIndex,
+      fraction: candidateStopSpec.fraction,
+      positions: lensPositions(system, candidate.lenses),
+      lenses: candidate.lenses
+    });
+    if (!Number.isFinite(stopX)) reasons.push("Derived physical stop no longer lies in a valid interior air gap.");
+  }
   candidate.lenses.forEach((lens, index) => {
     if ((toNumber(lens.diameter) || 0) > maxDiameter) reasons.push(`L${index + 1} diameter exceeds maximum.`);
+    if ((toNumber(lens.mechanicalDiameter) || toNumber(lens.diameter) || 0) > maxDiameter) reasons.push(`L${index + 1} mechanical diameter exceeds maximum.`);
     if ((toNumber(lens.thickness) || 0) <= 0) reasons.push(`L${index + 1} thickness is invalid.`);
     if ((toNumber(lens.gapAfter) || 0) < 0) reasons.push(`L${index + 1} air gap is negative.`);
     if ((toNumber(lens.minimumEdgeThicknessMm) || 0) < 0) reasons.push(`L${index + 1} edge thickness setting is invalid.`);
@@ -9426,11 +9863,72 @@ const validateOptimizerCandidate = (candidate, system, options = {}) => {
       reasons.push(`L${index + 1} has invalid asphere coefficients.`);
     }
   });
+  try {
+    const positions = lensPositions(system, candidate.lenses);
+    const mapper = { x: (value) => value, y: (value) => value, mmScale: 1, positions };
+    const models = candidate.lenses.map((lens, index) => (
+      system.results[index]?.valid && positions[index]
+        ? buildPrescriptionLensRenderModel(
+          positions[index],
+          mapper,
+          system.results[index],
+          lens,
+          index,
+          [],
+          {
+            geometryDisplayMode: "manufacturing",
+            cementedGroupDisplayMode: "individualManufacturing",
+            minimumAirGapClearanceMm: options.minimumAirGapClearanceMm ?? state.minimumAirGapClearanceMm
+          }
+        )
+        : null
+    ));
+    models.forEach((model, index) => {
+      if (!model) return;
+      const lens = candidate.lenses[index];
+      const minimumEdge = Math.max(0, toNumber(lens.minimumEdgeThicknessMm) || 0);
+      if (model.polygonGeometryValid === false) reasons.push(`L${index + 1} generated profile self-intersects.`);
+      if (model.manufacturable === false) reasons.push(`L${index + 1} manufacturing edge geometry is invalid.`);
+      if (Number.isFinite(model.edgeThicknessMm) && model.edgeThicknessMm < minimumEdge - 1e-6) {
+        reasons.push(`L${index + 1} edge thickness is below the required minimum.`);
+      }
+      if (Number.isFinite(model.remainingFlatLandMm) && model.remainingFlatLandMm < -1e-6) {
+        reasons.push(`L${index + 1} bevel and flat-land requirements cannot coexist.`);
+      }
+      if ((model.geometryWarnings || []).some((warning) => /invalid asphere|no valid sag|self-intersect|intersect/i.test(warning))) {
+        reasons.push(`L${index + 1} has invalid surface sag or profile geometry.`);
+      }
+    });
+    const groups = buildCementedMechanicalGroups(candidate.lenses);
+    const requestedGroupRadii = groups.map((group) => Math.max(
+      0.05,
+      (toNumber(group.mechanicalDiameter) || toNumber(group.clearApertureDiameter) || 0.1) / 2
+    ));
+    const airGapConstraints = resolveAdjacentAirGapConstraints(
+      candidate.lenses,
+      system,
+      mapper,
+      requestedGroupRadii,
+      {
+        groups,
+        includeMechanicalAllowances: true,
+        minimumAirGapClearanceMm: options.minimumAirGapClearanceMm ?? state.minimumAirGapClearanceMm
+      }
+    );
+    airGapConstraints
+      .filter((constraint) => !constraint.valid || constraint.requestedRadiusMm > constraint.maximumSafeRadiusMm + 1e-6)
+      .forEach((constraint) => {
+        reasons.push(`Air gap S${constraint.leftSurfaceNumber}-S${constraint.rightSurfaceNumber} violates mechanical clearance.`);
+      });
+  } catch (error) {
+    reasons.push(`Manufacturing validation failed: ${error.message}`);
+  }
   const apertureDiameter = Math.max(0.1, toNumber(options.apertureDiameter) || candidate.apertureDiameter || state.apertureDiameter || 1);
   const largestDiameter = Math.max(0, ...candidate.lenses.map((lens) => toNumber(lens.diameter) || 0));
   if (!(apertureDiameter > 0) || apertureDiameter > largestDiameter * 1.05) reasons.push("Physical stop diameter is invalid or larger than the largest clear aperture.");
   const traces = traceSystemFieldSet(candidate.lenses, system, {
     ...rayTraceApertureOptions(state),
+    fieldDefinitions: optimizerFieldDefinitions(system, options),
     rayCount: 5,
     apertureDiameter,
     wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
@@ -9453,6 +9951,22 @@ const validateOptimizerCandidate = (candidate, system, options = {}) => {
 
 const collectOptimizationVariables = (lenses, options = {}) => {
   const variables = [];
+  const approvedAsphereKeys = optimizerApprovedAsphereSurfaceKeys(lenses);
+  let selectedAsphereKey = null;
+  const addAsphereVariable = (lensIndex, side, field, step) => {
+    const surfaceKey = `${side}:${lensIndex}`;
+    if (!approvedAsphereKeys.has(surfaceKey)) return;
+    if (selectedAsphereKey && selectedAsphereKey !== surfaceKey) return;
+    selectedAsphereKey = surfaceKey;
+    variables.push({
+      type: "lens",
+      lensIndex,
+      field,
+      step,
+      enablesFrontAsphere: side === "front",
+      enablesRearAsphere: side === "rear"
+    });
+  };
   lenses.forEach((lens, lensIndex) => {
     const normalized = normalizeLens(lens);
     const enabled = normalized.optimizerVariables || DEFAULT_OPTIMIZER_VARIABLES;
@@ -9463,14 +9977,18 @@ const collectOptimizationVariables = (lenses, options = {}) => {
     if (enabled.diameter) variables.push({ type: "lens", lensIndex, field: "diameter", step: 1 * (options.stepScale || 1) });
     if (enabled.glass) variables.push({ type: "lens", lensIndex, field: "customNd", step: 0.004 * (options.stepScale || 1) });
     if (enabled.customVd) variables.push({ type: "lens", lensIndex, field: "customVd", step: 1 * (options.stepScale || 1) });
-    if (enabled.frontConicK) variables.push({ type: "lens", lensIndex, field: "frontConicK", step: 0.08 * (options.stepScale || 1), enablesFrontAsphere: true });
-    if (enabled.rearConicK) variables.push({ type: "lens", lensIndex, field: "rearConicK", step: 0.08 * (options.stepScale || 1), enablesRearAsphere: true });
-    if (enabled.frontA4) variables.push({ type: "lens", lensIndex, field: "frontA4", step: 1e-6 * (options.stepScale || 1), enablesFrontAsphere: true });
-    if (enabled.rearA4) variables.push({ type: "lens", lensIndex, field: "rearA4", step: 1e-6 * (options.stepScale || 1), enablesRearAsphere: true });
-    if (enabled.frontA6) variables.push({ type: "lens", lensIndex, field: "frontA6", step: 1e-9 * (options.stepScale || 1), enablesFrontAsphere: true });
-    if (enabled.rearA6) variables.push({ type: "lens", lensIndex, field: "rearA6", step: 1e-9 * (options.stepScale || 1), enablesRearAsphere: true });
+    if (enabled.frontConicK) addAsphereVariable(lensIndex, "front", "frontConicK", 0.08 * (options.stepScale || 1));
+    if (enabled.rearConicK) addAsphereVariable(lensIndex, "rear", "rearConicK", 0.08 * (options.stepScale || 1));
+    if (enabled.frontA4) addAsphereVariable(lensIndex, "front", "frontA4", 1e-6 * (options.stepScale || 1));
+    if (enabled.rearA4) addAsphereVariable(lensIndex, "rear", "rearA4", 1e-6 * (options.stepScale || 1));
+    if (enabled.frontA6) addAsphereVariable(lensIndex, "front", "frontA6", 1e-9 * (options.stepScale || 1));
+    if (enabled.rearA6) addAsphereVariable(lensIndex, "rear", "rearA6", 1e-9 * (options.stepScale || 1));
   });
   if (options.useApertureDiameter) variables.push({ type: "aperture", field: "apertureDiameter", step: 1 * (options.stepScale || 1) });
+  const stopSpec = normalizeApertureStopSpec(options.apertureStopSpec || state.derivedApertureStopSpec);
+  if (options.optimizerAllowStopShiftInAnchorGap && stopSpec?.kind === "elementGap") {
+    variables.push({ type: "stopFraction", field: "fraction", step: 0.04 * (options.stepScale || 1) });
+  }
   return variables;
 };
 
@@ -9501,16 +10019,56 @@ const clampOptimizationCandidate = (candidate) => {
   });
   const largestDiameter = Math.max(5, ...candidate.lenses.map((lens) => toNumber(lens.diameter) || 5));
   candidate.apertureDiameter = clamp(toNumber(candidate.apertureDiameter) || state.apertureDiameter, 1, largestDiameter);
+  candidate.apertureStopSpec = normalizeApertureStopSpec(candidate.apertureStopSpec)
+    || normalizeApertureStopSpec(candidate.derivedApertureStopSpec)
+    || normalizeApertureStopSpec(candidate.prescription?.derivedApertureStopSpec)
+    || normalizeApertureStopSpec(candidate.prescription?.apertureStopSpec)
+    || normalizeApertureStopSpec(state.derivedApertureStopSpec);
+  candidate.derivedApertureStopSpec = candidate.apertureStopSpec;
+  candidate.prescription = normalizePrescription(candidate.prescription || {
+    prescriptionType: "element",
+    apertureStopSpec: candidate.apertureStopSpec,
+    derivedApertureStopSpec: candidate.apertureStopSpec,
+    lenses: candidate.lenses
+  });
+  if (candidate.prescription.prescriptionType === "element") {
+    candidate.prescription = normalizePrescription({
+      ...candidate.prescription,
+      apertureStopSpec: candidate.apertureStopSpec,
+      derivedApertureStopSpec: candidate.apertureStopSpec,
+      lenses: candidate.lenses
+    });
+  }
   return candidate;
 };
 
 const mutateOptimizationCandidate = (candidate, variable, delta) => {
   const next = {
     lenses: cloneOptimizerLenses(candidate.lenses),
-    apertureDiameter: candidate.apertureDiameter
+    apertureDiameter: candidate.apertureDiameter,
+    apertureStopSpec: normalizeApertureStopSpec(candidate.apertureStopSpec),
+    derivedApertureStopSpec: normalizeApertureStopSpec(candidate.derivedApertureStopSpec),
+    prescription: candidate.prescription ? normalizePrescription(candidate.prescription) : null
   };
   if (variable.type === "aperture") {
     next.apertureDiameter += delta;
+  } else if (variable.type === "stopFraction") {
+    const spec = normalizeApertureStopSpec(next.apertureStopSpec || next.derivedApertureStopSpec);
+    if (spec?.kind === "elementGap") {
+      const updatedSpec = normalizeApertureStopSpec({
+        ...spec,
+        fraction: clamp((toNumber(spec.fraction) || 0.5) + delta, 0.03, 0.97)
+      });
+      next.apertureStopSpec = updatedSpec;
+      next.derivedApertureStopSpec = updatedSpec;
+      next.prescription = normalizePrescription({
+        ...(next.prescription || {}),
+        prescriptionType: "element",
+        apertureStopSpec: updatedSpec,
+        derivedApertureStopSpec: updatedSpec,
+        lenses: next.lenses
+      });
+    }
   } else {
     const lens = { ...next.lenses[variable.lensIndex] };
     if (variable.field === "customNd" || variable.field === "customVd") lens.glassKey = "custom";
@@ -9530,6 +10088,12 @@ const candidateViolatesConstraints = (candidate, system, options = {}) => {
 const calculateMeritScore = (lenses, system, options = {}) => {
   const warnings = [];
   const apertureDiameter = toNumber(options.apertureDiameter) || state.apertureDiameter;
+  const apertureOptions = rayTraceApertureOptions({
+    ...state,
+    ...options,
+    apertureDiameter,
+    prescription: options.prescription || (lenses === state.lenses ? state.prescription : null)
+  });
   const fNumberMetrics = calculateOptimizerFNumberMetrics(lenses, system, {
     ...options,
     apertureDiameter,
@@ -9576,7 +10140,8 @@ const calculateMeritScore = (lenses, system, options = {}) => {
   let traces = [];
   if ((options.useSpotSize ?? state.optimizerUseSpotSize) || (options.useMtf ?? state.optimizerUseMtf)) {
     traces = traceSystemFieldSet(lenses, system, {
-      ...rayTraceApertureOptions(state),
+      ...apertureOptions,
+      fieldDefinitions: optimizerFieldDefinitions(system, options),
       rayCount: 5,
       apertureDiameter,
       wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
@@ -9603,7 +10168,7 @@ const calculateMeritScore = (lenses, system, options = {}) => {
   if (options.useStBalance ?? state.optimizerUseStBalance) {
     const maxFrequencyLpMm = resolveMtfMaxFrequency(system, SPECTRAL_LINES.d.wavelengthNm);
     const st = calculateSagittalTangentialGeometricMTF(lenses, system, {
-      ...rayTraceApertureOptions(state),
+      ...apertureOptions,
       ...activeGeometricMtfOptions(maxFrequencyLpMm),
       fieldKey: "mid",
       fieldName: "Mid field",
@@ -9621,7 +10186,7 @@ const calculateMeritScore = (lenses, system, options = {}) => {
 
   if (options.useWavefront ?? state.optimizerUseWavefront) {
     const opd = calculateWavefrontOPD(lenses, system, {
-      ...rayTraceApertureOptions(state),
+      ...apertureOptions,
       fieldAngleDegrees: 0,
       sampleCount: 5,
       sampling: "grid",
@@ -9635,7 +10200,7 @@ const calculateMeritScore = (lenses, system, options = {}) => {
   }
 
   if (options.useDistortion ?? state.optimizerUseDistortion) {
-    const distortion = calculateDistortionCurve(lenses, system, { maxFieldAngleDegrees: 12, fieldStepDegrees: 6, rayCount: 5, apertureDiameter });
+    const distortion = calculateDistortionCurve(lenses, system, { ...apertureOptions, maxFieldAngleDegrees: 12, fieldStepDegrees: 6, rayCount: 5, apertureDiameter });
     const values = distortion.samples.map((sample) => Math.abs(sample.distortionPercent)).filter(Number.isFinite);
     metrics.maxDistortionPercent = values.length ? Math.max(...values) : NaN;
     componentScores.distortion = Number.isFinite(metrics.maxDistortionPercent) ? (metrics.maxDistortionPercent / 10) ** 2 : 5;
@@ -9670,8 +10235,10 @@ const calculateMeritScore = (lenses, system, options = {}) => {
 
 const evaluateOptimizerCandidate = (candidate, options = {}) => {
   const system = calculateSystem(candidate.lenses, SPECTRAL_LINES.d.wavelengthNm);
+  const apertureOptions = resolvedCandidateApertureOptions(candidate, options);
   const validation = validateOptimizerCandidate(candidate, system, {
     ...options,
+    ...apertureOptions,
     apertureDiameter: candidate.apertureDiameter
   });
   if (!validation.valid) {
@@ -9683,7 +10250,11 @@ const evaluateOptimizerCandidate = (candidate, options = {}) => {
       validation
     };
   }
-  const merit = calculateMeritScore(candidate.lenses, system, { ...options, apertureDiameter: candidate.apertureDiameter });
+  const merit = calculateMeritScore(candidate.lenses, system, {
+    ...options,
+    ...apertureOptions,
+    apertureDiameter: candidate.apertureDiameter
+  });
   return {
     status: "valid",
     score: merit.totalScore,
@@ -9704,6 +10275,7 @@ const optimizerOptionsFromState = () => ({
   useTargetFNumber: state.optimizerUseTargetFNumber,
   useRealEntrancePupil: state.optimizerUseRealEntrancePupil,
   fNumberWeight: state.optimizerFNumberWeight,
+  sensorFormatKey: state.retargetSensorFormatKey,
   useTargetFocalLength: state.optimizerUseTargetFocalLength,
   useTargetBfd: state.optimizerUseTargetBfd,
   useMtf: state.optimizerUseMtf,
@@ -9714,6 +10286,10 @@ const optimizerOptionsFromState = () => ({
   useToleranceRobustness: state.optimizerUseToleranceRobustness,
   useStBalance: state.optimizerUseStBalance,
   useApertureDiameter: state.optimizerUseApertureDiameter,
+  optimizerAllowStopShiftInAnchorGap: state.optimizerAllowStopShiftInAnchorGap,
+  apertureStopSpec: state.derivedApertureStopSpec || state.prescription?.derivedApertureStopSpec || state.prescription?.apertureStopSpec,
+  derivedApertureStopSpec: state.derivedApertureStopSpec || state.prescription?.derivedApertureStopSpec || state.prescription?.apertureStopSpec,
+  prescription: state.prescription,
   maxTrackLength: state.optimizerMaxTrackLength,
   minBfd: state.optimizerMinBfd,
   maxDiameter: state.optimizerMaxDiameter
@@ -9721,7 +10297,13 @@ const optimizerOptionsFromState = () => ({
 
 const runRandomOptimizer = (lenses, options = {}) => {
   const random = createSeededRandom(options.seed || 1);
-  const baseline = clampOptimizationCandidate({ lenses: cloneOptimizerLenses(lenses), apertureDiameter: options.apertureDiameter || state.apertureDiameter });
+  const baseline = clampOptimizationCandidate({
+    lenses: cloneOptimizerLenses(lenses),
+    apertureDiameter: options.apertureDiameter || state.apertureDiameter,
+    apertureStopSpec: options.apertureStopSpec || state.derivedApertureStopSpec,
+    derivedApertureStopSpec: options.derivedApertureStopSpec || options.apertureStopSpec || state.derivedApertureStopSpec,
+    prescription: options.prescription || state.prescription
+  });
   const variables = collectOptimizationVariables(baseline.lenses, options);
   const baselineEval = evaluateOptimizerCandidate(baseline, options);
   let best = { candidate: baseline, evaluation: baselineEval };
@@ -9747,7 +10329,13 @@ const runRandomOptimizer = (lenses, options = {}) => {
 };
 
 const runCoordinateDescentOptimizer = (lenses, options = {}) => {
-  const baseline = clampOptimizationCandidate({ lenses: cloneOptimizerLenses(lenses), apertureDiameter: options.apertureDiameter || state.apertureDiameter });
+  const baseline = clampOptimizationCandidate({
+    lenses: cloneOptimizerLenses(lenses),
+    apertureDiameter: options.apertureDiameter || state.apertureDiameter,
+    apertureStopSpec: options.apertureStopSpec || state.derivedApertureStopSpec,
+    derivedApertureStopSpec: options.derivedApertureStopSpec || options.apertureStopSpec || state.derivedApertureStopSpec,
+    prescription: options.prescription || state.prescription
+  });
   const variables = collectOptimizationVariables(baseline.lenses, options);
   const baselineEval = evaluateOptimizerCandidate(baseline, options);
   let best = { candidate: baseline, evaluation: baselineEval };
@@ -9801,7 +10389,13 @@ const runHybridOptimizer = (lenses, options = {}) => {
 
 const runOptimizer = (lenses, options = {}) => {
   if ((options.iterations || 0) <= 0) {
-    const baseline = clampOptimizationCandidate({ lenses: cloneOptimizerLenses(lenses), apertureDiameter: options.apertureDiameter || state.apertureDiameter });
+    const baseline = clampOptimizationCandidate({
+      lenses: cloneOptimizerLenses(lenses),
+      apertureDiameter: options.apertureDiameter || state.apertureDiameter,
+      apertureStopSpec: options.apertureStopSpec || state.derivedApertureStopSpec,
+      derivedApertureStopSpec: options.derivedApertureStopSpec || options.apertureStopSpec || state.derivedApertureStopSpec,
+      prescription: options.prescription || state.prescription
+    });
     const baselineEval = evaluateOptimizerCandidate(baseline, options);
     return { baseline, baselineEval, best: { candidate: baseline, evaluation: baselineEval }, progress: [{ iteration: 0, score: baselineEval.score }], rejectedCount: 0, variables: collectOptimizationVariables(baseline.lenses, options), warnings: ["Zero iterations requested; design was not changed."] };
   }
@@ -10039,6 +10633,121 @@ const prescriptionRawEdgeThickness = (frontSurface, rearSurface, semiDiameter) =
   const frontX = prescriptionDrawingSurfaceXAtHeight(frontSurface, semiDiameter);
   const rearX = prescriptionDrawingSurfaceXAtHeight(rearSurface, semiDiameter);
   return Number.isFinite(frontX) && Number.isFinite(rearX) ? frontX - rearX : NaN;
+};
+
+const clampRenderSemiDiameter = (value, clearApertureRadius, mechanicalRadius) => {
+  if (!(mechanicalRadius > 0)) return Math.max(0.05, clearApertureRadius || 0.05);
+  const lower = Math.max(0.05, Math.min(clearApertureRadius || 0.05, mechanicalRadius - 0.001));
+  const upper = Math.max(lower, mechanicalRadius - 0.001);
+  return Math.min(upper, Math.max(lower, value));
+};
+
+const surfaceSagSeverityAtRadius = (surface, radius) => {
+  const vertexX = prescriptionDrawingSurfaceXAtHeight(surface, 0);
+  const edgeX = prescriptionDrawingSurfaceXAtHeight(surface, radius);
+  return Number.isFinite(vertexX) && Number.isFinite(edgeX) ? Math.abs(edgeX - vertexX) : 0;
+};
+
+const resolveTruncatedFlatLandEdgeTreatment = (
+  frontSurface,
+  rearSurface,
+  lens,
+  edgeGeometry,
+  options = {}
+) => {
+  const mechanicalRadius = Math.max(0.05, toNumber(edgeGeometry.mechanicalRadius) || 0.05);
+  const clearApertureRadius = Math.max(0.05, toNumber(edgeGeometry.clearApertureRadius) || 0.05);
+  const frontRuns = edgeGeometry.frontRuns || bevelGeometryRuns(edgeGeometry.frontBevel);
+  const rearRuns = edgeGeometry.rearRuns || bevelGeometryRuns(edgeGeometry.rearBevel);
+  const edgeTreatmentMode = normalizeEdgeTreatmentMode(options.edgeTreatmentMode || lens.edgeTreatmentMode);
+  const mathematicalFront = clampRenderSemiDiameter(
+    edgeGeometry.frontBevelStartRadius ?? mechanicalRadius - (frontRuns.radialRun || 0),
+    clearApertureRadius,
+    mechanicalRadius
+  );
+  const mathematicalRear = clampRenderSemiDiameter(
+    edgeGeometry.rearBevelStartRadius ?? mechanicalRadius - (rearRuns.radialRun || 0),
+    clearApertureRadius,
+    mechanicalRadius
+  );
+  const minimumFlatLandMm = Math.max(
+    0,
+    Number.isFinite(toNumber(edgeGeometry.minimumFlatLandMm))
+      ? toNumber(edgeGeometry.minimumFlatLandMm)
+      : DEFAULT_MINIMUM_FLAT_LAND_MM
+  );
+  const chipZoneRadius = Math.max(clearApertureRadius, toNumber(edgeGeometry.chipZoneRadius) || clearApertureRadius);
+  const chipZoneWidthMm = Math.max(0, chipZoneRadius - clearApertureRadius);
+  const automaticFaceWidth = automaticBevelFaceWidthMm(mechanicalRadius * 2);
+  const baseReliefMm = Math.max(
+    0.12,
+    Math.min(0.85, automaticFaceWidth),
+    Math.min(0.8, minimumFlatLandMm),
+    Math.min(0.7, chipZoneWidthMm * 0.45)
+  );
+  const frontSagBoost = Math.min(1.2, surfaceSagSeverityAtRadius(frontSurface, mechanicalRadius) * 0.16);
+  const rearSagBoost = Math.min(1.2, surfaceSagSeverityAtRadius(rearSurface, mechanicalRadius) * 0.16);
+  const minPreferredRadius = Math.min(mechanicalRadius - 0.001, Math.max(clearApertureRadius, chipZoneRadius));
+  const frontCutbackMm = Math.max(frontRuns.radialRun || 0, baseReliefMm + frontSagBoost);
+  const rearCutbackMm = Math.max(rearRuns.radialRun || 0, baseReliefMm + rearSagBoost);
+  const truncatedFront = clampRenderSemiDiameter(
+    Math.max(minPreferredRadius, mechanicalRadius - frontCutbackMm),
+    clearApertureRadius,
+    mechanicalRadius
+  );
+  const truncatedRear = clampRenderSemiDiameter(
+    Math.max(minPreferredRadius, mechanicalRadius - rearCutbackMm),
+    clearApertureRadius,
+    mechanicalRadius
+  );
+  const frontAxialReliefMm = Math.max(
+    frontRuns.axialRun || 0,
+    Math.min(0.7, baseReliefMm * 0.5),
+    0.04
+  );
+  const rearAxialReliefMm = Math.max(
+    rearRuns.axialRun || 0,
+    Math.min(0.7, baseReliefMm * 0.5),
+    0.04
+  );
+  const radialFlatLandMm = Math.max(
+    0.12,
+    Math.min(0.9, minimumFlatLandMm || DEFAULT_MINIMUM_FLAT_LAND_MM),
+    Math.min(0.55, automaticFaceWidth * 0.65)
+  );
+  const shoulderRadius = (renderRadius) => Math.max(
+    renderRadius,
+    Math.min(mechanicalRadius, mechanicalRadius - Math.min(radialFlatLandMm, Math.max(0, mechanicalRadius - renderRadius)))
+  );
+  const renderWarnings = [];
+  if (
+    edgeTreatmentMode === "truncatedFlatLand"
+    && (truncatedFront < chipZoneRadius - 1e-9 || truncatedRear < chipZoneRadius - 1e-9)
+  ) {
+    renderWarnings.push("Truncated flat-land display is constrained by the clear aperture because the estimated outer zone is too narrow.");
+  }
+  if (edgeTreatmentMode !== "truncatedFlatLand") {
+    return {
+      edgeTreatmentMode,
+      frontRenderSemiDiameter: mathematicalFront,
+      rearRenderSemiDiameter: mathematicalRear,
+      frontOuterShoulderRadius: mathematicalFront,
+      rearOuterShoulderRadius: mathematicalRear,
+      frontAxialReliefMm: frontRuns.axialRun || 0,
+      rearAxialReliefMm: rearRuns.axialRun || 0,
+      warnings: []
+    };
+  }
+  return {
+    edgeTreatmentMode,
+    frontRenderSemiDiameter: Math.min(mathematicalFront, truncatedFront),
+    rearRenderSemiDiameter: Math.min(mathematicalRear, truncatedRear),
+    frontOuterShoulderRadius: shoulderRadius(Math.min(mathematicalFront, truncatedFront)),
+    rearOuterShoulderRadius: shoulderRadius(Math.min(mathematicalRear, truncatedRear)),
+    frontAxialReliefMm,
+    rearAxialReliefMm,
+    warnings: renderWarnings
+  };
 };
 
 const resolveManufacturingEdgeGeometry = (frontSurface, rearSurface, lens, requestedSemiDiameter, options = {}) => {
@@ -10506,6 +11215,13 @@ const buildPrescriptionLensRenderModel = (position, mapper, result, lens, lensIn
     }
     : baseEdgeGeometry;
   const semiDiameter = edgeGeometry.mechanicalRadius;
+  const renderEdgeTreatment = resolveTruncatedFlatLandEdgeTreatment(
+    frontSurface,
+    rearSurface,
+    lens,
+    edgeGeometry,
+    options
+  );
   const sampleCount = 48;
   const sampleSurface = (surface, radius, reverse = false) => {
     const values = Array.from({ length: sampleCount + 1 }, (_, sampleIndex) => (
@@ -10540,22 +11256,26 @@ const buildPrescriptionLensRenderModel = (position, mapper, result, lens, lensIn
       }
     };
   };
-  const frontMm = sampleSurface(frontSurface, edgeGeometry.frontBevelStartRadius ?? semiDiameter);
-  const rearMm = sampleSurface(rearSurface, edgeGeometry.rearBevelStartRadius ?? semiDiameter, true);
+  const frontMm = sampleSurface(frontSurface, renderEdgeTreatment.frontRenderSemiDiameter ?? edgeGeometry.frontBevelStartRadius ?? semiDiameter);
+  const rearMm = sampleSurface(rearSurface, renderEdgeTreatment.rearRenderSemiDiameter ?? edgeGeometry.rearBevelStartRadius ?? semiDiameter, true);
   const frontTop = frontMm[frontMm.length - 1];
   const frontBottom = frontMm[0];
   const rearTop = rearMm[0];
   const rearBottom = rearMm[rearMm.length - 1];
   const frontOuterTop = {
-    x: frontTop.x - edgeGeometry.frontRuns.axialRun,
+    x: frontTop.x - renderEdgeTreatment.frontAxialReliefMm,
     y: semiDiameter
   };
   const rearOuterTop = {
-    x: rearTop.x + edgeGeometry.rearRuns.axialRun,
+    x: rearTop.x + renderEdgeTreatment.rearAxialReliefMm,
     y: semiDiameter
   };
   const frontOuterBottom = { ...frontOuterTop, y: -semiDiameter };
   const rearOuterBottom = { ...rearOuterTop, y: -semiDiameter };
+  const frontOuterShoulderTop = { ...frontOuterTop, y: renderEdgeTreatment.frontOuterShoulderRadius };
+  const rearOuterShoulderTop = { ...rearOuterTop, y: renderEdgeTreatment.rearOuterShoulderRadius };
+  const frontOuterShoulderBottom = { ...frontOuterTop, y: -renderEdgeTreatment.frontOuterShoulderRadius };
+  const rearOuterShoulderBottom = { ...rearOuterTop, y: -renderEdgeTreatment.rearOuterShoulderRadius };
   const valid = [...frontMm, ...rearMm].every((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
   if (!valid) return null;
 
@@ -10565,13 +11285,21 @@ const buildPrescriptionLensRenderModel = (position, mapper, result, lens, lensIn
   const mappedRearOuterTop = { x: mapper.x(rearOuterTop.x), y: mapper.y(rearOuterTop.y) };
   const mappedRearOuterBottom = { x: mapper.x(rearOuterBottom.x), y: mapper.y(rearOuterBottom.y) };
   const mappedFrontOuterBottom = { x: mapper.x(frontOuterBottom.x), y: mapper.y(frontOuterBottom.y) };
+  const mappedFrontOuterShoulderTop = { x: mapper.x(frontOuterShoulderTop.x), y: mapper.y(frontOuterShoulderTop.y) };
+  const mappedRearOuterShoulderTop = { x: mapper.x(rearOuterShoulderTop.x), y: mapper.y(rearOuterShoulderTop.y) };
+  const mappedRearOuterShoulderBottom = { x: mapper.x(rearOuterShoulderBottom.x), y: mapper.y(rearOuterShoulderBottom.y) };
+  const mappedFrontOuterShoulderBottom = { x: mapper.x(frontOuterShoulderBottom.x), y: mapper.y(frontOuterShoulderBottom.y) };
   const polygonPoints = [
     ...frontPoints,
+    mappedFrontOuterShoulderTop,
     mappedFrontOuterTop,
     mappedRearOuterTop,
+    mappedRearOuterShoulderTop,
     ...rearPoints,
+    mappedRearOuterShoulderBottom,
     mappedRearOuterBottom,
-    mappedFrontOuterBottom
+    mappedFrontOuterBottom,
+    mappedFrontOuterShoulderBottom
   ];
   const polygonGeometryValid = !polygonSelfIntersects(polygonPoints);
   const drawingSafety = getSafePatentDrawingSemiDiameter(lens, options.airGapConstraints || [], {
@@ -10581,6 +11309,148 @@ const buildPrescriptionLensRenderModel = (position, mapper, result, lens, lensIn
   const centerThicknessMm = position.thickness;
   const edgeThicknessMm = edgeGeometry.rawEdgeThickness;
   const opticalLayoutProfile = buildOpticalSurfaceProfile(frontSurface, rearSurface, clearApertureSemiDiameter, mapper);
+  const frontEdgeSlopeSeverity = surfaceSagSeverityAtRadius(frontSurface, semiDiameter);
+  const rearEdgeSlopeSeverity = surfaceSagSeverityAtRadius(rearSurface, semiDiameter);
+  const frontSphericalLimit = !isSurfaceAsphereActive(frontSurface) && Math.abs(frontSurface.radius || 0) > 1e-9
+    ? Math.abs(frontSurface.radius) * 0.999999
+    : Infinity;
+  const rearSphericalLimit = !isSurfaceAsphereActive(rearSurface) && Math.abs(rearSurface.radius || 0) > 1e-9
+    ? Math.abs(rearSurface.radius) * 0.999999
+    : Infinity;
+  const cementedThinMember = (
+    lens.patentFrontSharedCementedSurface === true
+    || lens.patentRearCementedToNextGlass === true
+  ) && position.thickness / Math.max(0.1, semiDiameter * 2) < 0.13;
+  const biotarSurfaceStart = Math.round(toNumber(lens.patentSurfaceStart));
+  const biotarDisplayElementIndex = state.preset === "zeissBiotar50F14Us1786916Ex2" ? lensIndex : -1;
+  const biotarCentralPointedMember = (
+    state.preset === "zeissBiotar50F14Us1786916Ex2"
+    && [2, 3].includes(biotarDisplayElementIndex)
+  );
+  const biotarPairedLens = biotarDisplayElementIndex === 2
+    ? state.lenses[1]
+    : biotarDisplayElementIndex === 3
+      ? state.lenses[4]
+      : null;
+  const firstPositiveDiameter = (...values) => (
+    values
+      .map((value) => toNumber(value))
+      .find((value) => Number.isFinite(value) && value > 0)
+  );
+  const biotarPairedDiameter = biotarPairedLens
+    ? firstPositiveDiameter(
+      biotarPairedLens.diameter,
+      biotarPairedLens.visualDiameter,
+      biotarPairedLens.mechanicalDiameter
+    )
+    : NaN;
+  const biotarPairedSemiDiameter = Number.isFinite(biotarPairedDiameter)
+    ? biotarPairedDiameter / 2
+    : semiDiameter;
+  const biotarOuterDisplayRadius = biotarCentralPointedMember
+    ? biotarPairedSemiDiameter
+    : semiDiameter;
+  const frontNeedsPatentTrim = (
+    biotarCentralPointedMember
+    && (biotarDisplayElementIndex === 3
+    || clearApertureSemiDiameter > frontSphericalLimit + 1e-6
+    || (cementedThinMember && frontEdgeSlopeSeverity > 4.6)
+    )
+  );
+  const rearNeedsPatentTrim = (
+    biotarCentralPointedMember
+    && (biotarDisplayElementIndex === 2
+    || clearApertureSemiDiameter > rearSphericalLimit + 1e-6
+    || (cementedThinMember && rearEdgeSlopeSeverity > 4.6)
+    )
+  );
+  const needsPatentIllustrationTrim = (
+    frontNeedsPatentTrim
+    || rearNeedsPatentTrim
+  );
+  const buildPatentIllustrationProfile = () => {
+    if (!needsPatentIllustrationTrim) return null;
+    const displayBaseSemiDiameter = biotarCentralPointedMember
+      ? Math.max(0.05, biotarOuterDisplayRadius)
+      : semiDiameter;
+    const frontSagBoost = Math.min(1.2, surfaceSagSeverityAtRadius(frontSurface, displayBaseSemiDiameter) * 0.12);
+    const rearSagBoost = Math.min(1.2, surfaceSagSeverityAtRadius(rearSurface, displayBaseSemiDiameter) * 0.12);
+    const baseCutbackMm = Math.max(0.45, Math.min(2.2, displayBaseSemiDiameter * 0.08));
+    const minimumDisplayRadius = Math.max(
+      0.05,
+      displayBaseSemiDiameter * (biotarDisplayElementIndex === 2 ? 0.46 : biotarDisplayElementIndex === 3 ? 0.54 : 0.58)
+    );
+    const biotarCutRatio = biotarDisplayElementIndex === 2 ? 0.54 : biotarDisplayElementIndex === 3 ? 0.7 : 0.9;
+    const biotarSurfaceLimitRatio = biotarDisplayElementIndex === 2 ? 0.78 : biotarDisplayElementIndex === 3 ? 0.84 : 0.95;
+    const trimmedDisplayRadius = (surfaceLimit, sagBoost) => Math.max(
+      minimumDisplayRadius,
+      Math.min(
+        displayBaseSemiDiameter - 0.02,
+        displayBaseSemiDiameter * biotarCutRatio,
+        Number.isFinite(surfaceLimit) ? surfaceLimit * biotarSurfaceLimitRatio : Infinity,
+        displayBaseSemiDiameter - baseCutbackMm - sagBoost
+      )
+    );
+    const frontDisplayRadius = frontNeedsPatentTrim
+      ? trimmedDisplayRadius(frontSphericalLimit, frontSagBoost)
+      : Math.min(displayBaseSemiDiameter, frontSphericalLimit);
+    const rearDisplayRadius = rearNeedsPatentTrim
+      ? trimmedDisplayRadius(rearSphericalLimit, rearSagBoost)
+      : Math.min(displayBaseSemiDiameter, rearSphericalLimit);
+    const frontDisplayMm = sampleSurface(frontSurface, frontDisplayRadius);
+    const rearDisplayMm = sampleSurface(rearSurface, rearDisplayRadius, true);
+    if ([...frontDisplayMm, ...rearDisplayMm].some((point) => !Number.isFinite(point.x) || !Number.isFinite(point.y))) {
+      return null;
+    }
+    const frontDisplayPoints = frontDisplayMm.map((point) => ({ x: mapper.x(point.x), y: mapper.y(point.y) }));
+    const rearDisplayPoints = rearDisplayMm.map((point) => ({ x: mapper.x(point.x), y: mapper.y(point.y) }));
+    const frontDisplayTop = frontDisplayMm[frontDisplayMm.length - 1];
+    const frontDisplayBottom = frontDisplayMm[0];
+    const rearDisplayTop = rearDisplayMm[0];
+    const rearDisplayBottom = rearDisplayMm[rearDisplayMm.length - 1];
+    const frontRelief = frontNeedsPatentTrim
+      ? 0
+      : Math.max(renderEdgeTreatment.frontAxialReliefMm || 0, Math.min(0.55, baseCutbackMm * 0.34), 0.06);
+    const rearRelief = rearNeedsPatentTrim
+      ? 0
+      : Math.max(renderEdgeTreatment.rearAxialReliefMm || 0, Math.min(0.55, baseCutbackMm * 0.34), 0.06);
+    const frontShoulderTop = { x: mapper.x(frontDisplayTop.x - frontRelief), y: mapper.y(frontDisplayRadius) };
+    const frontOuterTopPoint = { x: frontShoulderTop.x, y: mapper.y(biotarOuterDisplayRadius) };
+    const rearShoulderTop = { x: mapper.x(rearDisplayTop.x + rearRelief), y: mapper.y(rearDisplayRadius) };
+    const rearOuterTopPoint = { x: rearShoulderTop.x, y: mapper.y(biotarOuterDisplayRadius) };
+    const rearShoulderBottom = { x: mapper.x(rearDisplayBottom.x + rearRelief), y: mapper.y(-rearDisplayRadius) };
+    const rearOuterBottomPoint = { x: rearShoulderBottom.x, y: mapper.y(-biotarOuterDisplayRadius) };
+    const frontShoulderBottom = { x: mapper.x(frontDisplayBottom.x - frontRelief), y: mapper.y(-frontDisplayRadius) };
+    const frontOuterBottomPoint = { x: frontShoulderBottom.x, y: mapper.y(-biotarOuterDisplayRadius) };
+    const displayPolygonPoints = [
+      ...frontDisplayPoints,
+      frontShoulderTop,
+      frontOuterTopPoint,
+      rearOuterTopPoint,
+      rearShoulderTop,
+      ...rearDisplayPoints,
+      rearShoulderBottom,
+      rearOuterBottomPoint,
+      frontOuterBottomPoint,
+      frontShoulderBottom
+    ];
+    const displayPolygonSelfIntersects = polygonSelfIntersects(displayPolygonPoints);
+    if (displayPolygonSelfIntersects && !biotarCentralPointedMember) return null;
+    return {
+      polygonPoints: displayPolygonPoints,
+      polygonPath: svgPathFromPoints(displayPolygonPoints, true),
+      frontPath: svgPathFromPoints(frontDisplayPoints),
+      rearPath: svgPathFromPoints(rearDisplayPoints),
+      topEdge: { front: frontOuterTopPoint, rear: rearOuterTopPoint },
+      bottomEdge: { front: frontOuterBottomPoint, rear: rearOuterBottomPoint },
+      frontDisplayRadius,
+      rearDisplayRadius,
+      displayPolygonSelfIntersects,
+      frontTrimmed: frontNeedsPatentTrim,
+      rearTrimmed: rearNeedsPatentTrim
+    };
+  };
+  const patentIllustrationProfile = buildPatentIllustrationProfile();
   const fallbackFill = { path: opticalLayoutProfile.polygonPath, radius: opticalLayoutProfile.radius };
   const requestedProfile = buildRequestedProfile(unconstrainedRequestedSemiDiameter);
   const displayedSemiDiameter = showRequestedGeometry && requestedProfile
@@ -10598,9 +11468,10 @@ const buildPrescriptionLensRenderModel = (position, mapper, result, lens, lensIn
     apertureSource: lens.apertureSource || (statedValues.length ? "patent" : envelopeValues.length ? "rayEnvelope" : "estimated"),
     clearApertureSemiDiameter,
     chipZoneRadius: edgeGeometry.chipZoneRadius,
-    geometryWarning: edgeGeometry.warnings.join(" "),
+    geometryWarning: [...edgeGeometry.warnings, ...renderEdgeTreatment.warnings].join(" "),
     geometryWarnings: [
       ...edgeGeometry.warnings,
+      ...renderEdgeTreatment.warnings,
       ...(polygonGeometryValid ? [] : ["Final patent lens polygon would self-intersect at the estimated mechanical diameter."]),
       ...drawingSafety.warnings
     ],
@@ -10614,6 +11485,11 @@ const buildPrescriptionLensRenderModel = (position, mapper, result, lens, lensIn
     rearBevel: edgeGeometry.rearBevel,
     frontRuns: edgeGeometry.frontRuns,
     rearRuns: edgeGeometry.rearRuns,
+    edgeTreatmentMode: renderEdgeTreatment.edgeTreatmentMode,
+    frontRenderSemiDiameter: renderEdgeTreatment.frontRenderSemiDiameter,
+    rearRenderSemiDiameter: renderEdgeTreatment.rearRenderSemiDiameter,
+    frontOuterShoulderRadius: renderEdgeTreatment.frontOuterShoulderRadius,
+    rearOuterShoulderRadius: renderEdgeTreatment.rearOuterShoulderRadius,
     minimumFlatLandMm: edgeGeometry.minimumFlatLandMm,
     remainingFlatLandMm: edgeGeometry.remainingFlatLandMm,
     centerThicknessMm,
@@ -10622,6 +11498,8 @@ const buildPrescriptionLensRenderModel = (position, mapper, result, lens, lensIn
     polygonPath: polygonGeometryValid && (edgeGeometry.manufacturable || edgeGeometry.safeInvalidGeometry)
       ? svgPathFromPoints(polygonPoints, true)
       : "",
+    patentIllustrationProfile,
+    usePatentIllustrationTrim: needsPatentIllustrationTrim && Boolean(patentIllustrationProfile?.polygonPath),
     opticalLayoutProfile,
     requestedProfile,
     requestedPolygonPath: requestedProfile?.polygonPath || "",
@@ -10631,10 +11509,10 @@ const buildPrescriptionLensRenderModel = (position, mapper, result, lens, lensIn
     opticalFillFallbackSemiDiameter: fallbackFill.radius,
     frontPath: svgPathFromPoints(frontPoints),
     rearPath: svgPathFromPoints(rearPoints),
-    frontBevelTop: { optical: frontPoints[frontPoints.length - 1], outer: mappedFrontOuterTop },
-    frontBevelBottom: { optical: frontPoints[0], outer: mappedFrontOuterBottom },
-    rearBevelTop: { optical: rearPoints[0], outer: mappedRearOuterTop },
-    rearBevelBottom: { optical: rearPoints[rearPoints.length - 1], outer: mappedRearOuterBottom },
+    frontBevelTop: { optical: frontPoints[frontPoints.length - 1], outer: mappedFrontOuterShoulderTop },
+    frontBevelBottom: { optical: frontPoints[0], outer: mappedFrontOuterShoulderBottom },
+    rearBevelTop: { optical: rearPoints[0], outer: mappedRearOuterShoulderTop },
+    rearBevelBottom: { optical: rearPoints[rearPoints.length - 1], outer: mappedRearOuterShoulderBottom },
     topEdge: {
       front: mappedFrontOuterTop,
       rear: mappedRearOuterTop
@@ -10642,6 +11520,12 @@ const buildPrescriptionLensRenderModel = (position, mapper, result, lens, lensIn
     bottomEdge: {
       front: mappedFrontOuterBottom,
       rear: mappedRearOuterBottom
+    },
+    flatLandEdges: {
+      frontTop: { start: mappedFrontOuterShoulderTop, end: mappedFrontOuterTop },
+      rearTop: { start: mappedRearOuterTop, end: mappedRearOuterShoulderTop },
+      rearBottom: { start: mappedRearOuterShoulderBottom, end: mappedRearOuterBottom },
+      frontBottom: { start: mappedFrontOuterBottom, end: mappedFrontOuterShoulderBottom }
     }
   };
 };
@@ -11116,8 +12000,28 @@ const buildCementedGroupRenderModel = (group, system, mapper, rayTraceResults, o
     }
   }
 
-  const frontStartRadius = mechanicalRadius - frontRuns.radialRun;
-  const rearStartRadius = mechanicalRadius - rearRuns.radialRun;
+  const groupEdgeTreatment = resolveTruncatedFlatLandEdgeTreatment(
+    first.frontSurface,
+    last.rearSurface,
+    {
+      ...first.lens,
+      edgeTreatmentMode: first.lens.edgeTreatmentMode || last.lens.edgeTreatmentMode
+    },
+    {
+      mechanicalRadius,
+      clearApertureRadius: clearApertureDiameter / 2,
+      chipZoneRadius: Math.max(...requiredChipRadii),
+      minimumFlatLandMm,
+      frontRuns,
+      rearRuns,
+      frontBevelStartRadius: mechanicalRadius - frontRuns.radialRun,
+      rearBevelStartRadius: mechanicalRadius - rearRuns.radialRun
+    },
+    options
+  );
+  warnings.push(...groupEdgeTreatment.warnings);
+  const frontStartRadius = groupEdgeTreatment.frontRenderSemiDiameter;
+  const rearStartRadius = groupEdgeTreatment.rearRenderSemiDiameter;
   const internalGlassRegions = members.map((member, memberIndex) => {
     const isFirst = memberIndex === 0;
     const isLast = memberIndex === members.length - 1;
@@ -11141,22 +12045,42 @@ const buildCementedGroupRenderModel = (group, system, mapper, rayTraceResults, o
     const rearTop = rearSamples[0];
     const rearBottom = rearSamples[rearSamples.length - 1];
     const frontOuterTop = {
-      x: mapper.x(frontTop.mm.x - (isFirst ? frontRuns.axialRun : 0)),
+      x: mapper.x(frontTop.mm.x - (isFirst ? groupEdgeTreatment.frontAxialReliefMm : 0)),
       y: mapper.y(mechanicalRadius)
     };
     const rearOuterTop = {
-      x: mapper.x(rearTop.mm.x + (isLast ? rearRuns.axialRun : 0)),
+      x: mapper.x(rearTop.mm.x + (isLast ? groupEdgeTreatment.rearAxialReliefMm : 0)),
       y: mapper.y(mechanicalRadius)
     };
     const frontOuterBottom = { ...frontOuterTop, y: mapper.y(-mechanicalRadius) };
     const rearOuterBottom = { ...rearOuterTop, y: mapper.y(-mechanicalRadius) };
+    const frontOuterShoulderTop = {
+      ...frontOuterTop,
+      y: mapper.y(isFirst ? groupEdgeTreatment.frontOuterShoulderRadius : mechanicalRadius)
+    };
+    const rearOuterShoulderTop = {
+      ...rearOuterTop,
+      y: mapper.y(isLast ? groupEdgeTreatment.rearOuterShoulderRadius : mechanicalRadius)
+    };
+    const frontOuterShoulderBottom = {
+      ...frontOuterTop,
+      y: mapper.y(isFirst ? -groupEdgeTreatment.frontOuterShoulderRadius : -mechanicalRadius)
+    };
+    const rearOuterShoulderBottom = {
+      ...rearOuterTop,
+      y: mapper.y(isLast ? -groupEdgeTreatment.rearOuterShoulderRadius : -mechanicalRadius)
+    };
     const polygonPoints = [
       ...frontSamples.map((point) => point.mapped),
+      frontOuterShoulderTop,
       frontOuterTop,
       rearOuterTop,
+      rearOuterShoulderTop,
       ...rearSamples.map((point) => point.mapped),
+      rearOuterShoulderBottom,
       rearOuterBottom,
-      frontOuterBottom
+      frontOuterBottom,
+      frontOuterShoulderBottom
     ];
     return {
       elementIndex: member.index,
@@ -11179,7 +12103,11 @@ const buildCementedGroupRenderModel = (group, system, mapper, rayTraceResults, o
       frontOuterTop,
       rearOuterTop,
       frontOuterBottom,
-      rearOuterBottom
+      rearOuterBottom,
+      frontOuterShoulderTop,
+      rearOuterShoulderTop,
+      frontOuterShoulderBottom,
+      rearOuterShoulderBottom
     };
   });
   if (internalGlassRegions.some((region) => !region)) {
@@ -11245,11 +12173,15 @@ const buildCementedGroupRenderModel = (group, system, mapper, rayTraceResults, o
   const externalRearSamples = samplePrescriptionSurfacePoints(last.rearSurface, rearStartRadius, mapper, true);
   const outerPolygonPoints = [
     ...externalFrontSamples.map((point) => point.mapped),
+    firstRegion.frontOuterShoulderTop,
     firstRegion.frontOuterTop,
     lastRegion.rearOuterTop,
+    lastRegion.rearOuterShoulderTop,
     ...externalRearSamples.map((point) => point.mapped),
+    lastRegion.rearOuterShoulderBottom,
     lastRegion.rearOuterBottom,
-    firstRegion.frontOuterBottom
+    firstRegion.frontOuterBottom,
+    firstRegion.frontOuterShoulderBottom
   ];
   const outerPolygonPath = svgPathFromPoints(outerPolygonPoints, true);
   const sharedInterfacePaths = internalGlassRegions.slice(0, -1).map((region, index) => ({
@@ -11302,6 +12234,11 @@ const buildCementedGroupRenderModel = (group, system, mapper, rayTraceResults, o
     rearExternalBevel,
     frontRuns,
     rearRuns,
+    edgeTreatmentMode: groupEdgeTreatment.edgeTreatmentMode,
+    frontRenderSemiDiameter: groupEdgeTreatment.frontRenderSemiDiameter,
+    rearRenderSemiDiameter: groupEdgeTreatment.rearRenderSemiDiameter,
+    frontOuterShoulderRadius: groupEdgeTreatment.frontOuterShoulderRadius,
+    rearOuterShoulderRadius: groupEdgeTreatment.rearOuterShoulderRadius,
     interfaceBevelMode,
     outerPolygonPoints,
     outerPolygonPath,
@@ -11312,19 +12249,25 @@ const buildCementedGroupRenderModel = (group, system, mapper, rayTraceResults, o
     bottomEdge: { front: firstRegion.frontOuterBottom, rear: lastRegion.rearOuterBottom },
     frontBevelTop: {
       optical: externalFrontSamples[externalFrontSamples.length - 1].mapped,
-      outer: firstRegion.frontOuterTop
+      outer: firstRegion.frontOuterShoulderTop
     },
     frontBevelBottom: {
       optical: externalFrontSamples[0].mapped,
-      outer: firstRegion.frontOuterBottom
+      outer: firstRegion.frontOuterShoulderBottom
     },
     rearBevelTop: {
       optical: externalRearSamples[0].mapped,
-      outer: lastRegion.rearOuterTop
+      outer: lastRegion.rearOuterShoulderTop
     },
     rearBevelBottom: {
       optical: externalRearSamples[externalRearSamples.length - 1].mapped,
-      outer: lastRegion.rearOuterBottom
+      outer: lastRegion.rearOuterShoulderBottom
+    },
+    flatLandEdges: {
+      frontTop: { start: firstRegion.frontOuterShoulderTop, end: firstRegion.frontOuterTop },
+      rearTop: { start: lastRegion.rearOuterTop, end: lastRegion.rearOuterShoulderTop },
+      rearBottom: { start: lastRegion.rearOuterShoulderBottom, end: lastRegion.rearOuterBottom },
+      frontBottom: { start: firstRegion.frontOuterBottom, end: firstRegion.frontOuterShoulderBottom }
     },
     memberEdgeResults: radiusEvaluation.memberResults,
     manufacturable: !opticalLayoutFallback && !airGapCollision && polygonGeometryValid,
@@ -11519,6 +12462,18 @@ const renderCementedGroupSvg = (model, mapper, annotationLanes = {}) => {
   if (renderLayer === "glass") {
     if (opticalLayoutMode) {
       if (!renderOpticalFill) return "";
+      if (isPatentIllustrationRenderStyle(renderStyle)) {
+        return `
+          <g class="${groupClass} is-truncated-flat-land-profile" data-elements="${model.elementIndices.join(",")}">
+            ${title}
+            ${model.renderFilledGlass === false ? "" : model.internalGlassRegions.map((region) => `
+              <path class="glass-fill patent-illustration-fill ${region.glassClass}" data-element-index="${region.elementIndex}" d="${region.polygonPath}">
+                <title>Truncated flat-land silhouette — display-only manufactured edge; optical prescription unchanged</title>
+              </path>
+            `).join("")}
+          </g>
+        `;
+      }
       return `
         <g class="${groupClass} is-optical-layout-profile" data-elements="${model.elementIndices.join(",")}">
           ${title}
@@ -11561,6 +12516,23 @@ const renderCementedGroupSvg = (model, mapper, annotationLanes = {}) => {
     if (opticalLayoutMode) {
       const firstRegion = model.internalGlassRegions[0];
       const lastRegion = model.internalGlassRegions[model.internalGlassRegions.length - 1];
+      if (isPatentIllustrationRenderStyle(renderStyle)) {
+        const topEdge = showOpticalCaps
+          ? `<line class="optical-aperture-edge truncated-flat-land-edge" x1="${model.topEdge.front.x}" y1="${model.topEdge.front.y}" x2="${model.topEdge.rear.x}" y2="${model.topEdge.rear.y}" />`
+          : "";
+        const bottomEdge = showOpticalCaps
+          ? `<line class="optical-aperture-edge truncated-flat-land-edge" x1="${model.bottomEdge.front.x}" y1="${model.bottomEdge.front.y}" x2="${model.bottomEdge.rear.x}" y2="${model.bottomEdge.rear.y}" />`
+          : "";
+        return `
+          <g class="${groupClass} is-truncated-flat-land-profile" data-elements="${model.elementIndices.join(",")}">
+            ${firstRegion?.frontPath ? `<path class="surface-outline front-surface-outline ${firstRegion.frontAsphereActive ? "asphere-surface-outline" : ""}" data-element-index="${firstRegion.elementIndex}" d="${firstRegion.frontPath}" />` : ""}
+            ${model.sharedInterfacePaths?.map((surface) => `<path class="surface-outline cemented-shared-interface" data-surface-number="${surface.surfaceNumber}" d="${surface.path}" />`).join("") || ""}
+            ${lastRegion?.rearPath ? `<path class="surface-outline rear-surface-outline ${lastRegion.rearAsphereActive ? "asphere-surface-outline" : ""}" data-element-index="${lastRegion.elementIndex}" d="${lastRegion.rearPath}" />` : ""}
+            ${topEdge}
+            ${bottomEdge}
+          </g>
+        `;
+      }
       const topEdge = firstRegion?.opticalTopEdge && lastRegion?.opticalTopEdge
         && showOpticalCaps
         ? `<line class="optical-aperture-edge" x1="${firstRegion.opticalTopEdge.front.x}" y1="${firstRegion.opticalTopEdge.front.y}" x2="${lastRegion.opticalTopEdge.rear.x}" y2="${lastRegion.opticalTopEdge.rear.y}" />`
@@ -11807,7 +12779,14 @@ const renderIndividualLensSvg = (system, mapper, rayTraceResults, index, options
     && isOpticalRayViewMode(diagramViewMode);
   const renderOpticalFill = opticalLayoutMode && shouldRenderOpticalStyleFill(renderStyle);
   const showOpticalCaps = opticalLayoutMode && shouldRenderOpticalStyleCaps(renderStyle);
-  if (isOpticalRayViewMode(diagramViewMode) && !(model.manufacturable || model.safeInvalidGeometry)) {
+  const preserveBiotarPatentTrim = (
+    isPatentIllustrationRenderStyle(renderStyle)
+    && state.preset === "zeissBiotar50F14Us1786916Ex2"
+    && [2, 3].includes(index)
+    && model.usePatentIllustrationTrim === true
+    && model.patentIllustrationProfile?.polygonPath
+  );
+  if (isOpticalRayViewMode(diagramViewMode) && !(model.manufacturable || model.safeInvalidGeometry) && !preserveBiotarPatentTrim) {
     model = buildPrescriptionLensRenderModel(
       position,
       mapper,
@@ -11848,6 +12827,19 @@ const renderIndividualLensSvg = (system, mapper, rayTraceResults, index, options
   if (renderLayer === "glass") {
     if (opticalLayoutMode && model.opticalLayoutProfile?.polygonPath) {
       if (!renderOpticalFill) return "";
+      const usePatentTrim = model.usePatentIllustrationTrim === true && model.patentIllustrationProfile?.polygonPath;
+      const patentIllustrationPath = usePatentTrim
+        ? model.patentIllustrationProfile.polygonPath
+        : model.opticalLayoutProfile?.polygonPath || model.polygonPath;
+      if (isPatentIllustrationRenderStyle(renderStyle) && patentIllustrationPath) {
+        return `
+          <g class="${groupClass} ${usePatentTrim ? "is-truncated-flat-land-profile" : "is-patent-illustration-profile"}" data-aperture-source="${model.apertureSource}">
+            <path class="glass-fill patent-illustration-fill${glassClass}" data-element-index="${index}" d="${patentIllustrationPath}">
+              <title>${usePatentTrim ? "Selective flat-land silhouette for long pointed patent edge; optical prescription unchanged" : "Patent-style optical silhouette — display-only; optical prescription unchanged"}</title>
+            </path>
+          </g>
+        `;
+      }
       return `
         <g class="${groupClass} is-optical-layout-profile" data-aperture-source="${model.apertureSource}">
           <path class="glass-fill optical-layout-fill${glassClass}" data-element-index="${index}" d="${model.opticalLayoutProfile.polygonPath}">
@@ -11880,6 +12872,20 @@ const renderIndividualLensSvg = (system, mapper, rayTraceResults, index, options
   }
   if (renderLayer === "optical") {
     if (opticalLayoutMode && model.opticalLayoutProfile) {
+      if (isPatentIllustrationRenderStyle(renderStyle)) {
+        const usePatentTrim = model.usePatentIllustrationTrim === true && model.patentIllustrationProfile?.polygonPath;
+        const patentIllustrationPath = usePatentTrim
+          ? model.patentIllustrationProfile.polygonPath
+          : model.opticalLayoutProfile?.polygonPath || model.polygonPath;
+        return `
+          <g class="${groupClass} ${usePatentTrim ? "is-truncated-flat-land-profile" : "is-patent-illustration-profile"}">
+            ${patentIllustrationPath ? `<path class="surface-outline patent-illustration-boundary ${frontAsphere.active || rearAsphere.active ? "asphere-surface-outline" : ""}" data-element-index="${index}" d="${patentIllustrationPath}" />` : `
+              ${hideSharedFrontOutline ? "" : `<path class="surface-outline front-surface-outline ${frontAsphere.active ? "asphere-surface-outline" : ""}" data-element-index="${index}" d="${model.frontPath}" />`}
+              <path class="surface-outline rear-surface-outline ${rearAsphere.active ? "asphere-surface-outline" : ""}" data-element-index="${index}" d="${model.rearPath}" />
+            `}
+          </g>
+        `;
+      }
       const profile = model.opticalLayoutProfile;
       return `
         <g class="${groupClass} is-optical-layout-profile">
@@ -11981,17 +12987,37 @@ const renderIndividualLensSvg = (system, mapper, rayTraceResults, index, options
 
   if (opticalLayoutMode && model.opticalLayoutProfile) {
     const profile = model.opticalLayoutProfile;
+    const usePatentTrim = isPatentIllustrationRenderStyle(renderStyle)
+      && model.usePatentIllustrationTrim === true
+      && model.patentIllustrationProfile?.polygonPath;
+    const fillPath = usePatentTrim
+      ? model.patentIllustrationProfile.polygonPath
+      : isPatentIllustrationRenderStyle(renderStyle) && model.polygonPath
+        ? model.polygonPath
+      : profile.polygonPath;
+    const frontPath = usePatentTrim
+      ? model.patentIllustrationProfile.frontPath
+      : isPatentIllustrationRenderStyle(renderStyle) ? model.frontPath : profile.frontPath;
+    const rearPath = usePatentTrim
+      ? model.patentIllustrationProfile.rearPath
+      : isPatentIllustrationRenderStyle(renderStyle) ? model.rearPath : profile.rearPath;
+    const topEdge = usePatentTrim
+      ? model.patentIllustrationProfile.topEdge
+      : isPatentIllustrationRenderStyle(renderStyle) ? model.topEdge : profile.topEdge;
+    const bottomEdge = usePatentTrim
+      ? model.patentIllustrationProfile.bottomEdge
+      : isPatentIllustrationRenderStyle(renderStyle) ? model.bottomEdge : profile.bottomEdge;
     return `
-      <g class="${groupClass} is-optical-layout-profile" data-aperture-source="${model.apertureSource}">
+      <g class="${groupClass} ${usePatentTrim ? "is-truncated-flat-land-profile" : isPatentIllustrationRenderStyle(renderStyle) ? "is-patent-illustration-profile" : "is-optical-layout-profile"}" data-aperture-source="${model.apertureSource}">
         ${title}
-        ${renderOpticalFill ? `<path class="glass-fill optical-layout-fill${glassClass}" data-element-index="${index}" d="${profile.polygonPath}">
-          <title>Optical layout fill — exact surfaces clipped to clear aperture, not a manufacturing envelope</title>
+        ${renderOpticalFill ? `<path class="glass-fill ${isPatentIllustrationRenderStyle(renderStyle) ? "patent-illustration-fill" : "optical-layout-fill"}${glassClass}" data-element-index="${index}" d="${fillPath}">
+          <title>${usePatentTrim ? "Selective flat-land silhouette for long pointed patent edge; optical prescription unchanged" : isPatentIllustrationRenderStyle(renderStyle) ? "Patent-style optical silhouette — display-only; optical prescription unchanged" : "Optical layout fill — exact surfaces clipped to clear aperture, not a manufacturing envelope"}</title>
         </path>` : ""}
-        ${hideSharedFrontOutline ? "" : `<path class="surface-outline optical-layout-surface front-surface-outline ${frontAsphere.active ? "asphere-surface-outline" : ""}" d="${profile.frontPath}" />`}
-        <path class="surface-outline optical-layout-surface rear-surface-outline ${rearAsphere.active ? "asphere-surface-outline" : ""}" d="${profile.rearPath}" />
+        ${hideSharedFrontOutline ? "" : `<path class="surface-outline optical-layout-surface front-surface-outline ${frontAsphere.active ? "asphere-surface-outline" : ""}" d="${frontPath}" />`}
+        <path class="surface-outline optical-layout-surface rear-surface-outline ${rearAsphere.active ? "asphere-surface-outline" : ""}" d="${rearPath}" />
         ${showOpticalCaps ? `
-          <line class="optical-aperture-edge" x1="${profile.topEdge.front.x}" y1="${profile.topEdge.front.y}" x2="${profile.topEdge.rear.x}" y2="${profile.topEdge.rear.y}" />
-          <line class="optical-aperture-edge" x1="${profile.bottomEdge.front.x}" y1="${profile.bottomEdge.front.y}" x2="${profile.bottomEdge.rear.x}" y2="${profile.bottomEdge.rear.y}" />
+          <line class="optical-aperture-edge ${isPatentIllustrationRenderStyle(renderStyle) ? "truncated-flat-land-edge" : ""}" x1="${topEdge.front.x}" y1="${topEdge.front.y}" x2="${topEdge.rear.x}" y2="${topEdge.rear.y}" />
+          <line class="optical-aperture-edge ${isPatentIllustrationRenderStyle(renderStyle) ? "truncated-flat-land-edge" : ""}" x1="${bottomEdge.front.x}" y1="${bottomEdge.front.y}" x2="${bottomEdge.rear.x}" y2="${bottomEdge.rear.y}" />
         ` : ""}
         <text class="individual-lens-label" x="${mapper.x(position.center)}" y="${lensLabelY}" text-anchor="middle">L${index + 1}</text>
         ${frontAsphere.active ? `<text class="asphere-label" x="${mapper.x(position.end)}" y="${mapper.y(profile.radius) - 8}" text-anchor="middle">ASP</text>` : ""}
@@ -12127,7 +13153,7 @@ const renderLensStackSvg = (
   const mechanicalValidation = shouldUseMechanicalValidation();
   const hasExplicitRenderStyle = annotationLanes.diagramRenderStyle !== undefined;
   const renderStyle = hasExplicitRenderStyle ? normalizeDiagramRenderStyle(annotationLanes.diagramRenderStyle) : "";
-  const forcePatentIllustrationGroups = hasExplicitRenderStyle
+  const forcePatentIllustrationIndividualLenses = hasExplicitRenderStyle
     && isPatentIllustrationRenderStyle(renderStyle)
     && isOpticalLayoutGeometryDisplayMode(annotationLanes.diagramGeometryDisplayMode)
     && isOpticalRayViewMode(annotationLanes.diagramViewMode);
@@ -12146,7 +13172,7 @@ const renderLensStackSvg = (
     )).join("");
   }
 
-  if (state.cementedGroupDisplayMode === "individualManufacturing" && !forcePatentIllustrationGroups) {
+  if (state.cementedGroupDisplayMode === "individualManufacturing" || forcePatentIllustrationIndividualLenses) {
     const elements = mapper.positions.map((position, index) => renderIndividualLensSvg(
       system,
       mapper,
@@ -12881,7 +13907,7 @@ const renderOpticalDiagram = (system, spectralSystems, rayTraceResult, diagramAp
   const diagramCementedGroupDisplayMode = isOpticalRayView
     && isPatentIllustrationRenderStyle(diagramRenderStyle)
     && isOpticalLayoutGeometryDisplayMode(diagramGeometryDisplayMode)
-    ? "opticalLayout"
+    ? "individualManufacturing"
     : state.cementedGroupDisplayMode;
   const layoutResolution = mechanicalValidation
     ? resolveOpticalLayoutGeometry(system, mapper, rayTraceResult, {
@@ -15262,6 +16288,7 @@ const renderApertureStopPanel = (system, surfaces = []) => {
           <select data-action="update-aperture-stop-mode" aria-label="Aperture stop position mode">
             <option value="auto" ${mode === "auto" ? "selected" : ""}>Auto / preset default</option>
             <option value="patentStop" ${mode === "patentStop" ? "selected" : ""}>Patent / preset stop if available</option>
+            <option value="derivedTopology" ${mode === "derivedTopology" ? "selected" : ""}>Derived Retarget topology</option>
             <option value="surfaceNumber" ${mode === "surfaceNumber" ? "selected" : ""}>Surface number</option>
             <option value="distanceFromSensor" ${mode === "distanceFromSensor" ? "selected" : ""}>Distance from sensor plane</option>
             <option value="distanceFromFront" ${mode === "distanceFromFront" ? "selected" : ""}>Distance from first/front surface</option>
@@ -20877,6 +21904,37 @@ const currentDesignDisplayName = () => (
     || "Current design"
 );
 
+const renderRetargetPhysicalStopCard = () => {
+  const system = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
+  const derived = deriveElementStopAnchorFromSource({
+    lenses: state.lenses,
+    system,
+    prescription: state.prescription,
+    apertureSettings: state
+  });
+  const spec = derived.spec || normalizeApertureStopSpec(state.derivedApertureStopSpec);
+  if (!spec) {
+    return `
+      <div class="retarget-stop-card warning-box">
+        <strong>Physical diaphragm</strong>
+        <span>Topology unresolved</span>
+        <span>${escapeHtml(derived.error || "Select an interior stop gap manually before retargeting.")}</span>
+      </div>
+    `;
+  }
+  const gapLabel = spec.kind === "elementGap"
+    ? `Gap between L${spec.afterLensIndex + 1} and L${spec.afterLensIndex + 2}`
+    : stopLabelFromSpec(spec);
+  return `
+    <div class="retarget-stop-card compact-metric-row">
+      ${metric("Physical diaphragm", escapeHtml(gapLabel), "preserved source topology")}
+      ${metric("Position", `${formatNumber((spec.fraction ?? 0.5) * 100, 1)}%`, "through selected gap")}
+      ${metric("Source", escapeHtml(spec.sourceLabel || stopLabelFromSpec(spec)), spec.sourceLevel || "derived")}
+      ${metric("Confidence", escapeHtml(spec.confidence || "unverified"), spec.topologyLocked ? "topology locked" : "editable")}
+    </div>
+  `;
+};
+
 const renderRetargetLensPanel = (system) => {
   const sourceName = currentDesignDisplayName();
   const sourceEfl = Math.abs(toNumber(system.effectiveFocalLength));
@@ -20908,10 +21966,19 @@ const renderRetargetLensPanel = (system) => {
         ${retargetInput("retargetMaxTrackLength", "Maximum track length", "mm")}
       </div>
       <div class="optimizer-goals">
-        ${optimizerGoalToggle("retargetPreserveGroupCount", "Preserve original group count")}
+        <label class="check-control">
+          <input type="checkbox" checked disabled>
+          Preserve original group count (enforced)
+        </label>
+        <label class="check-control">
+          <input type="checkbox" checked disabled>
+          Preserve source stop topology
+        </label>
         ${optimizerGoalToggle("retargetPreserveGlass", "Preserve original glass")}
         ${optimizerGoalToggle("retargetScaleApertures", "Scale clear apertures")}
+        ${optimizerGoalToggle("optimizerAllowStopShiftInAnchorGap", "Advanced: allow stop movement inside preserved gap")}
       </div>
+      ${renderRetargetPhysicalStopCard()}
       <div class="optimizer-actions">
         <button class="action-button" type="button" data-action="create-retarget-copy">Create Retargeted Copy</button>
         ${state.retargetStatus ? `<span class="copy-status">${escapeHtml(state.retargetStatus)}</span>` : ""}
@@ -20924,6 +21991,7 @@ const renderRetargetLensPanel = (system) => {
         </div>
       ` : ""}
       <p class="diagram-note">Retargeting creates a derived custom design. It never overwrites or relabels the original patent preset. The first pass is a scaled candidate and still needs centre, mid-field, and corner optimization.</p>
+      <p class="diagram-note">${state.retargetPreserveGlass ? "Glass is preserved; optimizer glass and Vd variables will be disabled after retargeting." : "Glass substitution is allowed only as bounded catalogue/custom optimization and is not patent-original glass data."}</p>
     </section>
   `;
 };
@@ -20932,6 +22000,7 @@ const runAutoImproveDiagnosis = (lenses = state.lenses, system = calculateSystem
   const apertureOptions = { ...rayTraceApertureOptions(state), rayCount: 7, apertureDiameter: state.apertureDiameter };
   const traces = traceSystemFieldSet(lenses, system, {
     ...apertureOptions,
+    fieldDefinitions: optimizerFieldDefinitions(system, { sensorFormatKey: state.retargetSensorFormatKey }),
     wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
     spectralLineKey: "d"
   });
@@ -20994,6 +22063,86 @@ const runAutoImproveDiagnosis = (lenses = state.lenses, system = calculateSystem
   };
 };
 
+const resetOptimizerLensVariables = () => {
+  state.lenses = state.lenses.map((lens) => normalizeLens({
+    ...lens,
+    optimizerVariables: {
+      ...DEFAULT_OPTIMIZER_VARIABLES,
+      r1: false,
+      r2: false,
+      thickness: false,
+      gapAfter: false,
+      diameter: false,
+      glass: false,
+      customVd: false,
+      frontConicK: false,
+      rearConicK: false,
+      frontA4: false,
+      rearA4: false,
+      frontA6: false,
+      rearA6: false
+    }
+  }));
+};
+
+const updateOptimizerVariablesForLensRange = (predicate, updates) => {
+  state.lenses = state.lenses.map((lens, index) => normalizeLens({
+    ...lens,
+    optimizerVariables: predicate(lens, index)
+      ? { ...(lens.optimizerVariables || DEFAULT_OPTIMIZER_VARIABLES), ...updates }
+      : (lens.optimizerVariables || DEFAULT_OPTIMIZER_VARIABLES)
+  }));
+};
+
+const applyAutoImproveOptimizerSetup = (mode = state.autoImproveMode) => {
+  resetOptimizerLensVariables();
+  state.optimizerAlgorithm = "hybrid";
+  state.optimizerUseTargetFocalLength = true;
+  state.optimizerUseTargetBfd = mode === "focus";
+  state.optimizerUseTargetFNumber = mode === "faster";
+  state.optimizerUseRealEntrancePupil = true;
+  state.optimizerUseSpotSize = ["focus", "centerSharpness", "cornerSharpness", "mtf40", "fieldCurvature", "faster"].includes(mode);
+  state.optimizerUseMtf = ["centerSharpness", "cornerSharpness", "mtf40", "faster"].includes(mode);
+  state.optimizerUseStBalance = ["cornerSharpness", "fieldCurvature", "mtf40"].includes(mode);
+  state.optimizerUseWavefront = false;
+  state.optimizerUseDistortion = mode === "cornerSharpness";
+  state.optimizerUseTransmission = false;
+  state.optimizerUseToleranceRobustness = false;
+  state.optimizerUseApertureDiameter = mode === "faster";
+
+  const rearStart = Math.max(0, Math.floor(state.lenses.length / 2));
+  if (mode === "focus") {
+    updateOptimizerVariablesForLensRange(() => true, { r1: true, r2: true, thickness: true });
+    updateOptimizerVariablesForLensRange((lens, index) => index >= rearStart && index < state.lenses.length - 1, { gapAfter: true });
+  } else if (mode === "centerSharpness") {
+    updateOptimizerVariablesForLensRange(() => true, { r1: true, r2: true, thickness: true });
+  } else if (mode === "cornerSharpness" || mode === "fieldCurvature") {
+    updateOptimizerVariablesForLensRange((lens, index) => index >= rearStart, { r1: true, r2: true });
+    updateOptimizerVariablesForLensRange((lens, index) => index >= rearStart && index < state.lenses.length - 1, { gapAfter: true });
+  } else if (mode === "mtf40") {
+    updateOptimizerVariablesForLensRange(() => true, { r1: true, r2: true });
+    updateOptimizerVariablesForLensRange((lens, index) => index < state.lenses.length - 1, { gapAfter: true });
+  } else if (mode === "chromatic") {
+    if (!state.retargetPreserveGlass) {
+      updateOptimizerVariablesForLensRange(() => true, { glass: true, customVd: true });
+    }
+    state.optimizerUseSpotSize = true;
+    state.optimizerUseMtf = false;
+  } else if (mode === "faster") {
+    updateOptimizerVariablesForLensRange(() => true, { diameter: true });
+    updateOptimizerVariablesForLensRange((lens, index) => index < state.lenses.length - 1, { gapAfter: true });
+  }
+
+  state.autoImproveStatus = "Suggested optimizer setup applied.";
+  state.optimizerStatus = "idle";
+  state.optimizerBest = null;
+  return {
+    mode,
+    glassSubstitutionAllowed: !state.retargetPreserveGlass,
+    variableSummary: state.lenses.map((lens, index) => ({ index, variables: lens.optimizerVariables }))
+  };
+};
+
 const renderAutoImprovePanel = () => {
   const result = state.autoImproveResult;
   const metrics = result?.metrics || {};
@@ -21013,6 +22162,8 @@ const renderAutoImprovePanel = () => {
       </div>
       <div class="optimizer-actions">
         <button class="action-button" type="button" data-action="run-auto-improve-diagnosis">Run diagnostic pass</button>
+        <button class="action-button" type="button" data-action="apply-auto-improve-setup">Apply suggested optimizer setup</button>
+        <button class="action-button" type="button" data-action="run-staged-auto-improve" ${state.optimizerStatus === "running" ? "disabled" : ""}>Run staged auto improve</button>
         ${state.autoImproveStatus ? `<span class="copy-status">${escapeHtml(state.autoImproveStatus)}</span>` : ""}
       </div>
       ${result ? `
@@ -21029,6 +22180,7 @@ const renderAutoImprovePanel = () => {
           <strong>Ranked suggestion</strong>
           <span>${result.suggestions.map(escapeHtml).join(" ")}</span>
         </div>
+        ${state.optimizerBest ? renderOptimizerComparison(state.optimizerBest) : ""}
         ${result.warnings.map((warning) => `<p class="warning ray-warning">${escapeHtml(warning)}</p>`).join("")}
       ` : `<p class="diagram-note">Run a diagnostic pass before optimizing. The app will compare centre, mid-field, corner, focus shift, colour, clipping, and distortion before suggesting variables.</p>`}
     </section>
@@ -21863,7 +23015,10 @@ const startOptimizerRun = () => {
   const token = optimizerRunToken;
   const options = {
     ...optimizerOptionsFromState(),
-    apertureDiameter: state.apertureDiameter
+    apertureDiameter: state.apertureDiameter,
+    apertureStopSpec: state.derivedApertureStopSpec || state.prescription?.derivedApertureStopSpec || state.prescription?.apertureStopSpec,
+    derivedApertureStopSpec: state.derivedApertureStopSpec || state.prescription?.derivedApertureStopSpec || state.prescription?.apertureStopSpec,
+    prescription: state.prescription
   };
   const iterations = Math.max(0, Math.round(toNumber(options.iterations) || 0));
   const algorithm = ["random", "coordinate", "hybrid"].includes(options.algorithm) ? options.algorithm : "hybrid";
@@ -21871,7 +23026,10 @@ const startOptimizerRun = () => {
   const random = createSeededRandom(options.seed || 1);
   const baseline = clampOptimizationCandidate({
     lenses: cloneOptimizerLenses(state.lenses),
-    apertureDiameter: state.apertureDiameter
+    apertureDiameter: state.apertureDiameter,
+    apertureStopSpec: options.apertureStopSpec,
+    derivedApertureStopSpec: options.derivedApertureStopSpec,
+    prescription: options.prescription
   });
   const variables = collectOptimizationVariables(baseline.lenses, options);
   const baselineEval = evaluateOptimizerCandidate(baseline, options);
@@ -21886,7 +23044,10 @@ const startOptimizerRun = () => {
   state.optimizerStatus = "running";
   state.optimizerBaseline = {
     lenses: cloneOptimizerLenses(state.lenses),
-    apertureDiameter: state.apertureDiameter
+    apertureDiameter: state.apertureDiameter,
+    apertureStopSpec: options.apertureStopSpec,
+    derivedApertureStopSpec: options.derivedApertureStopSpec,
+    prescription: options.prescription
   };
   state.optimizerReportCsv = "";
   state.optimizerCopyStatus = "";
@@ -22893,7 +24054,7 @@ mount.addEventListener("change", (event) => {
   }
 
   if (event.target.dataset.action === "update-aperture-stop-mode") {
-    const allowedModes = ["auto", "patentStop", "surfaceNumber", "distanceFromSensor", "distanceFromFront"];
+    const allowedModes = ["auto", "patentStop", "derivedTopology", "surfaceNumber", "distanceFromSensor", "distanceFromFront"];
     rememberState();
     state.apertureStopMode = allowedModes.includes(event.target.value) ? event.target.value : "auto";
     resetGeneratedAnalysisState();
@@ -23351,6 +24512,18 @@ mount.addEventListener("click", (event) => {
       sensorFormatKey: state.retargetSensorFormatKey,
       sourceDesignName: currentDesignDisplayName()
     });
+    if (!target.apertureStopSpec) {
+      state.retargetLastResult = {
+        ...target.metadata,
+        scale: target.scale,
+        apertureDiameter: target.apertureDiameter,
+        targetFNumber: target.targetFNumber,
+        warnings: target.warnings
+      };
+      state.retargetStatus = "Derived stop topology could not be reconstructed; select an interior stop gap manually before retargeting.";
+      update();
+      return;
+    }
     rememberState();
     const derivedName = `${target.metadata.derivedFromDesignName} — derived ${formatNumber(target.targetEfl, 0)}mm target`;
     state.lenses = target.lenses.map((lens) => normalizeLens({
@@ -23361,8 +24534,19 @@ mount.addEventListener("click", (event) => {
       retargetSourceEfl: target.metadata.retargetSourceEfl,
       retargetTargetEfl: target.metadata.retargetTargetEfl,
       retargetTargetFNumber: target.metadata.retargetTargetFNumber,
+      retargetSensorFormatKey: target.metadata.retargetSensorFormatKey,
       provenance: target.metadata.provenance
     }));
+    if (state.retargetPreserveGlass) {
+      state.lenses = state.lenses.map((lens) => normalizeLens({
+        ...lens,
+        optimizerVariables: {
+          ...(lens.optimizerVariables || DEFAULT_OPTIMIZER_VARIABLES),
+          glass: false,
+          customVd: false
+        }
+      }));
+    }
     state.prescription = normalizePrescription({
       prescriptionType: "element",
       sourceType: "custom",
@@ -23372,15 +24556,23 @@ mount.addEventListener("click", (event) => {
       retargetSourceEfl: target.metadata.retargetSourceEfl,
       retargetTargetEfl: target.metadata.retargetTargetEfl,
       retargetTargetFNumber: target.metadata.retargetTargetFNumber,
+      retargetSensorFormatKey: target.metadata.retargetSensorFormatKey,
       provenance: target.metadata.provenance,
+      apertureStopSpec: target.apertureStopSpec,
+      derivedApertureStopSpec: target.derivedApertureStopSpec,
       lenses: state.lenses
     });
     state.preset = "custom";
     state.designName = derivedName;
     state.apertureDiameter = Math.max(0.1, target.apertureDiameter);
+    state.apertureStopMode = target.apertureStopSpec ? "derivedTopology" : "auto";
+    state.apertureStopIndex = "";
+    state.derivedApertureStopSpec = target.apertureStopSpec;
     state.optimizerTargetFocalLength = target.targetEfl;
     state.optimizerTargetFNumber = target.targetFNumber;
     state.optimizerTargetBfd = Math.max(0, toNumber(state.retargetTargetBfd) || state.optimizerTargetBfd || 18);
+    state.optimizerUseTargetBfd = Number.isFinite(toNumber(state.retargetTargetBfd))
+      && toNumber(state.retargetTargetBfd) > 0;
     state.optimizerMaxDiameter = Math.max(5, toNumber(state.retargetMaxDiameter) || state.optimizerMaxDiameter || 120);
     state.optimizerMaxTrackLength = Math.max(1, toNumber(state.retargetMaxTrackLength) || state.optimizerMaxTrackLength || 160);
     state.optimizerUseTargetFocalLength = true;
@@ -23390,6 +24582,7 @@ mount.addEventListener("click", (event) => {
       ...target.metadata,
       scale: target.scale,
       apertureDiameter: target.apertureDiameter,
+      apertureStopSpec: target.apertureStopSpec,
       targetFNumber: target.targetFNumber,
       warnings: target.warnings
     };
@@ -23406,6 +24599,21 @@ mount.addEventListener("click", (event) => {
     state.autoImproveResult = runAutoImproveDiagnosis(state.lenses, system, state.autoImproveMode);
     state.autoImproveStatus = "Diagnostic pass complete.";
     update();
+    return;
+  }
+
+  if (action === "apply-auto-improve-setup") {
+    applyAutoImproveOptimizerSetup(state.autoImproveMode);
+    update();
+    return;
+  }
+
+  if (action === "run-staged-auto-improve") {
+    const system = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
+    state.autoImproveResult = runAutoImproveDiagnosis(state.lenses, system, state.autoImproveMode);
+    applyAutoImproveOptimizerSetup(state.autoImproveMode);
+    state.autoImproveStatus = "Diagnostic complete; staged optimizer running.";
+    startOptimizerRun();
     return;
   }
 
@@ -23428,6 +24636,16 @@ mount.addEventListener("click", (event) => {
     rememberState();
     state.lenses = cloneOptimizerLenses(best.lenses).map((lens) => ({ ...lens, id: crypto.randomUUID() }));
     state.apertureDiameter = best.apertureDiameter;
+    state.derivedApertureStopSpec = normalizeApertureStopSpec(best.derivedApertureStopSpec || best.apertureStopSpec || best.prescription?.derivedApertureStopSpec);
+    state.apertureStopMode = state.derivedApertureStopSpec ? "derivedTopology" : state.apertureStopMode;
+    if (best.prescription) {
+      state.prescription = normalizePrescription({
+        ...best.prescription,
+        apertureStopSpec: state.derivedApertureStopSpec || best.prescription.apertureStopSpec,
+        derivedApertureStopSpec: state.derivedApertureStopSpec || best.prescription.derivedApertureStopSpec,
+        lenses: state.lenses
+      });
+    }
     state.preset = "custom";
     state.optimizerStatus = "accepted";
     resetGeneratedAnalysisState();
@@ -23440,6 +24658,16 @@ mount.addEventListener("click", (event) => {
     rememberState();
     state.lenses = cloneOptimizerLenses(state.optimizerBaseline.lenses).map((lens) => ({ ...lens, id: crypto.randomUUID() }));
     state.apertureDiameter = state.optimizerBaseline.apertureDiameter;
+    state.derivedApertureStopSpec = normalizeApertureStopSpec(state.optimizerBaseline.derivedApertureStopSpec || state.optimizerBaseline.apertureStopSpec || state.optimizerBaseline.prescription?.derivedApertureStopSpec);
+    state.apertureStopMode = state.derivedApertureStopSpec ? "derivedTopology" : state.apertureStopMode;
+    if (state.optimizerBaseline.prescription) {
+      state.prescription = normalizePrescription({
+        ...state.optimizerBaseline.prescription,
+        apertureStopSpec: state.derivedApertureStopSpec || state.optimizerBaseline.prescription.apertureStopSpec,
+        derivedApertureStopSpec: state.derivedApertureStopSpec || state.optimizerBaseline.prescription.derivedApertureStopSpec,
+        lenses: state.lenses
+      });
+    }
     state.preset = "custom";
     state.optimizerStatus = "reverted";
     resetGeneratedAnalysisState();
@@ -23960,6 +25188,10 @@ const runOpticsSelfCheck = (options = {}) => {
       "optimizerUseTargetFNumber",
       "optimizerUseRealEntrancePupil",
       "optimizerFNumberWeight",
+      "optimizerAllowStopShiftInAnchorGap",
+      "derivedApertureStopSpec",
+      "apertureStopMode",
+      "apertureStopIndex",
       "retargetTargetEfl",
       "retargetTargetFNumber",
       "retargetSensorFormatKey",
@@ -25382,14 +26614,37 @@ const runOpticsSelfCheck = (options = {}) => {
       && DEFAULT_ANALYSIS_SETTINGS.diagramRenderStyle === "patentIllustration"
       && DEFAULT_ANALYSIS_SETTINGS.diagramLensFill === true
       && markupHasClass(markup, "glass-fill")
-      && (markup.match(/optical-layout-surface/g) || []).length >= state.lenses.length * 2
+      && markup.includes("patent-illustration-fill")
+      && (markup.match(/patent-illustration-boundary/g) || []).length >= state.lenses.length
+      && markup.includes("is-patent-illustration-profile")
       && (markup.match(/is-clean-optical-layout/g) || []).length >= state.lenses.length
       && !markup.includes("bevel-edge")
+      && !markup.includes("truncated-flat-land-edge")
       && !markupHasClass(markup, "mechanical-edge")
       && !markup.includes("is-air-gap-constrained")
       && !markup.includes("air-gap-clearance-marker")
       && !markup.includes("AIR GAP !")
       && !markup.includes("Mechanical data not supplied by patent");
+  }));
+
+  test("Biotar patent illustration trims only the long pointed central members", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    const system = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const spectralSystems = getSpectralSystems();
+    const trace = traceSystemRealRays(state.lenses, spectralSystems.d || system, {
+      ...rayTraceApertureOptions(state),
+      rayCount: 7
+    });
+    const markup = renderOpticalDiagram(system, spectralSystems, trace);
+    const trimmedElements = [...markup.matchAll(/is-truncated-flat-land-profile[\s\S]*?data-element-index="(\d+)"/g)]
+      .map((match) => Number(match[1]));
+    return trimmedElements.includes(2)
+      && trimmedElements.includes(3)
+      && !trimmedElements.includes(0)
+      && !trimmedElements.includes(1)
+      && !trimmedElements.includes(4)
+      && !trimmedElements.includes(5);
   }));
 
   test("educational presets do not receive patent mechanical validation", () => (
@@ -25407,7 +26662,8 @@ const runOpticsSelfCheck = (options = {}) => {
         && !markup.includes("is-not-manufacturable")
         && !markup.includes("geometry-warning-marker")
         && markupHasClass(markup, "glass-fill")
-        && (markup.match(/optical-layout-surface/g) || []).length >= state.lenses.length * 2;
+        && markup.includes("patent-illustration-fill")
+        && (markup.match(/patent-illustration-boundary/g) || []).length >= state.lenses.length;
     }))
   ));
 
@@ -26443,9 +27699,11 @@ const runOpticsSelfCheck = (options = {}) => {
         || constraint.warning.includes("selected minimum clearance exceeds")
       ))
       && resolution.models.filter(Boolean).some((model) => model.lineOnlyOpticalFallback || model.renderFilledGlass === false)
-      && markup.includes("optical-layout-surface")
-      && markup.includes("optical-layout-fill")
+      && markup.includes("patent-illustration-boundary")
+      && markup.includes("patent-illustration-fill")
+      && markup.includes("is-patent-illustration-profile")
       && !markup.includes("patent-line-only-surface")
+      && !markup.includes("truncated-flat-land-edge")
       && !markup.includes("AIR GAP !")
       && !markup.includes("bevel-edge")
       && !markup.includes("Mechanical data not supplied by patent")
@@ -26847,6 +28105,102 @@ const runOpticsSelfCheck = (options = {}) => {
       && model.rearBevelTop.outer.y > model.rearBevelTop.optical.y;
   });
 
+  test("truncated flat-land display stops optical curves before the mechanical edge", () => {
+    const lens = normalizeLens({
+      diameter: 18,
+      clearApertureDiameter: 18,
+      mechanicalDiameter: 24,
+      chipZoneWidthMm: 0.5,
+      thickness: 7,
+      r1: 80,
+      r2: -80,
+      refractiveIndex: 1.5168,
+      minimumFlatLandMm: 0.2
+    });
+    const model = buildPrescriptionLensRenderModel(
+      { start: 10, end: 17, center: 13.5, thickness: 7, diameter: 18 },
+      { x: (value) => value, y: (value) => value },
+      { valid: true, diameter: 18, thickness: 7, r1: 80, r2: -80 },
+      lens,
+      0,
+      []
+    );
+    return model?.edgeTreatmentMode === "truncatedFlatLand"
+      && model.frontRenderSemiDiameter < model.semiDiameter - 1e-6
+      && model.rearRenderSemiDiameter < model.semiDiameter - 1e-6
+      && model.frontRenderSemiDiameter >= model.clearApertureSemiDiameter - 1e-9
+      && model.rearRenderSemiDiameter >= model.clearApertureSemiDiameter - 1e-9
+      && Math.abs(model.flatLandEdges.frontTop.start.x - model.flatLandEdges.frontTop.end.x) < 1e-12
+      && Math.abs(model.flatLandEdges.rearTop.start.x - model.flatLandEdges.rearTop.end.x) < 1e-12
+      && Math.abs(model.flatLandEdges.frontTop.start.y - model.flatLandEdges.frontTop.end.y) > 0.05
+      && Math.abs(model.flatLandEdges.rearTop.start.y - model.flatLandEdges.rearTop.end.y) > 0.05
+      && !/[ACQ]/.test(model.polygonPath);
+  });
+
+  test("steeper outer surfaces receive more aggressive silhouette cutback", () => {
+    const shallowLens = normalizeLens({
+      diameter: 18,
+      clearApertureDiameter: 18,
+      mechanicalDiameter: 24,
+      thickness: 7,
+      r1: 180,
+      r2: -180,
+      refractiveIndex: 1.5168
+    });
+    const steepLens = normalizeLens({
+      ...shallowLens,
+      r1: 32,
+      r2: -32
+    });
+    const mapper = { x: (value) => value, y: (value) => value };
+    const shallow = buildPrescriptionLensRenderModel(
+      { start: 10, end: 17, center: 13.5, thickness: 7, diameter: 18 },
+      mapper,
+      { valid: true, diameter: 18, thickness: 7, r1: 180, r2: -180 },
+      shallowLens,
+      0,
+      []
+    );
+    const steep = buildPrescriptionLensRenderModel(
+      { start: 10, end: 17, center: 13.5, thickness: 7, diameter: 18 },
+      mapper,
+      { valid: true, diameter: 18, thickness: 7, r1: 32, r2: -32 },
+      steepLens,
+      0,
+      []
+    );
+    return shallow?.frontRenderSemiDiameter > steep?.frontRenderSemiDiameter
+      && shallow?.rearRenderSemiDiameter > steep?.rearRenderSemiDiameter;
+  });
+
+  test("edge treatment is display-only and does not change ray tracing surfaces", () => {
+    const base = normalizeLens({
+      diameter: 10,
+      clearApertureDiameter: 10,
+      mechanicalDiameter: 22,
+      thickness: 6,
+      r1: 60,
+      r2: -60,
+      refractiveIndex: 1.5168,
+      edgeTreatmentMode: "mathematicalCurve"
+    });
+    const truncated = normalizeLens({ ...base, edgeTreatmentMode: "truncatedFlatLand" });
+    const systemA = calculateSystem([base]);
+    const systemB = calculateSystem([truncated]);
+    const surfacesA = buildSurfaceList([base], systemA, { apertureDiameter: 8 });
+    const surfacesB = buildSurfaceList([truncated], systemB, { apertureDiameter: 8 });
+    const traceA = traceSystemRealRays([base], systemA, { rayCount: 7, apertureDiameter: 8 });
+    const traceB = traceSystemRealRays([truncated], systemB, { rayCount: 7, apertureDiameter: 8 });
+    return surfacesA.length === surfacesB.length
+      && surfacesA.every((surface, index) => (
+        Math.abs((surface.x || 0) - (surfacesB[index].x || 0)) < 1e-12
+        && Math.abs((surface.radius || 0) - (surfacesB[index].radius || 0)) < 1e-12
+        && Math.abs((surface.semiDiameter || 0) - (surfacesB[index].semiDiameter || 0)) < 1e-12
+      ))
+      && traceA.validRayCount === traceB.validRayCount
+      && Math.abs(traceA.rmsSpotRadius - traceB.rmsSpotRadius) < 1e-12;
+  });
+
   test("bevel remains outside clear aperture and chip zone", () => {
     const lens = normalizeLens({
       diameter: 18,
@@ -27123,6 +28477,108 @@ const runOpticsSelfCheck = (options = {}) => {
           && ["Verified", "Production", "Patent", "Production?", "Estimated", "Warning"].includes(stop?.stopSourceBadge);
       })
   )));
+
+  test("Biotar retarget derives central element-gap stop and never frontGroup", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    const sourceSystem = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const target = createRetargetedLensCandidate(state.lenses, sourceSystem, {
+      targetEfl: 40,
+      targetFNumber: 1.4,
+      sensorFormatKey: "fullFrame",
+      maxDiameter: 80,
+      sourceDesignName: "Biotar self-check"
+    });
+    state.lenses = target.lenses;
+    state.prescription = target.prescription;
+    state.derivedApertureStopSpec = target.apertureStopSpec;
+    state.apertureStopMode = "derivedTopology";
+    state.apertureStopIndex = "";
+    state.apertureDiameter = target.apertureDiameter;
+    const system = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const surfaces = buildSurfaceList(state.lenses, system, rayTraceApertureOptions(state));
+    const stop = surfaces.find((surface) => surface.isStop);
+    const stopText = `${stop?.stopLabel || ""} ${stop?.stopSource || ""}`;
+    return target.apertureStopSpec?.kind === "elementGap"
+      && target.apertureStopSpec.afterLensIndex === 2
+      && state.apertureStopMode === "derivedTopology"
+      && Number.isFinite(stop?.x)
+      && !stopText.includes("Front of lens group");
+  }));
+
+  test("derived element prescriptions resolve apertureStopSpec in auto mode", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    const sourceSystem = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const target = createRetargetedLensCandidate(state.lenses, sourceSystem, {
+      targetEfl: 40,
+      targetFNumber: 1.4,
+      sensorFormatKey: "fullFrame",
+      maxDiameter: 80
+    });
+    const system = calculateSystem(target.lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const surfaces = buildSurfaceList(target.lenses, system, {
+      apertureStopMode: "auto",
+      apertureStopSpec: target.apertureStopSpec,
+      derivedApertureStopSpec: target.apertureStopSpec,
+      prescription: target.prescription,
+      apertureDiameter: target.apertureDiameter
+    });
+    const stop = surfaces.find((surface) => surface.isStop);
+    const positions = lensPositions(system, target.lenses);
+    const gapStopX = getElementGapStopX({
+      afterLensIndex: target.apertureStopSpec.afterLensIndex,
+      fraction: target.apertureStopSpec.fraction,
+      positions,
+      lenses: target.lenses
+    });
+    return Number.isFinite(stop?.x) && Math.abs(stop.x - gapStopX) < 1e-9;
+  }));
+
+  test("aperture stop is inserted as a separate non-refracting plane", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    const sourceSystem = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const target = createRetargetedLensCandidate(state.lenses, sourceSystem, {
+      targetEfl: 40,
+      targetFNumber: 1.4,
+      sensorFormatKey: "fullFrame",
+      maxDiameter: 80
+    });
+    const system = calculateSystem(target.lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const surfaces = buildSurfaceList(target.lenses, system, {
+      apertureStopMode: "derivedTopology",
+      apertureStopSpec: target.apertureStopSpec,
+      derivedApertureStopSpec: target.apertureStopSpec,
+      prescription: target.prescription,
+      apertureDiameter: target.apertureDiameter
+    });
+    const stop = surfaces.find((surface) => surface.isStop);
+    const sameXRefractors = surfaces.filter((surface) => (
+      !surface.isStop && surface.isRefracting !== false && Math.abs(surface.x - stop.x) < 1e-9
+    ));
+    return stop
+      && stop.surfaceIndex === "stop"
+      && stop.isRefracting === false
+      && Math.abs(stop.nBefore - stop.nAfter) < 1e-12
+      && sameXRefractors.length === 0;
+  }));
+
+  test("retarget faster f-number resizes clear apertures instead of moving stop topology", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    ensurePatentOpticalGeometry();
+    const sourceSystem = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const target = createRetargetedLensCandidate(state.lenses, sourceSystem, {
+      targetEfl: 40,
+      targetFNumber: 1.2,
+      sensorFormatKey: "fullFrame",
+      maxDiameter: 90
+    });
+    const anyRayEnvelope = target.lenses.some((lens) => lens.apertureSource === "rayEnvelope");
+    return target.apertureStopSpec?.kind === "elementGap"
+      && target.apertureStopSpec.afterLensIndex === 2
+      && anyRayEnvelope;
+  }));
 
   test("air-gap aperture stop metadata resolves to the entered gap midpoint", () => withTemporaryState(() => {
     const cases = [
@@ -27616,6 +29072,21 @@ const runOpticsSelfCheck = (options = {}) => {
       && JSON.stringify(PRESETS[DEFAULT_PRESET_KEY]) === presetBefore;
   }));
 
+  test("retarget target BFD becomes an active optimizer target", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    state.retargetTargetBfd = 18;
+    const sourceSystem = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
+    createRetargetedLensCandidate(state.lenses, sourceSystem, {
+      targetEfl: 40,
+      targetFNumber: 1.4,
+      targetBfd: state.retargetTargetBfd
+    });
+    state.optimizerTargetBfd = Math.max(0, toNumber(state.retargetTargetBfd) || 18);
+    state.optimizerUseTargetBfd = Number.isFinite(toNumber(state.retargetTargetBfd)) && toNumber(state.retargetTargetBfd) > 0;
+    return state.optimizerUseTargetBfd === true
+      && optimizerOptionsFromState().useTargetBfd === true;
+  }));
+
   test("retarget scaling scales radii thicknesses and air gaps", () => withTemporaryState(() => {
     const lenses = clonePresetLenses("manual");
     const sourceSystem = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
@@ -27631,6 +29102,14 @@ const runOpticsSelfCheck = (options = {}) => {
       && Math.abs(target.lenses[0].gapAfter - normalizeLens(lenses[0]).gapAfter * scale) < 1e-9
       && Math.abs(target.lenses[0].diameter - normalizeLens(lenses[0]).diameter * scale) < 1e-9;
   }));
+
+  test("selected sensor format changes retarget field angles", () => {
+    const focalLength = 40;
+    const fullFrameCorner = fieldDefinitionsForSensor("fullFrame", focalLength).find((field) => field.key === "corner").angle;
+    const apscCorner = fieldDefinitionsForSensor("apsC", focalLength).find((field) => field.key === "corner").angle;
+    const mftCorner = fieldDefinitionsForSensor("mft", focalLength).find((field) => field.key === "corner").angle;
+    return fullFrameCorner > apscCorner && apscCorner > mftCorner;
+  });
 
   test("target f-number merit uses real entrance pupil when enabled", () => {
     const lenses = clonePresetLenses("manual");
@@ -27694,6 +29173,42 @@ const runOpticsSelfCheck = (options = {}) => {
     return !validation.valid && validation.reasons.length > 0;
   });
 
+  test("maximum mechanical diameter is enforced even when clear aperture is smaller", () => {
+    const lenses = clonePresetLenses("manual").map((lens, index) => (
+      index === 0 ? { ...lens, diameter: 20, clearApertureDiameter: 20, mechanicalDiameter: 200 } : lens
+    ));
+    const candidate = clampOptimizationCandidate({ lenses, apertureDiameter: 10 });
+    candidate.lenses[0].mechanicalDiameter = 200;
+    const system = calculateSystem(candidate.lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const validation = validateOptimizerCandidate(candidate, system, { ...optimizerQuickOptions, maxDiameter: 60, apertureDiameter: 10 });
+    return !validation.valid && validation.reasons.some((reason) => reason.includes("mechanical diameter"));
+  });
+
+  test("invalid edge thickness or air gap overlap is rejected", () => {
+    const lenses = clonePresetLenses("manual").map((lens, index) => (
+      index === 0
+        ? { ...lens, diameter: 90, mechanicalDiameter: 90, minimumEdgeThicknessMm: 20, gapAfter: 0.01 }
+        : { ...lens, diameter: 90, mechanicalDiameter: 90 }
+    ));
+    const candidate = clampOptimizationCandidate({ lenses, apertureDiameter: 10 });
+    candidate.lenses = candidate.lenses.map((lens) => ({ ...lens, mechanicalDiameter: 90, minimumEdgeThicknessMm: 20 }));
+    const system = calculateSystem(candidate.lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const validation = validateOptimizerCandidate(candidate, system, { ...optimizerQuickOptions, maxDiameter: 120, apertureDiameter: 10, minimumAirGapClearanceMm: 0.5 });
+    return !validation.valid && validation.reasons.some((reason) => /edge|Air gap|clearance|manufacturing/i.test(reason));
+  });
+
+  test("more than one active asphere is rejected", () => {
+    const lenses = clonePresetLenses("manual").map((lens, index) => (
+      index === 0
+        ? { ...lens, frontAsphereEnabled: true, frontA4: 1e-6, rearAsphereEnabled: true, rearA4: 1e-6 }
+        : lens
+    ));
+    const candidate = clampOptimizationCandidate({ lenses, apertureDiameter: 10 });
+    const system = calculateSystem(candidate.lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const validation = validateOptimizerCandidate(candidate, system, { ...optimizerQuickOptions, apertureDiameter: 10 });
+    return !validation.valid && validation.reasons.some((reason) => reason.includes("More than one active aspheric surface"));
+  });
+
   test("active asphere candidate reports provisional MTF status", () => {
     const lenses = clonePresetLenses("manual").map((lens, index) => (
       index === 0 ? { ...lens, frontAsphereEnabled: true, frontA4: 1e-6 } : lens
@@ -27734,6 +29249,23 @@ const runOpticsSelfCheck = (options = {}) => {
       && Number.isFinite(metrics.backFocalLength)
       && Number.isFinite(metrics.fNumber);
   });
+
+  test("Auto Improve setup changes goals and variables by selected mode", () => withTemporaryState(() => {
+    loadPresetIntoState("manual");
+    state.autoImproveMode = "faster";
+    applyAutoImproveOptimizerSetup("faster");
+    return state.optimizerUseTargetFNumber === true
+      && state.optimizerUseApertureDiameter === true
+      && state.lenses.some((lens) => lens.optimizerVariables?.diameter === true);
+  }));
+
+  test("Auto Improve setup does not mutate original patent preset data", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    const before = JSON.stringify(PRESETS[DEFAULT_PRESET_KEY]);
+    applyAutoImproveOptimizerSetup("cornerSharpness");
+    return JSON.stringify(PRESETS[DEFAULT_PRESET_KEY]) === before
+      && state.preset === DEFAULT_PRESET_KEY;
+  }));
 
   test("ray tracing still works with aperture stop and d-line glass", () => {
     const lenses = clonePresetLenses("manual");

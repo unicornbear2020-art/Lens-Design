@@ -11414,14 +11414,27 @@ const buildPrescriptionLensRenderModel = (position, mapper, result, lens, lensIn
     const rearRelief = rearNeedsPatentTrim
       ? 0
       : Math.max(renderEdgeTreatment.rearAxialReliefMm || 0, Math.min(0.55, baseCutbackMm * 0.34), 0.06);
+    const patentTrimChamferMm = Math.max(0.28, Math.min(1.25, displayBaseSemiDiameter * 0.045));
     const frontShoulderTop = { x: mapper.x(frontDisplayTop.x - frontRelief), y: mapper.y(frontDisplayRadius) };
-    const frontOuterTopPoint = { x: frontShoulderTop.x, y: mapper.y(biotarOuterDisplayRadius) };
+    const frontOuterTopPoint = {
+      x: frontNeedsPatentTrim ? mapper.x(frontDisplayTop.x - patentTrimChamferMm) : frontShoulderTop.x,
+      y: mapper.y(biotarOuterDisplayRadius)
+    };
     const rearShoulderTop = { x: mapper.x(rearDisplayTop.x + rearRelief), y: mapper.y(rearDisplayRadius) };
-    const rearOuterTopPoint = { x: rearShoulderTop.x, y: mapper.y(biotarOuterDisplayRadius) };
+    const rearOuterTopPoint = {
+      x: rearNeedsPatentTrim ? mapper.x(rearDisplayTop.x + patentTrimChamferMm) : rearShoulderTop.x,
+      y: mapper.y(biotarOuterDisplayRadius)
+    };
     const rearShoulderBottom = { x: mapper.x(rearDisplayBottom.x + rearRelief), y: mapper.y(-rearDisplayRadius) };
-    const rearOuterBottomPoint = { x: rearShoulderBottom.x, y: mapper.y(-biotarOuterDisplayRadius) };
+    const rearOuterBottomPoint = {
+      x: rearNeedsPatentTrim ? mapper.x(rearDisplayBottom.x + patentTrimChamferMm) : rearShoulderBottom.x,
+      y: mapper.y(-biotarOuterDisplayRadius)
+    };
     const frontShoulderBottom = { x: mapper.x(frontDisplayBottom.x - frontRelief), y: mapper.y(-frontDisplayRadius) };
-    const frontOuterBottomPoint = { x: frontShoulderBottom.x, y: mapper.y(-biotarOuterDisplayRadius) };
+    const frontOuterBottomPoint = {
+      x: frontNeedsPatentTrim ? mapper.x(frontDisplayBottom.x - patentTrimChamferMm) : frontShoulderBottom.x,
+      y: mapper.y(-biotarOuterDisplayRadius)
+    };
     const displayPolygonPoints = [
       ...frontDisplayPoints,
       frontShoulderTop,

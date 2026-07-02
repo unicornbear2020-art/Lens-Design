@@ -4807,6 +4807,15 @@ select {
   opacity: 0.94;
 }
 
+.ray-diagram.render-patentIllustration .lens-shape.is-truncated-flat-land-profile .surface-outline,
+.ray-diagram.render-patentIllustration .lens-shape.is-truncated-flat-land-profile .patent-illustration-boundary,
+.ray-diagram.render-patentIllustration .lens-shape.is-not-manufacturable.is-truncated-flat-land-profile .surface-outline,
+.ray-diagram.render-patentIllustration .lens-shape.is-optical-estimate.is-truncated-flat-land-profile .surface-outline {
+  stroke: #2f5862;
+  stroke-dasharray: none;
+  opacity: 0.96;
+}
+
 .ray-diagram.render-patentIllustration .optical-aperture-edge {
   stroke: #2f5862;
   stroke-width: 0.85;

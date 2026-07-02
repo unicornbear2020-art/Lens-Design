@@ -2749,9 +2749,7 @@ const state = {
 };
 
 const DIAGRAM_VIEW_OPTIONS = [
-  { value: "optical", label: "Optical Ray View" },
-  { value: "patentLine", label: "Patent Line View" },
-  { value: "productionCutaway", label: "Production Cutaway View" }
+  { value: "optical", label: "Optical Ray View" }
 ];
 
 const DIAGRAM_GEOMETRY_DISPLAY_OPTIONS = [
@@ -11091,6 +11089,17 @@ const shouldUseMechanicalValidation = (
   ))
 );
 
+const isBiotarUs1786916DisplayLayout = (lenses = state.lenses) => {
+  const sourcePatent = String(state.prescription?.sourcePatent || "").toUpperCase();
+  if (sourcePatent.includes("US1786916")) return true;
+
+  const surfaceStarts = lenses
+    .map((item) => Math.round(toNumber(item?.patentSurfaceStart)))
+    .filter((value) => Number.isFinite(value));
+  return surfaceStarts.length === 6
+    && surfaceStarts.join(",") === "1,3,4,6,7,9";
+};
+
 const buildPrescriptionLensRenderModel = (position, mapper, result, lens, lensIndex, rayTraceResults, options = {}) => {
   const geometryDisplayMode = normalizeDiagramGeometryDisplayMode(options.geometryDisplayMode);
   const showRequestedGeometry = usesRequestedGeometryDisplay(geometryDisplayMode);
@@ -11322,10 +11331,9 @@ const buildPrescriptionLensRenderModel = (position, mapper, result, lens, lensIn
     || lens.patentRearCementedToNextGlass === true
   ) && position.thickness / Math.max(0.1, semiDiameter * 2) < 0.13;
   const biotarSurfaceStart = Math.round(toNumber(lens.patentSurfaceStart));
-  const biotarDisplayElementIndex = state.preset === "zeissBiotar50F14Us1786916Ex2" ? lensIndex : -1;
+  const biotarDisplayElementIndex = isBiotarUs1786916DisplayLayout() ? lensIndex : -1;
   const biotarCentralPointedMember = (
-    state.preset === "zeissBiotar50F14Us1786916Ex2"
-    && [2, 3].includes(biotarDisplayElementIndex)
+    [2, 3].includes(biotarDisplayElementIndex)
   );
   const biotarPairedLens = biotarDisplayElementIndex === 2
     ? state.lenses[1]
@@ -11378,10 +11386,10 @@ const buildPrescriptionLensRenderModel = (position, mapper, result, lens, lensIn
     const baseCutbackMm = Math.max(0.45, Math.min(2.2, displayBaseSemiDiameter * 0.08));
     const minimumDisplayRadius = Math.max(
       0.05,
-      displayBaseSemiDiameter * (biotarDisplayElementIndex === 2 ? 0.46 : biotarDisplayElementIndex === 3 ? 0.54 : 0.58)
+      displayBaseSemiDiameter * (biotarDisplayElementIndex === 2 ? 0.62 : biotarDisplayElementIndex === 3 ? 0.54 : 0.58)
     );
-    const biotarCutRatio = biotarDisplayElementIndex === 2 ? 0.54 : biotarDisplayElementIndex === 3 ? 0.7 : 0.9;
-    const biotarSurfaceLimitRatio = biotarDisplayElementIndex === 2 ? 0.78 : biotarDisplayElementIndex === 3 ? 0.84 : 0.95;
+    const biotarCutRatio = biotarDisplayElementIndex === 2 ? 0.74 : biotarDisplayElementIndex === 3 ? 0.7 : 0.9;
+    const biotarSurfaceLimitRatio = biotarDisplayElementIndex === 2 ? 0.9 : biotarDisplayElementIndex === 3 ? 0.84 : 0.95;
     const trimmedDisplayRadius = (surfaceLimit, sagBoost) => Math.max(
       minimumDisplayRadius,
       Math.min(
@@ -11414,25 +11422,34 @@ const buildPrescriptionLensRenderModel = (position, mapper, result, lens, lensIn
     const rearRelief = rearNeedsPatentTrim
       ? 0
       : Math.max(renderEdgeTreatment.rearAxialReliefMm || 0, Math.min(0.55, baseCutbackMm * 0.34), 0.06);
-    const patentTrimChamferMm = Math.max(0.28, Math.min(1.25, displayBaseSemiDiameter * 0.045));
+    const patentTrimChamferAxialRun = (displayRadius) => {
+      const radialRun = Math.abs(biotarOuterDisplayRadius - displayRadius);
+      const maxChamferRun = Math.max(2.5, Math.min(10, displayBaseSemiDiameter * 0.75));
+      if (!Number.isFinite(radialRun) || radialRun <= 0) {
+        return Math.max(0.35, Math.min(2.4, displayBaseSemiDiameter * 0.07));
+      }
+      return Math.max(0.3, Math.min(maxChamferRun, radialRun * 0.6));
+    };
+    const frontPatentTrimChamferMm = patentTrimChamferAxialRun(frontDisplayRadius);
+    const rearPatentTrimChamferMm = patentTrimChamferAxialRun(rearDisplayRadius);
     const frontShoulderTop = { x: mapper.x(frontDisplayTop.x - frontRelief), y: mapper.y(frontDisplayRadius) };
     const frontOuterTopPoint = {
-      x: frontNeedsPatentTrim ? mapper.x(frontDisplayTop.x - patentTrimChamferMm) : frontShoulderTop.x,
+      x: frontNeedsPatentTrim ? mapper.x(frontDisplayTop.x - frontPatentTrimChamferMm) : frontShoulderTop.x,
       y: mapper.y(biotarOuterDisplayRadius)
     };
     const rearShoulderTop = { x: mapper.x(rearDisplayTop.x + rearRelief), y: mapper.y(rearDisplayRadius) };
     const rearOuterTopPoint = {
-      x: rearNeedsPatentTrim ? mapper.x(rearDisplayTop.x + patentTrimChamferMm) : rearShoulderTop.x,
+      x: rearNeedsPatentTrim ? mapper.x(rearDisplayTop.x + rearPatentTrimChamferMm) : rearShoulderTop.x,
       y: mapper.y(biotarOuterDisplayRadius)
     };
     const rearShoulderBottom = { x: mapper.x(rearDisplayBottom.x + rearRelief), y: mapper.y(-rearDisplayRadius) };
     const rearOuterBottomPoint = {
-      x: rearNeedsPatentTrim ? mapper.x(rearDisplayBottom.x + patentTrimChamferMm) : rearShoulderBottom.x,
+      x: rearNeedsPatentTrim ? mapper.x(rearDisplayBottom.x + rearPatentTrimChamferMm) : rearShoulderBottom.x,
       y: mapper.y(-biotarOuterDisplayRadius)
     };
     const frontShoulderBottom = { x: mapper.x(frontDisplayBottom.x - frontRelief), y: mapper.y(-frontDisplayRadius) };
     const frontOuterBottomPoint = {
-      x: frontNeedsPatentTrim ? mapper.x(frontDisplayBottom.x - patentTrimChamferMm) : frontShoulderBottom.x,
+      x: frontNeedsPatentTrim ? mapper.x(frontDisplayBottom.x - frontPatentTrimChamferMm) : frontShoulderBottom.x,
       y: mapper.y(-biotarOuterDisplayRadius)
     };
     const displayPolygonPoints = [
@@ -12794,7 +12811,7 @@ const renderIndividualLensSvg = (system, mapper, rayTraceResults, index, options
   const showOpticalCaps = opticalLayoutMode && shouldRenderOpticalStyleCaps(renderStyle);
   const preserveBiotarPatentTrim = (
     isPatentIllustrationRenderStyle(renderStyle)
-    && state.preset === "zeissBiotar50F14Us1786916Ex2"
+    && isBiotarUs1786916DisplayLayout()
     && [2, 3].includes(index)
     && model.usePatentIllustrationTrim === true
     && model.patentIllustrationProfile?.polygonPath
@@ -13020,6 +13037,13 @@ const renderIndividualLensSvg = (system, mapper, rayTraceResults, index, options
     const bottomEdge = usePatentTrim
       ? model.patentIllustrationProfile.bottomEdge
       : isPatentIllustrationRenderStyle(renderStyle) ? model.bottomEdge : profile.bottomEdge;
+    const patentCapMinimumLengthPx = isPatentIllustrationRenderStyle(renderStyle) ? 5 : 0;
+    const renderOpticalCap = (edge) => {
+      if (!showOpticalCaps || !edge?.front || !edge?.rear) return "";
+      const capLength = Math.hypot(edge.front.x - edge.rear.x, edge.front.y - edge.rear.y);
+      if (capLength < patentCapMinimumLengthPx) return "";
+      return `<line class="optical-aperture-edge ${isPatentIllustrationRenderStyle(renderStyle) ? "truncated-flat-land-edge" : ""}" x1="${edge.front.x}" y1="${edge.front.y}" x2="${edge.rear.x}" y2="${edge.rear.y}" />`;
+    };
     return `
       <g class="${groupClass} ${usePatentTrim ? "is-truncated-flat-land-profile" : isPatentIllustrationRenderStyle(renderStyle) ? "is-patent-illustration-profile" : "is-optical-layout-profile"}" data-aperture-source="${model.apertureSource}">
         ${title}
@@ -13028,10 +13052,8 @@ const renderIndividualLensSvg = (system, mapper, rayTraceResults, index, options
         </path>` : ""}
         ${hideSharedFrontOutline ? "" : `<path class="surface-outline optical-layout-surface front-surface-outline ${frontAsphere.active ? "asphere-surface-outline" : ""}" d="${frontPath}" />`}
         <path class="surface-outline optical-layout-surface rear-surface-outline ${rearAsphere.active ? "asphere-surface-outline" : ""}" d="${rearPath}" />
-        ${showOpticalCaps ? `
-          <line class="optical-aperture-edge ${isPatentIllustrationRenderStyle(renderStyle) ? "truncated-flat-land-edge" : ""}" x1="${topEdge.front.x}" y1="${topEdge.front.y}" x2="${topEdge.rear.x}" y2="${topEdge.rear.y}" />
-          <line class="optical-aperture-edge ${isPatentIllustrationRenderStyle(renderStyle) ? "truncated-flat-land-edge" : ""}" x1="${bottomEdge.front.x}" y1="${bottomEdge.front.y}" x2="${bottomEdge.rear.x}" y2="${bottomEdge.rear.y}" />
-        ` : ""}
+        ${renderOpticalCap(topEdge)}
+        ${renderOpticalCap(bottomEdge)}
         <text class="individual-lens-label" x="${mapper.x(position.center)}" y="${lensLabelY}" text-anchor="middle">L${index + 1}</text>
         ${frontAsphere.active ? `<text class="asphere-label" x="${mapper.x(position.end)}" y="${mapper.y(profile.radius) - 8}" text-anchor="middle">ASP</text>` : ""}
         ${rearAsphere.active ? `<text class="asphere-label" x="${mapper.x(position.start)}" y="${mapper.y(profile.radius) - 8}" text-anchor="middle">ASP</text>` : ""}

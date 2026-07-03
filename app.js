@@ -3033,6 +3033,8 @@ let opticalAnalysisIdleHandle = null;
 let geometricMtfConvergenceIdleHandle = null;
 let mtfMainFrameHandle = null;
 let mtfMainIdleHandle = null;
+let apertureSweepWarmupIdleHandle = null;
+let apertureSweepWarmupToken = 0;
 let geometricMtfMainWorker = null;
 let diffractionFrameHandle = null;
 let diffractionIdleHandle = null;
@@ -3178,6 +3180,10 @@ const invalidateAnalysisCache = () => {
   }
   cancelIdleOrTimeout(mtfMainIdleHandle);
   mtfMainIdleHandle = null;
+  apertureSweepWarmupToken += 1;
+  cancelIdleOrTimeout(apertureSweepWarmupIdleHandle);
+  apertureSweepWarmupIdleHandle = null;
+  if (state) state.mtfApertureSweepWarmupStatus = "idle";
   geometricMtfWorkerClient.cancelPending("Optical model changed; geometric MTF request cancelled.");
   physicalMtfWorkerClient.cancelPending("Optical model changed; physical MTF request cancelled.");
   geometricMtfMainWorker = null;
@@ -14778,7 +14784,6 @@ const mtfMainAnalysisSignature = () => JSON.stringify({
     diameter: Number.isFinite(toNumber(state.apertureDiameter)) ? Number(toNumber(state.apertureDiameter).toFixed(6)) : state.apertureDiameter
   },
   chartMode: state.mtfChartMode,
-  activeApertureTab: state.mtfApertureFieldChartKey,
   comparisonApertures: [...(state.mtfApertureSweepStops || [])].sort().join(","),
   engine: normalizeMtfEngine(state.mtfEngine),
   quality: normalizeGeometricLsfQuality(state.mtfLsfQuality),
@@ -15008,6 +15013,9 @@ const queueMtfMainAnalysis = ({ reason = "update", immediate = false } = {}) => 
         source
       };
       state.lastMtfResolutionResult = stored;
+      scheduleApertureSweepCacheWarmup(state.lenses, system, {
+        maxFrequencyLpMm: stored.maxFrequencyLpMm
+      });
       scheduleGeometricMtfConvergenceValidation(state.lenses, system, stored.manufacturerFieldData, {
         maxFrequencyLpMm: stored.maxFrequencyLpMm
       });
@@ -18382,7 +18390,8 @@ const calculateSagittalTangentialGeometricMTFPanelData = (lenses, system) => {
     apertureSweepResults: calculateMtfApertureSweepPreview(lenses, system, {
       geometricMtfOptions,
       maxFrequencyLpMm,
-      fieldKey: state.mtfApertureFrequencyFieldKey || "center"
+      fieldKey: state.mtfApertureFrequencyFieldKey || "center",
+      activeOnly: true
     }),
     throughFocusResult: null,
     throughFocusDeferred: true,
@@ -18397,10 +18406,13 @@ const mtfApertureSweepSelection = () => {
   return MTF_APERTURE_SWEEP_OPTIONS.filter((option) => selected.includes(option.key));
 };
 
-const mtfApertureSweepCalculationOptions = () => {
+const mtfActiveApertureSweepOption = () => apertureOptionByKey(state.mtfApertureFieldChartKey || "wideOpen");
+
+const mtfApertureSweepCalculationOptions = (options = {}) => {
   if (state.mtfChartMode === "field") {
-    const active = MTF_APERTURE_SWEEP_OPTIONS.find((option) => option.key === state.mtfApertureFieldChartKey);
-    return active ? [active] : [MTF_APERTURE_SWEEP_OPTIONS[0]];
+    if (options.activeOnly === true) return [mtfActiveApertureSweepOption()];
+    // Pre-render every aperture once into the cache so switching aperture tabs is instant.
+    return MTF_APERTURE_SWEEP_OPTIONS;
   }
   return mtfApertureSweepSelection();
 };
@@ -18568,9 +18580,79 @@ const calculateMtfApertureSweepPreview = (lenses, system, options = {}) => {
   const field = RAY_TRACE_FIELDS.find((item) => item.key === options.fieldKey) || RAY_TRACE_FIELDS[0];
   const maxFrequencyLpMm = options.maxFrequencyLpMm || resolveMtfMaxFrequency(system);
   const geometricMtfOptions = options.geometricMtfOptions || activeGeometricMtfOptions(maxFrequencyLpMm);
-  return mtfApertureSweepCalculationOptions().map((aperture) => (
+  return mtfApertureSweepCalculationOptions({ activeOnly: options.activeOnly === true }).map((aperture) => (
     calculateMtfApertureSweepOption(lenses, system, aperture, field, { maxFrequencyLpMm, geometricMtfOptions })
   ));
+};
+
+const readCachedMtfApertureSweepOption = (lenses, system, aperture, field, options = {}) => {
+  const maxFrequencyLpMm = options.maxFrequencyLpMm || resolveMtfMaxFrequency(system);
+  const rayCount = effectiveMtfPupilSampleCount();
+  const apertureDiameter = physicalStopDiameterForRequestedFNumber(lenses, system, aperture.fNumber);
+  const key = apertureSweepCacheKey(aperture, field, apertureDiameter, maxFrequencyLpMm, rayCount);
+  return apertureSweepResultCache.get(key) || null;
+};
+
+const hydratedMtfResultForRender = (result, lenses, system) => {
+  if (!result || state.mtfChartMode !== "field") return result;
+  const field = RAY_TRACE_FIELDS.find((item) => item.key === (state.mtfApertureFrequencyFieldKey || "center")) || RAY_TRACE_FIELDS[0];
+  const maxFrequencyLpMm = result.maxFrequencyLpMm || resolveMtfMaxFrequency(system);
+  const merged = new Map();
+  (result.apertureSweepResults || []).forEach((item) => {
+    if (item?.key) merged.set(item.key, item);
+  });
+  MTF_APERTURE_SWEEP_OPTIONS.forEach((aperture) => {
+    const cached = readCachedMtfApertureSweepOption(lenses, system, aperture, field, { maxFrequencyLpMm });
+    if (cached?.key) merged.set(cached.key, cached);
+  });
+  return {
+    ...result,
+    apertureSweepResults: [...merged.values()],
+    mtfApertureSweepWarmupStatus: state.mtfApertureSweepWarmupStatus || "idle"
+  };
+};
+
+const scheduleApertureSweepCacheWarmup = (lenses, system, options = {}) => {
+  if (!isPanelExpanded("mtfResolution") || state.mtfChartMode !== "field") return;
+  const maxFrequencyLpMm = options.maxFrequencyLpMm || resolveMtfMaxFrequency(system);
+  const geometricMtfOptions = options.geometricMtfOptions || activeGeometricMtfOptions(maxFrequencyLpMm);
+  const field = RAY_TRACE_FIELDS.find((item) => item.key === (state.mtfApertureFrequencyFieldKey || "center")) || RAY_TRACE_FIELDS[0];
+  apertureSweepWarmupToken += 1;
+  const token = apertureSweepWarmupToken;
+  cancelIdleOrTimeout(apertureSweepWarmupIdleHandle);
+  apertureSweepWarmupIdleHandle = null;
+  state.mtfApertureSweepWarmupStatus = "warming";
+  const queue = MTF_APERTURE_SWEEP_OPTIONS.slice();
+  let index = 0;
+
+  const scheduleNext = () => {
+    if (typeof requestIdleCallback === "function") {
+      apertureSweepWarmupIdleHandle = requestIdleCallback(runNext, { timeout: 1200 });
+    } else {
+      apertureSweepWarmupIdleHandle = setTimeout(runNext, 32);
+    }
+  };
+
+  const runNext = () => {
+    if (token !== apertureSweepWarmupToken || !isPanelExpanded("mtfResolution") || state.mtfChartMode !== "field") return;
+    const startedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
+    while (index < queue.length) {
+      const aperture = queue[index];
+      calculateMtfApertureSweepOption(lenses, system, aperture, field, { maxFrequencyLpMm, geometricMtfOptions });
+      index += 1;
+      const elapsed = (typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt;
+      if (elapsed > 18) break;
+    }
+    if (index < queue.length) {
+      scheduleNext();
+      return;
+    }
+    apertureSweepWarmupIdleHandle = null;
+    state.mtfApertureSweepWarmupStatus = "ready";
+    if (typeof update === "function") setTimeout(update, 0);
+  };
+
+  scheduleNext();
 };
 
 const chiefImageHeightForField = (lenses, system, fieldAngleDegrees, options = {}) => {
@@ -20387,7 +20469,9 @@ const renderMtfApertureFieldChart = (sweepResults) => {
     ? state.mtfApertureFieldChartKey
     : "wideOpen";
   const activeResult = mtfApertureSweepResultByKey(sweepResults, activeKey);
-  if (!activeResult) return "";
+  if (!activeResult) {
+    return `<div class="analysis-updating" role="status">Preparing ${escapeHtml(apertureOptionByKey(activeKey).label)} aperture preview…</div>`;
+  }
   const focusText = activeResult.focusPolicy === "center-refocused"
     ? "centre-refocused common plane"
     : "fixed image plane";
@@ -20829,6 +20913,7 @@ const renderSagittalTangentialGeometricMTFPanel = (result) => {
           <span class="badge">Geometric-only</span>
         </div>
         ${renderMtfApertureSweepCharts(apertureSweepResults, state.mtfChartMode, result.maxFrequencyLpMm)}
+        ${state.mtfChartMode === "field" && result.mtfApertureSweepWarmupStatus === "warming" ? `<div class="analysis-updating" role="status">Precalculating remaining aperture previews…</div>` : ""}
         <p class="diagram-note">${state.mtfApertureSweepFocusPolicy === "refocus" ? "Centre-refocused common image plane." : "Fixed image plane."} This aperture sweep uses geometric preview MTF only. It is not the final stopped-down physical MTF until the wavefront FFT path is active.</p>
       </section>
       <section class="mtf-subsection">
@@ -22611,9 +22696,12 @@ const renderChromaticReadout = (spectralSystems) => {
 
 
 const normalizeSystemResultApertureKey = (key) => apertureOptionByKey(key).key;
+const activeSystemResultApertureKey = () => normalizeSystemResultApertureKey(
+  state.mtfApertureFieldChartKey || state.systemResultApertureKey || "wideOpen"
+);
 
 const calculateSystemResultMtfSummary = (lenses, system) => {
-  const aperture = apertureOptionByKey(state.systemResultApertureKey || "wideOpen");
+  const aperture = apertureOptionByKey(activeSystemResultApertureKey());
   const apertureDiameter = aperture.fNumber
     ? physicalStopDiameterForRequestedFNumber(lenses, system, aperture.fNumber)
     : state.apertureDiameter;
@@ -22666,20 +22754,32 @@ const calculateSystemResultMtfSummary = (lenses, system) => {
   };
 };
 
+const renderSystemMtfGraphicCell = (value, frequency) => {
+  const percentage = Number.isFinite(value) ? clamp(value, 0, 1) * 100 : 0;
+  return `
+    <span class="system-mtf-graphic-cell system-mtf-frequency-${frequency}">
+      <span class="system-mtf-bar-track" aria-hidden="true">
+        <span class="system-mtf-bar-fill" style="--mtf-value: ${formatNumber(percentage, 2)}%;"></span>
+      </span>
+      <span class="system-mtf-bar-value">${renderMTFValue(value)}</span>
+    </span>
+  `;
+};
+
 const renderSystemResultMtfSummary = (summary) => {
-  const activeKey = normalizeSystemResultApertureKey(state.systemResultApertureKey || "wideOpen");
+  const activeKey = activeSystemResultApertureKey();
   return `
     <div class="system-mtf-summary" aria-label="Simplified MTF summary">
       <div class="system-mtf-heading">
         <div>
-          <strong>Simplified MTF</strong>
+          <strong>Simplified MTF graphic table</strong>
           <span>${escapeHtml(summary.engineLabel)} · averaged Sag/Tan</span>
         </div>
         <span>f/${formatNumber(summary.fNumber, 2)} · stop ${formatNumber(summary.apertureDiameter, 2)} mm</span>
       </div>
       <div class="system-mtf-aperture-row" role="tablist" aria-label="System result MTF aperture size">
         ${MTF_APERTURE_SWEEP_OPTIONS.map((option) => `
-          <button class="system-mtf-aperture-chip ${activeKey === option.key ? "is-active" : ""}" type="button" role="tab" aria-selected="${activeKey === option.key}" data-action="select-system-result-aperture" data-stop="${option.key}">
+          <button class="system-mtf-aperture-chip ${activeKey === option.key ? "is-active" : ""}" type="button" role="tab" aria-selected="${activeKey === option.key}" data-action="select-mtf-aperture-field-chart" data-stop="${option.key}">
             ${escapeHtml(option.label)}
           </button>
         `).join("")}
@@ -22687,17 +22787,17 @@ const renderSystemResultMtfSummary = (summary) => {
       <div class="system-mtf-table" role="table" aria-label="Simplified geometric MTF readout">
         <div class="system-mtf-row system-mtf-head" role="row">
           <span role="columnheader">Field</span>
-          <span role="columnheader">10</span>
-          <span role="columnheader">30</span>
-          <span role="columnheader">40</span>
+          <span role="columnheader">10 lp/mm</span>
+          <span role="columnheader">30 lp/mm</span>
+          <span role="columnheader">40 lp/mm</span>
           <span role="columnheader">Rays</span>
         </div>
         ${summary.rows.map((row) => `
           <div class="system-mtf-row" role="row">
             <span role="rowheader">${escapeHtml(row.label)}</span>
-            <span role="cell">${renderMTFValue(row.mtf10)}</span>
-            <span role="cell">${renderMTFValue(row.mtf30)}</span>
-            <span role="cell">${renderMTFValue(row.mtf40)}</span>
+            <span role="cell">${renderSystemMtfGraphicCell(row.mtf10, 10)}</span>
+            <span role="cell">${renderSystemMtfGraphicCell(row.mtf30, 30)}</span>
+            <span role="cell">${renderSystemMtfGraphicCell(row.mtf40, 40)}</span>
             <span role="cell">${Number.isFinite(row.validRayCount) ? `${row.validRayCount}/${row.totalRayCount}` : "--"}</span>
           </div>
         `).join("")}
@@ -22719,33 +22819,39 @@ const renderSystemSummary = (system, spectralSystems, rayTraceResults = []) => {
         <span class="badge">${system.validCount}/${state.lenses.length} ${tx("valid")}</span>
         <span>${state.lenses.length} elements · ${formatNumber(system.totalTrack)} mm track</span>
       </div>
-      <div class="system-kpi-grid">
-        <div class="system-kpi is-primary">
-          <span class="metric-name">${tx("effectiveFocalLength")}</span>
-          <span class="metric-value">${formatNumber(system.effectiveFocalLength)}</span>
-          <span class="metric-unit">mm</span>
+      <div class="system-result-main-layout">
+        <div class="system-result-mtf-column">
+          ${renderSystemResultMtfSummary(mtfSummary)}
         </div>
-        <div class="system-kpi">
-          <span class="metric-name">${tx("fNumber")}</span>
-          <span class="metric-value">f/${formatNumber(fNumber, 3)}</span>
-          <span class="metric-unit">EFL / entrance pupil</span>
-        </div>
-        <div class="system-kpi">
-          <span class="metric-name">${tx("backFocalDistance")}</span>
-          <span class="metric-value">${formatNumber(system.backFocalLength)}</span>
-          <span class="metric-unit">mm</span>
+        <div class="system-result-info-column">
+          <div class="system-kpi-grid">
+            <div class="system-kpi is-primary">
+              <span class="metric-name">${tx("effectiveFocalLength")}</span>
+              <span class="metric-value">${formatNumber(system.effectiveFocalLength)}</span>
+              <span class="metric-unit">mm</span>
+            </div>
+            <div class="system-kpi">
+              <span class="metric-name">${tx("fNumber")}</span>
+              <span class="metric-value">f/${formatNumber(fNumber, 3)}</span>
+              <span class="metric-unit">EFL / entrance pupil</span>
+            </div>
+            <div class="system-kpi">
+              <span class="metric-name">${tx("backFocalDistance")}</span>
+              <span class="metric-value">${formatNumber(system.backFocalLength)}</span>
+              <span class="metric-unit">mm</span>
+            </div>
+          </div>
+          <div class="system-detail-grid">
+            ${metric(tx("sonyFlange"), SONY_E_FLANGE_DISTANCE, "mm")}
+            ${metric(tx("bfdVsSony"), formatNumber(bfdDelta), "mm")}
+            ${metric(tx("trackLength"), formatNumber(system.totalTrack), "mm")}
+            ${metric(tx("totalPower"), formatNumber(system.totalPower, 6), "1/mm")}
+            ${metric(tx("diopters"), formatNumber(system.diopters, 3), "D")}
+            ${metric("Stop source", escapeHtml(stopSurface?.stopSourceBadge || "Auto"), escapeHtml(stopSurface?.stopSource || "Auto / preset default"))}
+          </div>
+          ${renderChromaticReadout(spectralSystems)}
         </div>
       </div>
-      <div class="system-detail-grid">
-        ${metric(tx("sonyFlange"), SONY_E_FLANGE_DISTANCE, "mm")}
-        ${metric(tx("bfdVsSony"), formatNumber(bfdDelta), "mm")}
-        ${metric(tx("trackLength"), formatNumber(system.totalTrack), "mm")}
-        ${metric(tx("totalPower"), formatNumber(system.totalPower, 6), "1/mm")}
-        ${metric(tx("diopters"), formatNumber(system.diopters, 3), "D")}
-        ${metric("Stop source", escapeHtml(stopSurface?.stopSourceBadge || "Auto"), escapeHtml(stopSurface?.stopSource || "Auto / preset default"))}
-      </div>
-      ${renderSystemResultMtfSummary(mtfSummary)}
-      ${renderChromaticReadout(spectralSystems)}
     </section>
   `;
 };
@@ -23053,7 +23159,7 @@ const render = () => {
     }))
     : null;
   const sagittalTangentialMtfResult = needsMtfResolution
-    ? currentMtfMainResultForRender()
+    ? hydratedMtfResultForRender(currentMtfMainResultForRender(), state.lenses, spectralSystems.d || system)
     : null;
   const diffractionHybridMtfResult = needsMtfResolution
     ? (
@@ -25231,6 +25337,11 @@ mount.addEventListener("click", (event) => {
     const stopKey = button.dataset.stop;
     if (MTF_APERTURE_SWEEP_OPTIONS.some((option) => option.key === stopKey)) {
       state.mtfApertureFieldChartKey = stopKey;
+      state.systemResultApertureKey = stopKey;
+      if (isPanelExpanded("mtfResolution")) {
+        const system = calculateSystem(state.lenses);
+        scheduleApertureSweepCacheWarmup(state.lenses, system, { maxFrequencyLpMm: resolveMtfMaxFrequency(system) });
+      }
       update();
     }
     return;
@@ -30318,7 +30429,7 @@ const runOpticsSelfCheck = (options = {}) => {
       && centerRefocus.reason.includes("Main-thread fallback");
   }));
 
-  test("visible MTF worker aperture payload includes only active field tab or checked frequency apertures", () => withTemporaryState(() => {
+  test("visible MTF worker aperture payload preloads all field tabs or checked frequency apertures", () => withTemporaryState(() => {
     loadPresetIntoState("manual");
     state.mtfEngine = "geometricLsfFft";
     state.mtfPlaneMode = "current";
@@ -30332,8 +30443,8 @@ const runOpticsSelfCheck = (options = {}) => {
     const fieldPayload = buildGeometricMtfMainWorkerPayload(lenses, system);
     state.mtfChartMode = "frequency";
     const frequencyPayload = buildGeometricMtfMainWorkerPayload(lenses, system);
-    return fieldPayload.apertureSweepRequest.options.length === 1
-      && fieldPayload.apertureSweepRequest.options[0].key === "f4"
+    return fieldPayload.apertureSweepRequest.options.length === MTF_APERTURE_SWEEP_OPTIONS.length
+      && fieldPayload.apertureSweepRequest.options.map((item) => item.key).join(",") === MTF_APERTURE_SWEEP_OPTIONS.map((item) => item.key).join(",")
       && frequencyPayload.apertureSweepRequest.options.map((item) => item.key).join(",") === "wideOpen,f4,f8";
   }));
 
@@ -30828,7 +30939,7 @@ const runOpticsSelfCheck = (options = {}) => {
       && new Set(diameters.map((value) => formatNumber(value, 5))).size > 1;
   }));
 
-  test("MTF field aperture mode calculates only the active aperture tab", () => withTemporaryState(() => {
+  test("MTF field aperture mode pre-renders every aperture tab", () => withTemporaryState(() => {
     loadPresetIntoState("manual");
     state.mtfEngine = "fastRmsGaussian";
     state.mtfChartMode = "field";
@@ -30841,12 +30952,54 @@ const runOpticsSelfCheck = (options = {}) => {
     const second = calculateMtfApertureSweepPreview(lenses, system, { maxFrequencyLpMm: 100 });
     state.mtfChartMode = "frequency";
     const frequency = calculateMtfApertureSweepPreview(lenses, system, { maxFrequencyLpMm: 100 });
-    return first.length === 1
-      && first[0].key === "f4"
-      && second.length === 1
-      && second[0].key === "f8"
+    return first.length === MTF_APERTURE_SWEEP_OPTIONS.length
+      && first.map((item) => item.key).join(",") === MTF_APERTURE_SWEEP_OPTIONS.map((item) => item.key).join(",")
+      && second.length === MTF_APERTURE_SWEEP_OPTIONS.length
+      && second.find((item) => item.key === "f8")
       && frequency.length === 3
       && frequency.map((item) => item.key).join(",") === "wideOpen,f4,f8";
+  }));
+
+  test("MTF aperture tab selection does not change main analysis signature", () => withTemporaryState(() => {
+    loadPresetIntoState("manual");
+    state.mtfEngine = "geometricLsfFft";
+    state.mtfChartMode = "field";
+    state.mtfApertureSweepStops = ["wideOpen", "f4", "f8"];
+    state.mtfApertureFieldChartKey = "wideOpen";
+    const firstSignature = mtfMainAnalysisSignature();
+    state.mtfApertureFieldChartKey = "f8";
+    const secondSignature = mtfMainAnalysisSignature();
+    return firstSignature === secondSignature;
+  }));
+
+  test("MTF panel main-thread render calculates only active aperture before warmup", () => withTemporaryState(() => {
+    loadPresetIntoState("manual");
+    state.mtfEngine = "fastRmsGaussian";
+    state.mtfChartMode = "field";
+    state.mtfApertureSweepStops = ["wideOpen", "f4", "f8"];
+    state.mtfApertureFieldChartKey = "f4";
+    apertureSweepResultCache.clear();
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const panelResult = calculateSagittalTangentialGeometricMTFPanelData(lenses, system);
+    const allPreview = calculateMtfApertureSweepPreview(lenses, system, { maxFrequencyLpMm: 100 });
+    return panelResult.apertureSweepResults.length === 1
+      && panelResult.apertureSweepResults[0].key === "f4"
+      && allPreview.length === MTF_APERTURE_SWEEP_OPTIONS.length;
+  }));
+
+  test("System Result MTF aperture mirrors Aperture Sweep tab", () => withTemporaryState(() => {
+    loadPresetIntoState("manual");
+    state.mtfApertureFieldChartKey = "f4";
+    state.systemResultApertureKey = "wideOpen";
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const summary = calculateSystemResultMtfSummary(lenses, system);
+    const markup = renderSystemResultMtfSummary(summary);
+    return summary.aperture.key === "f4"
+      && markup.includes('data-action="select-mtf-aperture-field-chart"')
+      && markup.includes('data-stop="f4"')
+      && markup.includes('aria-selected="true"');
   }));
 
   test("MTF aperture field sweep uses one centre-refocused plane per aperture", () => withTemporaryState(() => {
@@ -30858,8 +31011,8 @@ const runOpticsSelfCheck = (options = {}) => {
     const lenses = clonePresetLenses("manual");
     const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
     const sweep = calculateMtfApertureSweepPreview(lenses, system, { maxFrequencyLpMm: 100 });
-    return sweep.length === 1
-      && sweep[0].key === "wideOpen"
+    return sweep.length === MTF_APERTURE_SWEEP_OPTIONS.length
+      && sweep.some((item) => item.key === "wideOpen")
       && sweep.every((item) => item.focusPolicy === "center-refocused")
       && sweep.every((item) => Number.isFinite(item.imagePlaneX))
       && sweep.every((item) => item.fieldData.samples.every((sample) => sample.result.imagePlaneX === item.imagePlaneX));
@@ -30881,8 +31034,8 @@ const runOpticsSelfCheck = (options = {}) => {
     return frequencyMarkup.includes("mtf-aperture-frequency-chart")
       && fieldMarkup.includes("manufacturer-mtf-chart")
       && (fieldMarkup.match(/manufacturer-mtf-chart/g) || []).length === 1
-      && fieldSweep.length === 1
-      && fieldSweep[0].key === "f4"
+      && fieldSweep.length === MTF_APERTURE_SWEEP_OPTIONS.length
+      && fieldSweep.some((item) => item.key === "f4")
       && !fieldMarkup.includes("mtf-aperture-comparison-table")
       && !fieldMarkup.includes("mtf-aperture-chart-grid")
       && !frequencyMarkup.includes("mtf-sweep-summary");
@@ -30959,15 +31112,15 @@ const runOpticsSelfCheck = (options = {}) => {
     const cacheSizeAfterF4 = apertureSweepResultCache.size;
     state.mtfApertureFieldChartKey = "wideOpen";
     const third = calculateMtfApertureSweepPreview(lenses, system, { maxFrequencyLpMm: 100 });
-    return first.length === 1
+    return first.length === MTF_APERTURE_SWEEP_OPTIONS.length
       && first[0].key === "wideOpen"
-      && cacheSizeAfterWideOpen === 1
-      && second.length === 1
-      && second[0].key === "f4"
-      && cacheSizeAfterF4 === 2
-      && third.length === 1
+      && cacheSizeAfterWideOpen === MTF_APERTURE_SWEEP_OPTIONS.length
+      && second.length === MTF_APERTURE_SWEEP_OPTIONS.length
+      && second.find((item) => item.key === "f4")
+      && cacheSizeAfterF4 === MTF_APERTURE_SWEEP_OPTIONS.length
+      && third.length === MTF_APERTURE_SWEEP_OPTIONS.length
       && third[0] === wideOpenCachedObject
-      && apertureSweepResultCache.size === 2;
+      && apertureSweepResultCache.size === MTF_APERTURE_SWEEP_OPTIONS.length;
   }));
 
   test("through-focus MTF renders a real focus-shift chart", () => withTemporaryState(() => {

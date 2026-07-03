@@ -207,8 +207,29 @@ const FIELD_STEPS = {
   frontBevelFaceWidthMm: 0.05,
   rearBevelFaceWidthMm: 0.05,
   frontBevelAngleDeg: 1,
-  rearBevelAngleDeg: 1
+  rearBevelAngleDeg: 1,
+  frontConcaveTrimSampleRadiusRatio: 0.01,
+  rearConcaveTrimSampleRadiusRatio: 0.01,
+  frontConcaveTrimRadialGapRatio: 0.01,
+  rearConcaveTrimRadialGapRatio: 0.01,
+  frontConcaveTrimChamferRatio: 0.05,
+  rearConcaveTrimChamferRatio: 0.05,
+  frontConcaveTrimOuterRadiusRatio: 0.01,
+  rearConcaveTrimOuterRadiusRatio: 0.01
 };
+
+const LENS_DISPLAY_ONLY_FIELDS = new Set([
+  "frontConcaveTrimSampleRadiusRatio",
+  "rearConcaveTrimSampleRadiusRatio",
+  "frontConcaveTrimRadialGapRatio",
+  "rearConcaveTrimRadialGapRatio",
+  "frontConcaveTrimChamferRatio",
+  "rearConcaveTrimChamferRatio",
+  "frontConcaveTrimOuterRadiusRatio",
+  "rearConcaveTrimOuterRadiusRatio"
+]);
+
+const isLensDisplayOnlyField = (field) => LENS_DISPLAY_ONLY_FIELDS.has(field);
 
 const ASPHERE_TERMS = ["A4", "A6", "A8", "A10"];
 const ASPHERE_NUMERIC_FIELDS = [
@@ -618,6 +639,44 @@ const normalizeLensBevel = (lens, side, mechanicalDiameter) => {
   };
 };
 
+const normalizeRatioField = (value, fallback, min = 0, max = 1) => {
+  const numeric = numericValue(value);
+  const resolved = Number.isFinite(numeric) ? numeric : fallback;
+  return Math.min(max, Math.max(min, resolved));
+};
+
+const lensHasExplicitField = (lens, field) => Object.prototype.hasOwnProperty.call(lens || {}, field);
+
+const isConcaveLensSurfaceByTypeAndRadius = (lens, side) => {
+  const radius = side === "front" ? numericValue(lens?.r1) : numericValue(lens?.r2);
+  if (!Number.isFinite(radius) || Math.abs(radius) <= 1e-9) return false;
+  if (lens?.type === "biconcave") return true;
+  if (lens?.type === "planoConcave") return side === "rear";
+  return side === "front" ? radius < 0 : radius > 0;
+};
+
+const shouldDefaultConcaveTrimEnabled = (lens, side) => {
+  const radius = side === "front" ? numericValue(lens?.r1) : numericValue(lens?.r2);
+  return isConcaveLensSurfaceByTypeAndRadius(lens, side)
+    && Number.isFinite(radius)
+    && Math.abs(radius) < 20;
+};
+
+const defaultConcaveTrimSampleRadiusRatio = (lens, side) => {
+  const start = Math.round(numericValue(lens?.patentSurfaceStart));
+  const end = Math.round(numericValue(lens?.patentSurfaceEnd));
+  const r1 = numericValue(lens?.r1);
+  const r2 = numericValue(lens?.r2);
+  const isBiotarL3RearConcaveSide = side === "rear"
+    && start === 4
+    && end === 5
+    && Number.isFinite(r1)
+    && Number.isFinite(r2)
+    && Math.abs(r1 + 575) < 1e-6
+    && Math.abs(r2 - 14.15) < 1e-6;
+  return isBiotarL3RearConcaveSide ? 0.7 : 0.74;
+};
+
 const normalizeLens = (lens) => {
   const refractiveIndex = numericValue(lens.refractiveIndex);
   const customNd = numericValue(lens.customNd);
@@ -681,6 +740,30 @@ const normalizeLens = (lens) => {
     rearBevelFaceWidthMm: rearBevel.faceWidthMm,
     frontBevelAngleDeg: frontBevel.angleDeg,
     rearBevelAngleDeg: rearBevel.angleDeg,
+    frontConcaveTrimEnabled: lensHasExplicitField(lens, "frontConcaveTrimEnabled")
+      ? lens.frontConcaveTrimEnabled === true
+      : shouldDefaultConcaveTrimEnabled(lens, "front"),
+    rearConcaveTrimEnabled: lensHasExplicitField(lens, "rearConcaveTrimEnabled")
+      ? lens.rearConcaveTrimEnabled === true
+      : shouldDefaultConcaveTrimEnabled(lens, "rear"),
+    frontConcaveTrimSampleRadiusRatio: normalizeRatioField(
+      lens.frontConcaveTrimSampleRadiusRatio,
+      defaultConcaveTrimSampleRadiusRatio(lens, "front"),
+      0.2,
+      1
+    ),
+    rearConcaveTrimSampleRadiusRatio: normalizeRatioField(
+      lens.rearConcaveTrimSampleRadiusRatio,
+      defaultConcaveTrimSampleRadiusRatio(lens, "rear"),
+      0.2,
+      1
+    ),
+    frontConcaveTrimRadialGapRatio: normalizeRatioField(lens.frontConcaveTrimRadialGapRatio, 0, 0, 0.7),
+    rearConcaveTrimRadialGapRatio: normalizeRatioField(lens.rearConcaveTrimRadialGapRatio, 0, 0, 0.7),
+    frontConcaveTrimChamferRatio: normalizeRatioField(lens.frontConcaveTrimChamferRatio, 0.6, 0, 1.5),
+    rearConcaveTrimChamferRatio: normalizeRatioField(lens.rearConcaveTrimChamferRatio, 0.6, 0, 1.5),
+    frontConcaveTrimOuterRadiusRatio: normalizeRatioField(lens.frontConcaveTrimOuterRadiusRatio, 1, 0.5, 1.4),
+    rearConcaveTrimOuterRadiusRatio: normalizeRatioField(lens.rearConcaveTrimOuterRadiusRatio, 1, 0.5, 1.4),
     manufacturingGeometrySource: lens.manufacturingGeometrySource || lens.diameterSource || "estimated",
     apertureSource: ["patent", "rayEnvelope", "manual", "estimated", "svgEstimated", "patentMechanical", "derived", "duplicated"].includes(lens.apertureSource)
       ? lens.apertureSource
@@ -3667,6 +3750,10 @@ const adjustLensField = (lensId, field, delta) => {
     nextValue = Math.max(0, nextValue);
   }
   if (["frontBevelAngleDeg", "rearBevelAngleDeg"].includes(field)) nextValue = clamp(nextValue, 1, 89);
+  if (["frontConcaveTrimSampleRadiusRatio", "rearConcaveTrimSampleRadiusRatio"].includes(field)) nextValue = clamp(nextValue, 0.2, 1);
+  if (["frontConcaveTrimRadialGapRatio", "rearConcaveTrimRadialGapRatio"].includes(field)) nextValue = clamp(nextValue, 0, 0.7);
+  if (["frontConcaveTrimChamferRatio", "rearConcaveTrimChamferRatio"].includes(field)) nextValue = clamp(nextValue, 0, 1.5);
+  if (["frontConcaveTrimOuterRadiusRatio", "rearConcaveTrimOuterRadiusRatio"].includes(field)) nextValue = clamp(nextValue, 0.5, 1.4);
   if (["refractiveIndex", "customNd"].includes(field)) nextValue = Math.max(1.0001, nextValue);
   if (field === "customVd") nextValue = Math.max(1, nextValue);
   if (field === "gapAfter") nextValue = Math.max(0, nextValue);
@@ -4591,6 +4678,57 @@ const renderAsphereControl = (lens) => `
   </details>
 `;
 
+const isConcaveDisplaySurface = (lens, side) => {
+  return isConcaveLensSurfaceByTypeAndRadius(lens, side);
+};
+
+const renderConcaveDisplayTrimSide = (lens, side, label) => {
+  const normalized = normalizeLens(lens);
+  const enabledField = `${side}ConcaveTrimEnabled`;
+  const sampleField = `${side}ConcaveTrimSampleRadiusRatio`;
+  const gapField = `${side}ConcaveTrimRadialGapRatio`;
+  const chamferField = `${side}ConcaveTrimChamferRatio`;
+  const outerField = `${side}ConcaveTrimOuterRadiusRatio`;
+
+  if (!isConcaveDisplaySurface(normalized, side)) return "";
+
+  return `
+    <div class="concave-display-trim-side">
+      <label class="check-control">
+        <input
+          type="checkbox"
+          data-action="toggle-concave-display-trim"
+          data-id="${lens.id}"
+          data-side="${side}"
+          ${normalized[enabledField] ? "checked" : ""}
+        >
+        ${label}
+      </label>
+      <div class="concave-display-trim-grid">
+        ${steppableInput(normalized, sampleField, "Surface sample radius", FIELD_STEPS[sampleField], "xD/2")}
+        ${steppableInput(normalized, gapField, "Radial gap", FIELD_STEPS[gapField], "xD/2")}
+        ${steppableInput(normalized, chamferField, "Chamfer run", FIELD_STEPS[chamferField], "x gap")}
+        ${steppableInput(normalized, outerField, "Visual outer radius", FIELD_STEPS[outerField], "xD/2")}
+      </div>
+    </div>
+  `;
+};
+
+const renderConcaveDisplayTrimControl = (lens) => {
+  const frontControls = renderConcaveDisplayTrimSide(lens, "front", "Front concave side");
+  const rearControls = renderConcaveDisplayTrimSide(lens, "rear", "Rear concave side");
+  if (!frontControls && !rearControls) return "";
+
+  return `
+    <details class="lens-concave-display-control">
+      <summary>Concave Display Trim</summary>
+      <p class="manufacturing-note">Display only for long concave silhouettes. It changes the drawn surface sample radius, visual protrusion, radial gap and chamfer, not ray tracing or prescription data.</p>
+      ${frontControls}
+      ${rearControls}
+    </details>
+  `;
+};
+
 const renderManufacturingEdgeControl = (lens, model) => {
   const normalized = normalizeLens(lens);
   const sourceLabel = {
@@ -4820,6 +4958,7 @@ const renderLens = (lens, index, result, manufacturingModel = null) => `
       </div>
       <div class="lens-advanced-sections">
         ${renderAsphereControl(lens)}
+        ${renderConcaveDisplayTrimControl(lens)}
         ${renderManufacturingEdgeControl(lens, manufacturingModel)}
         ${renderToleranceOverrideControl(lens)}
         ${renderOptimizerLensControl(lens)}
@@ -11330,80 +11469,103 @@ const buildPrescriptionLensRenderModel = (position, mapper, result, lens, lensIn
     lens.patentFrontSharedCementedSurface === true
     || lens.patentRearCementedToNextGlass === true
   ) && position.thickness / Math.max(0.1, semiDiameter * 2) < 0.13;
-  const biotarSurfaceStart = Math.round(toNumber(lens.patentSurfaceStart));
-  const biotarDisplayElementIndex = isBiotarUs1786916DisplayLayout() ? lensIndex : -1;
-  const biotarCentralPointedMember = (
-    [2, 3].includes(biotarDisplayElementIndex)
-  );
-  const biotarPairedLens = biotarDisplayElementIndex === 2
-    ? state.lenses[1]
-    : biotarDisplayElementIndex === 3
-      ? state.lenses[4]
-      : null;
-  const firstPositiveDiameter = (...values) => (
-    values
-      .map((value) => toNumber(value))
-      .find((value) => Number.isFinite(value) && value > 0)
-  );
-  const biotarPairedDiameter = biotarPairedLens
-    ? firstPositiveDiameter(
-      biotarPairedLens.diameter,
-      biotarPairedLens.visualDiameter,
-      biotarPairedLens.mechanicalDiameter
-    )
-    : NaN;
-  const biotarPairedSemiDiameter = Number.isFinite(biotarPairedDiameter)
-    ? biotarPairedDiameter / 2
-    : semiDiameter;
-  const biotarOuterDisplayRadius = biotarCentralPointedMember
-    ? biotarPairedSemiDiameter
-    : semiDiameter;
-  const frontNeedsPatentTrim = (
-    biotarCentralPointedMember
-    && (biotarDisplayElementIndex === 3
-    || clearApertureSemiDiameter > frontSphericalLimit + 1e-6
-    || (cementedThinMember && frontEdgeSlopeSeverity > 4.6)
+  const normalizedLens = normalizeLens(lens);
+  const frontAutoConcaveTrim = (
+    isConcaveDisplaySurface(normalizedLens, "front")
+    && (
+      clearApertureSemiDiameter > frontSphericalLimit + 1e-6
+      || (cementedThinMember && frontEdgeSlopeSeverity > 4.6)
     )
   );
-  const rearNeedsPatentTrim = (
-    biotarCentralPointedMember
-    && (biotarDisplayElementIndex === 2
-    || clearApertureSemiDiameter > rearSphericalLimit + 1e-6
-    || (cementedThinMember && rearEdgeSlopeSeverity > 4.6)
+  const rearAutoConcaveTrim = (
+    isConcaveDisplaySurface(normalizedLens, "rear")
+    && (
+      clearApertureSemiDiameter > rearSphericalLimit + 1e-6
+      || (cementedThinMember && rearEdgeSlopeSeverity > 4.6)
     )
   );
-  const needsPatentIllustrationTrim = (
-    frontNeedsPatentTrim
-    || rearNeedsPatentTrim
+  const concaveTrimSideConfig = (side, autoEnabled) => {
+    if (!isConcaveDisplaySurface(normalizedLens, side)) return null;
+    const enabledField = `${side}ConcaveTrimEnabled`;
+    const explicitEnabled = lensHasExplicitField(lens, enabledField);
+    const enabled = explicitEnabled ? normalizedLens[enabledField] === true : autoEnabled;
+    if (!enabled) return null;
+    return {
+      side,
+      sampleRadiusRatio: normalizedLens[`${side}ConcaveTrimSampleRadiusRatio`],
+      radialGapRatio: normalizedLens[`${side}ConcaveTrimRadialGapRatio`],
+      chamferRatio: normalizedLens[`${side}ConcaveTrimChamferRatio`],
+      outerRadiusRatio: normalizedLens[`${side}ConcaveTrimOuterRadiusRatio`],
+      auto: !explicitEnabled && autoEnabled
+    };
+  };
+  const frontConcaveTrimConfig = concaveTrimSideConfig("front", frontAutoConcaveTrim);
+  const rearConcaveTrimConfig = concaveTrimSideConfig("rear", rearAutoConcaveTrim);
+  const needsPatentIllustrationTrim = Boolean(frontConcaveTrimConfig || rearConcaveTrimConfig);
+  const displayDiameterFromLens = (candidateLens) => {
+    if (!candidateLens) return NaN;
+    return [
+      candidateLens.diameter,
+      candidateLens.visualDiameter,
+      candidateLens.mechanicalDiameter,
+      candidateLens.clearApertureDiameter
+    ]
+      .map(toNumber)
+      .find((value) => Number.isFinite(value) && value > 0);
+  };
+  const ownDisplaySemiDiameter = Math.max(
+    semiDiameter,
+    clearApertureSemiDiameter,
+    (displayDiameterFromLens(lens) || 0) / 2
+  );
+  const previousDisplaySemiDiameter = (displayDiameterFromLens(state.lenses[lensIndex - 1]) || 0) / 2;
+  const nextDisplaySemiDiameter = (displayDiameterFromLens(state.lenses[lensIndex + 1]) || 0) / 2;
+  const cementedLinkedDisplaySemiDiameter = Math.max(
+    ownDisplaySemiDiameter,
+    lens.patentFrontSharedCementedSurface === true && Number.isFinite(previousDisplaySemiDiameter)
+      ? previousDisplaySemiDiameter
+      : 0,
+    lens.patentRearCementedToNextGlass === true && Number.isFinite(nextDisplaySemiDiameter)
+      ? nextDisplaySemiDiameter
+      : 0
   );
   const buildPatentIllustrationProfile = () => {
     if (!needsPatentIllustrationTrim) return null;
-    const displayBaseSemiDiameter = biotarCentralPointedMember
-      ? Math.max(0.05, biotarOuterDisplayRadius)
-      : semiDiameter;
+    const displayBaseSemiDiameter = Math.max(
+      0.05,
+      cementedLinkedDisplaySemiDiameter * Math.max(
+        frontConcaveTrimConfig?.outerRadiusRatio || 1,
+        rearConcaveTrimConfig?.outerRadiusRatio || 1
+      )
+    );
     const frontSagBoost = Math.min(1.2, surfaceSagSeverityAtRadius(frontSurface, displayBaseSemiDiameter) * 0.12);
     const rearSagBoost = Math.min(1.2, surfaceSagSeverityAtRadius(rearSurface, displayBaseSemiDiameter) * 0.12);
     const baseCutbackMm = Math.max(0.45, Math.min(2.2, displayBaseSemiDiameter * 0.08));
     const minimumDisplayRadius = Math.max(
       0.05,
-      displayBaseSemiDiameter * (biotarDisplayElementIndex === 2 ? 0.62 : biotarDisplayElementIndex === 3 ? 0.54 : 0.58)
+      displayBaseSemiDiameter * 0.2
     );
-    const biotarCutRatio = biotarDisplayElementIndex === 2 ? 0.74 : biotarDisplayElementIndex === 3 ? 0.7 : 0.9;
-    const biotarSurfaceLimitRatio = biotarDisplayElementIndex === 2 ? 0.9 : biotarDisplayElementIndex === 3 ? 0.84 : 0.95;
-    const trimmedDisplayRadius = (surfaceLimit, sagBoost) => Math.max(
-      minimumDisplayRadius,
-      Math.min(
-        displayBaseSemiDiameter - 0.02,
-        displayBaseSemiDiameter * biotarCutRatio,
-        Number.isFinite(surfaceLimit) ? surfaceLimit * biotarSurfaceLimitRatio : Infinity,
-        displayBaseSemiDiameter - baseCutbackMm - sagBoost
-      )
-    );
-    const frontDisplayRadius = frontNeedsPatentTrim
-      ? trimmedDisplayRadius(frontSphericalLimit, frontSagBoost)
+    const trimmedDisplayRadius = (config, surfaceLimit, sagBoost) => {
+      const sampleLimit = displayBaseSemiDiameter * config.sampleRadiusRatio;
+      const gapLimit = config.radialGapRatio > 0
+        ? displayBaseSemiDiameter * (1 - config.radialGapRatio)
+        : Infinity;
+      return Math.max(
+        minimumDisplayRadius,
+        Math.min(
+          displayBaseSemiDiameter - 0.02,
+          sampleLimit,
+          gapLimit,
+          Number.isFinite(surfaceLimit) ? surfaceLimit * 0.95 : Infinity,
+          displayBaseSemiDiameter - baseCutbackMm - sagBoost
+        )
+      );
+    };
+    const frontDisplayRadius = frontConcaveTrimConfig
+      ? trimmedDisplayRadius(frontConcaveTrimConfig, frontSphericalLimit, frontSagBoost)
       : Math.min(displayBaseSemiDiameter, frontSphericalLimit);
-    const rearDisplayRadius = rearNeedsPatentTrim
-      ? trimmedDisplayRadius(rearSphericalLimit, rearSagBoost)
+    const rearDisplayRadius = rearConcaveTrimConfig
+      ? trimmedDisplayRadius(rearConcaveTrimConfig, rearSphericalLimit, rearSagBoost)
       : Math.min(displayBaseSemiDiameter, rearSphericalLimit);
     const frontDisplayMm = sampleSurface(frontSurface, frontDisplayRadius);
     const rearDisplayMm = sampleSurface(rearSurface, rearDisplayRadius, true);
@@ -11416,41 +11578,41 @@ const buildPrescriptionLensRenderModel = (position, mapper, result, lens, lensIn
     const frontDisplayBottom = frontDisplayMm[0];
     const rearDisplayTop = rearDisplayMm[0];
     const rearDisplayBottom = rearDisplayMm[rearDisplayMm.length - 1];
-    const frontRelief = frontNeedsPatentTrim
+    const frontRelief = frontConcaveTrimConfig
       ? 0
       : Math.max(renderEdgeTreatment.frontAxialReliefMm || 0, Math.min(0.55, baseCutbackMm * 0.34), 0.06);
-    const rearRelief = rearNeedsPatentTrim
+    const rearRelief = rearConcaveTrimConfig
       ? 0
       : Math.max(renderEdgeTreatment.rearAxialReliefMm || 0, Math.min(0.55, baseCutbackMm * 0.34), 0.06);
-    const patentTrimChamferAxialRun = (displayRadius) => {
-      const radialRun = Math.abs(biotarOuterDisplayRadius - displayRadius);
+    const patentTrimChamferAxialRun = (displayRadius, config) => {
+      const radialRun = Math.abs(displayBaseSemiDiameter - displayRadius);
       const maxChamferRun = Math.max(2.5, Math.min(10, displayBaseSemiDiameter * 0.75));
       if (!Number.isFinite(radialRun) || radialRun <= 0) {
         return Math.max(0.35, Math.min(2.4, displayBaseSemiDiameter * 0.07));
       }
-      return Math.max(0.3, Math.min(maxChamferRun, radialRun * 0.6));
+      return Math.max(0.3, Math.min(maxChamferRun, radialRun * (config?.chamferRatio ?? 0.6)));
     };
-    const frontPatentTrimChamferMm = patentTrimChamferAxialRun(frontDisplayRadius);
-    const rearPatentTrimChamferMm = patentTrimChamferAxialRun(rearDisplayRadius);
+    const frontPatentTrimChamferMm = patentTrimChamferAxialRun(frontDisplayRadius, frontConcaveTrimConfig);
+    const rearPatentTrimChamferMm = patentTrimChamferAxialRun(rearDisplayRadius, rearConcaveTrimConfig);
     const frontShoulderTop = { x: mapper.x(frontDisplayTop.x - frontRelief), y: mapper.y(frontDisplayRadius) };
     const frontOuterTopPoint = {
-      x: frontNeedsPatentTrim ? mapper.x(frontDisplayTop.x - frontPatentTrimChamferMm) : frontShoulderTop.x,
-      y: mapper.y(biotarOuterDisplayRadius)
+      x: frontConcaveTrimConfig ? mapper.x(frontDisplayTop.x - frontPatentTrimChamferMm) : frontShoulderTop.x,
+      y: mapper.y(displayBaseSemiDiameter)
     };
     const rearShoulderTop = { x: mapper.x(rearDisplayTop.x + rearRelief), y: mapper.y(rearDisplayRadius) };
     const rearOuterTopPoint = {
-      x: rearNeedsPatentTrim ? mapper.x(rearDisplayTop.x + rearPatentTrimChamferMm) : rearShoulderTop.x,
-      y: mapper.y(biotarOuterDisplayRadius)
+      x: rearConcaveTrimConfig ? mapper.x(rearDisplayTop.x + rearPatentTrimChamferMm) : rearShoulderTop.x,
+      y: mapper.y(displayBaseSemiDiameter)
     };
     const rearShoulderBottom = { x: mapper.x(rearDisplayBottom.x + rearRelief), y: mapper.y(-rearDisplayRadius) };
     const rearOuterBottomPoint = {
-      x: rearNeedsPatentTrim ? mapper.x(rearDisplayBottom.x + rearPatentTrimChamferMm) : rearShoulderBottom.x,
-      y: mapper.y(-biotarOuterDisplayRadius)
+      x: rearConcaveTrimConfig ? mapper.x(rearDisplayBottom.x + rearPatentTrimChamferMm) : rearShoulderBottom.x,
+      y: mapper.y(-displayBaseSemiDiameter)
     };
     const frontShoulderBottom = { x: mapper.x(frontDisplayBottom.x - frontRelief), y: mapper.y(-frontDisplayRadius) };
     const frontOuterBottomPoint = {
-      x: frontNeedsPatentTrim ? mapper.x(frontDisplayBottom.x - frontPatentTrimChamferMm) : frontShoulderBottom.x,
-      y: mapper.y(-biotarOuterDisplayRadius)
+      x: frontConcaveTrimConfig ? mapper.x(frontDisplayBottom.x - frontPatentTrimChamferMm) : frontShoulderBottom.x,
+      y: mapper.y(-displayBaseSemiDiameter)
     };
     const displayPolygonPoints = [
       ...frontDisplayPoints,
@@ -11465,7 +11627,7 @@ const buildPrescriptionLensRenderModel = (position, mapper, result, lens, lensIn
       frontShoulderBottom
     ];
     const displayPolygonSelfIntersects = polygonSelfIntersects(displayPolygonPoints);
-    if (displayPolygonSelfIntersects && !biotarCentralPointedMember) return null;
+    if (displayPolygonSelfIntersects) return null;
     return {
       polygonPoints: displayPolygonPoints,
       polygonPath: svgPathFromPoints(displayPolygonPoints, true),
@@ -11476,8 +11638,8 @@ const buildPrescriptionLensRenderModel = (position, mapper, result, lens, lensIn
       frontDisplayRadius,
       rearDisplayRadius,
       displayPolygonSelfIntersects,
-      frontTrimmed: frontNeedsPatentTrim,
-      rearTrimmed: rearNeedsPatentTrim
+      frontTrimmed: Boolean(frontConcaveTrimConfig),
+      rearTrimmed: Boolean(rearConcaveTrimConfig)
     };
   };
   const patentIllustrationProfile = buildPatentIllustrationProfile();
@@ -12809,14 +12971,12 @@ const renderIndividualLensSvg = (system, mapper, rayTraceResults, index, options
     && isOpticalRayViewMode(diagramViewMode);
   const renderOpticalFill = opticalLayoutMode && shouldRenderOpticalStyleFill(renderStyle);
   const showOpticalCaps = opticalLayoutMode && shouldRenderOpticalStyleCaps(renderStyle);
-  const preserveBiotarPatentTrim = (
+  const preserveConcaveDisplayTrim = (
     isPatentIllustrationRenderStyle(renderStyle)
-    && isBiotarUs1786916DisplayLayout()
-    && [2, 3].includes(index)
     && model.usePatentIllustrationTrim === true
     && model.patentIllustrationProfile?.polygonPath
   );
-  if (isOpticalRayViewMode(diagramViewMode) && !(model.manufacturable || model.safeInvalidGeometry) && !preserveBiotarPatentTrim) {
+  if (isOpticalRayViewMode(diagramViewMode) && !(model.manufacturable || model.safeInvalidGeometry) && !preserveConcaveDisplayTrim) {
     model = buildPrescriptionLensRenderModel(
       position,
       mapper,
@@ -23249,8 +23409,10 @@ mount.addEventListener("pointerdown", (event) => {
   if (action === "adjust-field") {
     rememberState();
     adjustLensField(button.dataset.id, field, delta);
-    resetGeneratedAnalysisState();
-    scheduleOpticalAnalysisRefresh();
+    if (!isLensDisplayOnlyField(field)) {
+      resetGeneratedAnalysisState();
+      scheduleOpticalAnalysisRefresh();
+    }
   } else {
     adjustPanelField(field, delta);
     if (["apertureDiameter", "apertureStopSurfaceNumber", "apertureStopSurfaceOffsetMm", "apertureStopDistanceFromSensorMm", "apertureStopDistanceFromFrontMm"].includes(field)) {
@@ -23264,8 +23426,10 @@ mount.addEventListener("pointerdown", (event) => {
     holdState.repeatTimer = setInterval(() => {
       if (action === "adjust-field") {
         adjustLensField(button.dataset.id, field, delta);
-        resetGeneratedAnalysisState();
-        scheduleOpticalAnalysisRefresh();
+        if (!isLensDisplayOnlyField(field)) {
+          resetGeneratedAnalysisState();
+          scheduleOpticalAnalysisRefresh();
+        }
       } else {
         adjustPanelField(field, delta);
         if (["apertureDiameter", "apertureStopSurfaceNumber", "apertureStopSurfaceOffsetMm", "apertureStopDistanceFromSensorMm", "apertureStopDistanceFromFrontMm"].includes(field)) {
@@ -23755,10 +23919,28 @@ mount.addEventListener("input", (event) => {
     lens[lensField] = clamp(toNumber(event.target.value) || DEFAULT_BEVEL_ANGLE_DEG, 1, 89);
     lens.manufacturingGeometrySource = "manual";
   }
-  state.patentGeometrySignature = "";
+  if (["frontConcaveTrimSampleRadiusRatio", "rearConcaveTrimSampleRadiusRatio"].includes(lensField)) {
+    const value = toNumber(event.target.value);
+    lens[lensField] = clamp(Number.isFinite(value) ? value : 0.74, 0.2, 1);
+  }
+  if (["frontConcaveTrimRadialGapRatio", "rearConcaveTrimRadialGapRatio"].includes(lensField)) {
+    const value = toNumber(event.target.value);
+    lens[lensField] = clamp(Number.isFinite(value) ? value : 0, 0, 0.7);
+  }
+  if (["frontConcaveTrimChamferRatio", "rearConcaveTrimChamferRatio"].includes(lensField)) {
+    const value = toNumber(event.target.value);
+    lens[lensField] = clamp(Number.isFinite(value) ? value : 0.6, 0, 1.5);
+  }
+  if (["frontConcaveTrimOuterRadiusRatio", "rearConcaveTrimOuterRadiusRatio"].includes(lensField)) {
+    const value = toNumber(event.target.value);
+    lens[lensField] = clamp(Number.isFinite(value) ? value : 1, 0.5, 1.4);
+  }
   state.preset = "custom";
-  resetGeneratedAnalysisState();
-  scheduleOpticalAnalysisRefresh();
+  if (!isLensDisplayOnlyField(lensField)) {
+    state.patentGeometrySignature = "";
+    resetGeneratedAnalysisState();
+    scheduleOpticalAnalysisRefresh();
+  }
   update();
 
   const sameInput = mount.querySelector(`[data-id="${lens.id}"][data-field="${event.target.dataset.field}"]`);
@@ -23978,6 +24160,17 @@ mount.addEventListener("change", (event) => {
         ? event.target.value
         : "estimated";
     }
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "toggle-concave-display-trim") {
+    const lens = state.lenses.find((item) => item.id === event.target.dataset.id);
+    const side = event.target.dataset.side;
+    if (!lens || !["front", "rear"].includes(side)) return;
+    rememberState();
+    lens[`${side}ConcaveTrimEnabled`] = event.target.checked;
+    state.preset = "custom";
     update();
     return;
   }
@@ -24943,8 +25136,10 @@ mount.addEventListener("click", (event) => {
 
     rememberState();
     adjustLensField(button.dataset.id, button.dataset.field, Number(button.dataset.delta));
-    resetGeneratedAnalysisState();
-    scheduleOpticalAnalysisRefresh();
+    if (!isLensDisplayOnlyField(button.dataset.field)) {
+      resetGeneratedAnalysisState();
+      scheduleOpticalAnalysisRefresh();
+    }
   }
 
   if (action === "adjust-panel-field") {

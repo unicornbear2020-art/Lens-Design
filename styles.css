@@ -1455,12 +1455,46 @@ label {
   background: #fbfdfd;
 }
 
+.lens-concave-display-control {
+  grid-column: span 2;
+  border: 1px solid rgba(121, 187, 217, 0.42);
+  border-radius: 8px;
+  padding: 7px;
+  background: rgba(10, 53, 86, 0.72);
+  color: #f8f6f2;
+}
+
 .lens-asphere-control summary,
 .lens-manufacturing-control summary,
 .lens-tolerance-control summary {
   cursor: pointer;
   color: var(--ink);
   font-weight: 900;
+}
+
+.lens-concave-display-control summary {
+  cursor: pointer;
+  color: #ffffff;
+  font-weight: 900;
+}
+
+.lens-concave-display-control .manufacturing-note,
+.lens-concave-display-control .control-label,
+.lens-concave-display-control .control-unit,
+.lens-concave-display-control .check-control {
+  color: rgba(255, 255, 255, 0.86);
+}
+
+.lens-concave-display-control input[type="text"] {
+  color: #f8f6f2;
+  background: rgba(10, 53, 86, 0.92);
+  border-color: rgba(121, 187, 217, 0.42);
+}
+
+.lens-concave-display-control .step-button {
+  color: #f8f6f2;
+  background: rgba(2, 132, 201, 0.28);
+  border-color: rgba(121, 187, 217, 0.38);
 }
 
 .lens-manufacturing-control {
@@ -1488,6 +1522,22 @@ label {
 
 .lens-bevel-grid {
   margin-top: 7px;
+}
+
+.concave-display-trim-side {
+  display: grid;
+  gap: 6px;
+  margin-top: 7px;
+  padding: 6px;
+  border: 1px solid rgba(121, 187, 217, 0.3);
+  border-radius: 6px;
+  background: rgba(0, 31, 84, 0.28);
+}
+
+.concave-display-trim-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
 }
 
 .lens-bevel-group {
@@ -5272,8 +5322,10 @@ select {
   .transmission-line-grid,
   .coating-control,
   .lens-asphere-control,
+  .lens-concave-display-control,
   .lens-tolerance-grid,
   .asphere-grid,
+  .concave-display-trim-grid,
   .tolerance-controls,
   .tolerance-criteria,
   .optimizer-controls,
@@ -6447,6 +6499,7 @@ h1 {
 }
 
 .lens-advanced-sections .lens-asphere-control,
+.lens-advanced-sections .lens-concave-display-control,
 .lens-advanced-sections .lens-manufacturing-control,
 .lens-advanced-sections .lens-tolerance-control,
 .lens-advanced-sections .lens-optimizer-control {
@@ -6986,4 +7039,63 @@ textarea,
 .top-diagram .ray-diagram.render-patentIllustration .real-ray-marginal {
   stroke-width: 0.85;
   opacity: 0.68;
+}
+
+.lens-advanced-sections .lens-asphere-control,
+.lens-advanced-sections .lens-manufacturing-control,
+.lens-advanced-sections .lens-tolerance-control,
+.lens-advanced-sections .lens-optimizer-control {
+  background: rgba(10, 53, 86, 0.86);
+  border-color: rgba(121, 187, 217, 0.34);
+  color: #f8f6f2;
+}
+
+.lens-advanced-sections .lens-asphere-control summary,
+.lens-advanced-sections .lens-manufacturing-control summary,
+.lens-advanced-sections .lens-tolerance-control summary,
+.lens-advanced-sections .lens-optimizer-control summary {
+  color: #ffffff;
+  font-weight: 900;
+}
+
+.lens-advanced-sections .lens-asphere-control summary::marker,
+.lens-advanced-sections .lens-manufacturing-control summary::marker,
+.lens-advanced-sections .lens-tolerance-control summary::marker,
+.lens-advanced-sections .lens-optimizer-control summary::marker {
+  color: #79bbd9;
+}
+
+.lens-advanced-sections .lens-asphere-control .control-label,
+.lens-advanced-sections .lens-manufacturing-control .control-label,
+.lens-advanced-sections .lens-tolerance-control .control-label,
+.lens-advanced-sections .lens-optimizer-control .control-label,
+.lens-advanced-sections .lens-asphere-control .control-unit,
+.lens-advanced-sections .lens-manufacturing-control .control-unit,
+.lens-advanced-sections .lens-tolerance-control .control-unit,
+.lens-advanced-sections .lens-optimizer-control .control-unit,
+.lens-advanced-sections .lens-asphere-control .check-control,
+.lens-advanced-sections .lens-manufacturing-control .check-control,
+.lens-advanced-sections .lens-tolerance-control .check-control,
+.lens-advanced-sections .lens-optimizer-control .check-control,
+.lens-advanced-sections .lens-asphere-control .manufacturing-note,
+.lens-advanced-sections .lens-manufacturing-control .manufacturing-note {
+  color: rgba(248, 246, 242, 0.84);
+}
+
+.lens-advanced-sections .lens-asphere-control input[type="text"],
+.lens-advanced-sections .lens-manufacturing-control input[type="text"],
+.lens-advanced-sections .lens-tolerance-control input[type="text"],
+.lens-advanced-sections .lens-optimizer-control input[type="text"] {
+  color: #ffffff;
+  background: rgba(3, 35, 59, 0.72);
+  border-color: rgba(121, 187, 217, 0.42);
+}
+
+.lens-advanced-sections .lens-asphere-control .step-button,
+.lens-advanced-sections .lens-manufacturing-control .step-button,
+.lens-advanced-sections .lens-tolerance-control .step-button,
+.lens-advanced-sections .lens-optimizer-control .step-button {
+  color: #ffffff;
+  background: rgba(2, 132, 201, 0.34);
+  border-color: rgba(121, 187, 217, 0.42);
 }

@@ -1,7 +1,7 @@
 /* eslint-env worker */
 
 (() => {
-  const GEOMETRIC_MTF_CORE_VERSION = "20260701-visible-mtf-worker-1";
+  const GEOMETRIC_MTF_CORE_VERSION = "20260703-mtf-open-nonblocking-2";
   const GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION = "geometric-lsf-contract-20260630-1";
   const QUALITY_PROFILES = {
     interactive: { baseGrid: 16, label: "Interactive" },
@@ -985,6 +985,7 @@
         status: "engine-mismatch",
         label: "MTF sampling: provisional",
         solverContractVersion: GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION,
+        coreVersion: GEOMETRIC_MTF_CORE_VERSION,
         surfaceSignature: modelSignature,
         diagnostics: {
           warning: "Worker surface signature does not match the active optical model.",
@@ -1000,6 +1001,7 @@
         status: "unsupported-geometry",
         label: "MTF sampling: provisional — worker model does not yet support active asphere/tilt geometry.",
         solverContractVersion: GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION,
+        coreVersion: GEOMETRIC_MTF_CORE_VERSION,
         surfaceSignature: modelSignature,
         diagnostics: {
           unsupportedReason: `Worker model does not yet support ${features.unsupportedFeatures.join(" and ")} geometry.`,
@@ -1016,6 +1018,7 @@
       return {
         status: "invalid",
         solverContractVersion: GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION,
+        coreVersion: GEOMETRIC_MTF_CORE_VERSION,
         surfaceSignature: modelSignature,
         comparisons: [],
         diagnostics: { warning: "No worker surface model supplied." },
@@ -1089,6 +1092,7 @@
       delta40,
       diagnostics: {
         solverContractVersion: GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION,
+        coreVersion: GEOMETRIC_MTF_CORE_VERSION,
         surfaceSignature: modelSignature,
         surfaceFeatureFlags: features,
         qualityDiagnostics,
@@ -1100,6 +1104,7 @@
         elapsedMs: Date.now() - started
       },
       solverContractVersion: GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION,
+      coreVersion: GEOMETRIC_MTF_CORE_VERSION,
       surfaceSignature: modelSignature,
       elapsedMs: Date.now() - started
     };
@@ -1374,6 +1379,7 @@
       status: "valid",
       source: "worker",
       solverContractVersion: GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION,
+      coreVersion: GEOMETRIC_MTF_CORE_VERSION,
       workerVersion: payload.workerVersion || "",
       surfaceSignature: modelSignature,
       surfaceFeatureFlags: features,
@@ -1388,6 +1394,7 @@
         elapsedMs: Date.now() - started,
         surfaceSignature: modelSignature,
         solverContractVersion: GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION,
+        coreVersion: GEOMETRIC_MTF_CORE_VERSION,
         workerEligible: true
       },
       elapsedMs: Date.now() - started

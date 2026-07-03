@@ -1,10 +1,10 @@
 /* eslint-env worker */
 
-const GEOMETRIC_MTF_WORKER_VERSION = "20260701-visible-mtf-worker-1";
+const GEOMETRIC_MTF_WORKER_VERSION = "20260703-mtf-open-nonblocking-2";
 const GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION = "geometric-lsf-contract-20260630-1";
 
 try {
-  importScripts(`geometric-mtf-core.js?v=${GEOMETRIC_MTF_WORKER_VERSION}`);
+  importScripts("geometric-mtf-core.js?v=20260703-mtf-open-nonblocking-2");
 } catch (error) {
   self.geometricMtfCoreLoadError = error;
 }
@@ -17,6 +17,9 @@ self.onmessage = (event) => {
     self.postMessage({
       requestId,
       status: "error",
+      workerVersion: GEOMETRIC_MTF_WORKER_VERSION,
+      coreVersion: self.geometricMtfCore?.GEOMETRIC_MTF_CORE_VERSION || "",
+      solverContractVersion: GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION,
       error: `Unsupported geometric MTF worker task: ${task || "unknown"}`
     });
     return;
@@ -31,6 +34,7 @@ self.onmessage = (event) => {
       requestId,
       status: "error",
       workerVersion: GEOMETRIC_MTF_WORKER_VERSION,
+      coreVersion: self.geometricMtfCore?.GEOMETRIC_MTF_CORE_VERSION || "",
       error: self.geometricMtfCoreLoadError?.message || "geometric-mtf-core.js did not load."
     });
     return;
@@ -42,6 +46,7 @@ self.onmessage = (event) => {
       requestId,
       status: "complete",
       workerVersion: GEOMETRIC_MTF_WORKER_VERSION,
+      coreVersion: self.geometricMtfCore?.GEOMETRIC_MTF_CORE_VERSION || "",
       solverContractVersion: GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION,
       surfaceSignature: result?.surfaceSignature || payload.expectedSurfaceSignature || "",
       result
@@ -51,6 +56,7 @@ self.onmessage = (event) => {
       requestId,
       status: "error",
       workerVersion: GEOMETRIC_MTF_WORKER_VERSION,
+      coreVersion: self.geometricMtfCore?.GEOMETRIC_MTF_CORE_VERSION || "",
       error: error?.message || String(error)
     });
   }

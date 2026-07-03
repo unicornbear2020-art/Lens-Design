@@ -10,7 +10,7 @@ const DIAGRAM_SIZE = {
   height: 480
 };
 
-const ANALYSIS_WORKER_VERSION = "20260701-visible-mtf-worker-1";
+const ANALYSIS_WORKER_VERSION = "20260703-mtf-open-nonblocking-2";
 const GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION = "geometric-lsf-contract-20260630-1";
 const DEFAULT_PRESET_KEY = "zeissBiotar50F14Us1786916Ex2";
 const OLD_MISLEADING_ZEISS_PRESET_KEYS = [
@@ -3117,6 +3117,29 @@ const geometricMtfWorkerClient = new PersistentWorkerClient(
   () => `geometric-mtf-worker.js?v=${ANALYSIS_WORKER_VERSION}`,
   "geometric-mtf"
 );
+
+const geometricMtfCoreVersion = () => globalThis.geometricMtfCore?.GEOMETRIC_MTF_CORE_VERSION || "";
+
+const geometricMtfCoreIntegrity = () => {
+  const coreVersion = geometricMtfCoreVersion();
+  if (coreVersion === ANALYSIS_WORKER_VERSION) {
+    return { ok: true, coreVersion, expectedVersion: ANALYSIS_WORKER_VERSION, warning: "" };
+  }
+  return {
+    ok: false,
+    coreVersion,
+    expectedVersion: ANALYSIS_WORKER_VERSION,
+    warning: `Mixed MTF browser assets detected: app expects ${ANALYSIS_WORKER_VERSION}, but geometric-mtf-core.js is ${coreVersion || "not loaded"}. Refresh the page so app, core and workers use one build.`
+  };
+};
+
+const geometricMtfWorkerStatusLabel = (result = {}) => {
+  if (result.mtfAnalysisCacheHit) return "Cached result";
+  const source = result.mtfAnalysisSource || result.workerEligibility?.reason || "";
+  if (source === "worker" || result.workerParityStatus === "shared-core") return "Worker";
+  if (source.includes("fallback") || result.workerFallbackReason || result.workerEligibility?.supported === false) return "Main-thread fallback";
+  return "MTF pending";
+};
 
 const rememberBoundedCacheValue = (cache, key, value, limit) => {
   if (cache.has(key)) cache.delete(key);
@@ -14849,7 +14872,7 @@ const emptyMtfResolutionResult = (analysis = state.mtfAnalysis?.main || {}) => (
   lsfConvergence: null,
   throughFocusResult: null,
   throughFocusDeferred: true,
-  warnings: analysis.error ? [analysis.error] : []
+  warnings: [analysis.error, geometricMtfCoreIntegrity().warning].filter(Boolean)
 });
 
 const mtfAnalysisStatusLabel = (status) => {
@@ -14864,8 +14887,10 @@ const mtfAnalysisStatusLabel = (status) => {
 const currentMtfMainResultForRender = () => {
   const main = state.mtfAnalysis?.main || {};
   if (main.result && state.mtfAnalysis?.signature === mtfMainAnalysisSignature()) {
+    const coreIntegrity = geometricMtfCoreIntegrity();
     return {
       ...main.result,
+      warnings: coreIntegrity.ok ? (main.result.warnings || []) : [coreIntegrity.warning, ...(main.result.warnings || [])],
       mtfAnalysisStatus: main.status,
       mtfAnalysisDurationMs: main.durationMs,
       mtfAnalysisCacheHit: main.cacheHit,
@@ -19239,6 +19264,15 @@ const geometricMtfSurfaceModelForOptions = (lenses, system, options = {}) => {
 };
 
 const canUseGeometricMtfMainWorker = (lenses, system) => {
+  const coreIntegrity = geometricMtfCoreIntegrity();
+  if (!coreIntegrity.ok) {
+    return {
+      supported: false,
+      reason: "Main-thread fallback — mixed MTF browser assets.",
+      details: coreIntegrity.warning,
+      coreIntegrity
+    };
+  }
   if (normalizeMtfEngine(state.mtfEngine) !== "geometricLsfFft") {
     return {
       supported: false,
@@ -19379,12 +19413,30 @@ const isGeometricMtfMainWorkerResponseCurrent = (response, payload, token, signa
   && state.mtfAnalysis?.signature === signature
   && response.status === "complete"
   && response.workerVersion === ANALYSIS_WORKER_VERSION
+  && response.coreVersion === ANALYSIS_WORKER_VERSION
   && response.solverContractVersion === GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION
+  && (!response.result?.coreVersion || response.result.coreVersion === ANALYSIS_WORKER_VERSION)
+  && (!response.result?.solverContractVersion || response.result.solverContractVersion === GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION)
   && (!payload.expectedSurfaceSignature || !response.surfaceSignature || response.surfaceSignature === payload.expectedSurfaceSignature)
   && (!payload.expectedSurfaceSignature || !response.result?.surfaceSignature || response.result.surfaceSignature === payload.expectedSurfaceSignature)
 );
 
 const calculateGeometricMtfMainPanelInCore = (payload) => {
+  const coreIntegrity = geometricMtfCoreIntegrity();
+  if (!coreIntegrity.ok) {
+    return {
+      status: "engine-mismatch",
+      diagnostics: {
+        warning: coreIntegrity.warning,
+        coreVersion: coreIntegrity.coreVersion,
+        expectedCoreVersion: coreIntegrity.expectedVersion
+      },
+      comparisons: [],
+      activeResults: [],
+      apertureSweepResults: [],
+      warnings: [coreIntegrity.warning]
+    };
+  }
   if (!globalThis.geometricMtfCore?.calculateGeometricLsfMainPanel) {
     throw new Error("geometric-mtf-core.js main-panel solver is unavailable.");
   }
@@ -19417,7 +19469,7 @@ const calculateGeometricMtfMainPanelInWorker = (payload, token, signature) => ne
       }
       if (!isGeometricMtfMainWorkerResponseCurrent(response, payload, token, signature)) {
         if (state.mtfAnalysis) state.mtfAnalysis.cancelledStaleJobs = (state.mtfAnalysis.cancelledStaleJobs || 0) + 1;
-        reject(new Error("Geometric MTF main worker returned stale or mismatched metadata."));
+        reject(new Error(`Geometric MTF main worker returned stale or mismatched metadata. Worker ${response.workerVersion || "unknown"}, core ${response.coreVersion || response.result?.coreVersion || "unknown"}, contract ${response.solverContractVersion || response.result?.solverContractVersion || "unknown"}.`));
         return;
       }
       resolve(response.result);
@@ -19453,6 +19505,8 @@ const finalizeGeometricMtfMainWorkerResult = (result, system, eligibility) => ({
   ].filter((warning, index, list) => warning && list.indexOf(warning) === index),
   workerEligibility: eligibility,
   workerParityStatus: "shared-core",
+  workerVersion: result.workerVersion || ANALYSIS_WORKER_VERSION,
+  workerCoreVersion: result.coreVersion || ANALYSIS_WORKER_VERSION,
   workerSurfaceSignature: result.surfaceSignature || "",
   workerContractVersion: result.solverContractVersion || GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION
 });
@@ -19478,14 +19532,29 @@ const calculateGeometricMtfConvergenceInWorker = (payload, token) => new Promise
     .then((message) => {
       if (message.status === "complete") {
         const result = message.result || {};
-        if (message.workerVersion !== ANALYSIS_WORKER_VERSION) {
+        if (message.workerVersion !== ANALYSIS_WORKER_VERSION || message.coreVersion !== ANALYSIS_WORKER_VERSION) {
           resolve({
             status: "engine-mismatch",
             label: "MTF sampling: provisional",
             diagnostics: {
-              warning: "Geometric MTF worker version mismatch.",
+              warning: "Geometric MTF worker/core version mismatch.",
               workerVersion: message.workerVersion,
-              expectedWorkerVersion: ANALYSIS_WORKER_VERSION
+              coreVersion: message.coreVersion || result.coreVersion || "",
+              expectedWorkerVersion: ANALYSIS_WORKER_VERSION,
+              expectedCoreVersion: ANALYSIS_WORKER_VERSION
+            },
+            comparisons: []
+          });
+          return;
+        }
+        if (result.coreVersion && result.coreVersion !== ANALYSIS_WORKER_VERSION) {
+          resolve({
+            status: "engine-mismatch",
+            label: "MTF sampling: provisional",
+            diagnostics: {
+              warning: "Geometric MTF core version mismatch.",
+              coreVersion: result.coreVersion,
+              expectedCoreVersion: ANALYSIS_WORKER_VERSION
             },
             comparisons: []
           });
@@ -20791,6 +20860,7 @@ const renderSagittalTangentialGeometricMTFPanel = (result) => {
     <section class="st-mtf-panel">
       <div class="panel-heading">
         <h3>${normalizeMtfEngine(state.mtfEngine) === "geometricLsfFft" ? "MTF vs image height — geometric LSF/FFT preview" : "Fast RMS Gaussian preview"}</h3>
+        <span class="badge mtf-worker-status-badge">${escapeHtml(geometricMtfWorkerStatusLabel(result))}</span>
         <span class="badge">Preview</span>
         <span class="badge">Educational</span>
       </div>
@@ -20948,7 +21018,7 @@ const renderSagittalTangentialGeometricMTFPanel = (result) => {
       ${renderSagittalTangentialMTFReadoutTable(result.activeResults)}
       <details class="mtf-diagnostics-details">
         <summary>Geometric preview diagnostics</summary>
-        <p class="diagram-note">Visible chart: ${escapeHtml(mtfAnalysisStatusLabel(result.mtfAnalysisStatus || result.status))} · Main calculation: ${Number.isFinite(result.mtfAnalysisDurationMs) ? `${formatNumber(result.mtfAnalysisDurationMs, 0)} ms` : "--"} · Source: ${escapeHtml(result.mtfAnalysisSource || "queued")} · Cache: ${result.mtfAnalysisCacheHit ? "hit" : "miss"} · Worker eligibility: ${escapeHtml(result.workerEligibility?.supported ? "eligible" : (result.workerEligibility?.details || "not checked"))} · Parity: ${escapeHtml(result.workerParityStatus || "pending")} · Cancelled stale jobs: ${formatNumber(result.cancelledStaleJobs || 0, 0)}</p>
+        <p class="diagram-note">Visible chart: ${escapeHtml(mtfAnalysisStatusLabel(result.mtfAnalysisStatus || result.status))} · Main calculation: ${Number.isFinite(result.mtfAnalysisDurationMs) ? `${formatNumber(result.mtfAnalysisDurationMs, 0)} ms` : "--"} · Source: ${escapeHtml(result.mtfAnalysisSource || "queued")} · Cache: ${result.mtfAnalysisCacheHit ? "hit" : "miss"} · Worker eligibility: ${escapeHtml(result.workerEligibility?.supported ? "eligible" : (result.workerEligibility?.details || "not checked"))} · Parity: ${escapeHtml(result.workerParityStatus || "pending")} · Core: ${escapeHtml(result.workerCoreVersion || geometricMtfCoreVersion() || "unknown")} · Cancelled stale jobs: ${formatNumber(result.cancelledStaleJobs || 0, 0)}</p>
         <p class="diagram-note">Deferred sections: diffraction / hybrid, through-focus, convergence diagnostics.</p>
         <p class="diagram-note">Engine: ${manufacturerFieldData.engine === "geometricLsfFft" ? "Geometric LSF/FFT" : "Fast RMS Gaussian"}.</p>
         <p class="diagram-note">MTF effective pupil samples: ${escapeHtml(String(effectiveMtfPupilSampleCount()))}. Traced rays: ${manufacturerFieldData.samples?.[0]?.result?.totalRayCount ?? "--"}. Energy-carrying pupil samples: ${manufacturerFieldData.samples?.[0]?.result?.totalEnergyRayCount ?? "--"}. Chief reference ray: ${manufacturerFieldData.samples?.[0]?.result?.chiefReferenceRayCount ?? "--"}. Valid energy samples: ${manufacturerFieldData.samples?.[0]?.result?.validEnergyRayCount ?? "--"}. Field samples: ${manufacturerFieldData.fieldSampleCount || manufacturerFieldData.samples?.length || 0}. Focus policy: ${manufacturerFieldData.focusPolicy === "center-refocused" ? "Centre-refocused common plane" : "Fixed Sony sensor plane"}.</p>
@@ -30448,6 +30518,37 @@ const runOpticsSelfCheck = (options = {}) => {
       && frequencyPayload.apertureSweepRequest.options.map((item) => item.key).join(",") === "wideOpen,f4,f8";
   }));
 
+  test("MTF app and geometric core versions match release", () => (
+    ANALYSIS_WORKER_VERSION === "20260703-mtf-open-nonblocking-2"
+      && geometricMtfCoreVersion() === ANALYSIS_WORKER_VERSION
+  ));
+
+  test("visible MTF worker response requires matching core version", () => withTemporaryState(() => {
+    loadPresetIntoState("manual");
+    state.mtfEngine = "geometricLsfFft";
+    state.mtfPlaneMode = "current";
+    state.mtfFieldFocusPolicy = "fixed";
+    state.mtfApertureSweepFocusPolicy = "fixed";
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const payload = buildGeometricMtfMainWorkerPayload(lenses, system);
+    state.mtfAnalysis = { ...state.mtfAnalysis, signature: "sig", requestToken: 4 };
+    const good = {
+      requestId: 4,
+      status: "complete",
+      workerVersion: ANALYSIS_WORKER_VERSION,
+      coreVersion: ANALYSIS_WORKER_VERSION,
+      solverContractVersion: GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION,
+      surfaceSignature: payload.surfaceSignature,
+      result: { surfaceSignature: payload.surfaceSignature, coreVersion: ANALYSIS_WORKER_VERSION }
+    };
+    const mixed = { ...good, coreVersion: "older-core", result: { ...good.result, coreVersion: "older-core" } };
+    const contractMismatch = { ...good, result: { ...good.result, solverContractVersion: "old-contract" } };
+    return isGeometricMtfMainWorkerResponseCurrent(good, payload, 4, "sig") === true
+      && isGeometricMtfMainWorkerResponseCurrent(mixed, payload, 4, "sig") === false
+      && isGeometricMtfMainWorkerResponseCurrent(contractMismatch, payload, 4, "sig") === false;
+  }));
+
   test("visible MTF worker stale responses cannot replace newer output", () => withTemporaryState(() => {
     loadPresetIntoState("manual");
     state.mtfEngine = "geometricLsfFft";
@@ -30467,9 +30568,10 @@ const runOpticsSelfCheck = (options = {}) => {
       requestId: 1,
       status: "complete",
       workerVersion: ANALYSIS_WORKER_VERSION,
+      coreVersion: ANALYSIS_WORKER_VERSION,
       solverContractVersion: GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION,
       surfaceSignature: payload.surfaceSignature,
-      result: { surfaceSignature: payload.surfaceSignature }
+      result: { surfaceSignature: payload.surfaceSignature, coreVersion: ANALYSIS_WORKER_VERSION }
     };
     const staleError = {
       requestId: 1,
@@ -30481,9 +30583,10 @@ const runOpticsSelfCheck = (options = {}) => {
       requestId: 2,
       status: "complete",
       workerVersion: ANALYSIS_WORKER_VERSION,
+      coreVersion: ANALYSIS_WORKER_VERSION,
       solverContractVersion: GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION,
       surfaceSignature: payload.surfaceSignature,
-      result: { surfaceSignature: payload.surfaceSignature }
+      result: { surfaceSignature: payload.surfaceSignature, coreVersion: ANALYSIS_WORKER_VERSION }
     };
     return isGeometricMtfMainWorkerResponseCurrent(staleSuccess, payload, 2, signature) === false
       && isGeometricMtfMainWorkerResponseCurrent(staleError, payload, 2, signature) === false

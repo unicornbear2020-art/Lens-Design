@@ -7323,3 +7323,10 @@ textarea,
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+.mtf-worker-status-badge {
+  background: rgba(255, 183, 3, 0.18);
+  border: 1px solid rgba(255, 183, 3, 0.48);
+  color: #fff4bf;
+  font-weight: 800;
+}

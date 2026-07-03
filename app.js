@@ -387,6 +387,7 @@ const DEFAULT_ANALYSIS_SETTINGS = {
   mtfThroughFocusCenterMode: "current",
   mtfThroughFocusRangeMm: 2,
   mtfBestFocusComparisonRequested: false,
+  systemResultApertureKey: "wideOpen",
   diagramAperturePreviewMode: "followSweep",
   diagramAperturePreviewKey: "wideOpen",
   diagramGeometryDisplayMode: "safe",
@@ -659,7 +660,7 @@ const shouldDefaultConcaveTrimEnabled = (lens, side) => {
   const radius = side === "front" ? numericValue(lens?.r1) : numericValue(lens?.r2);
   return isConcaveLensSurfaceByTypeAndRadius(lens, side)
     && Number.isFinite(radius)
-    && Math.abs(radius) < 20;
+    && Math.abs(radius) < 25;
 };
 
 const defaultConcaveTrimSampleRadiusRatio = (lens, side) => {
@@ -2021,11 +2022,20 @@ const surfacePrescriptionToDerivedLenses = (prescription = {}) => {
       || (frontMediumBefore > 1 && front.nAfter > 1);
     const rearIsCementedToNextGlass = rear.nAfter > 1 || rear.zeroDistanceCementedNAfter > 1;
     const hasFollowingSurface = index + 2 < surfaces.length;
+    const followingSurface = hasFollowingSurface ? surfaces[index + 2] : null;
+    const rearStopSplitAirGap = !rearIsCementedToNextGlass
+      && followingSurface?.isStop === true
+      && Number.isFinite(normalizePatentSurfaceValue(rear.distanceToNext))
+      && Number.isFinite(normalizePatentSurfaceValue(followingSurface.distanceToNext))
+      ? Math.max(0, rear.distanceToNext || 0) + Math.max(0, followingSurface.distanceToNext || 0)
+      : NaN;
     const missingAirGap = !rearIsCementedToNextGlass
       && hasFollowingSurface
       && (rear.distanceToNext === null || rear.distanceToNext === undefined);
     const gapAfter = rearIsCementedToNextGlass
       ? 0
+      : Number.isFinite(rearStopSplitAirGap)
+        ? rearStopSplitAirGap
       : missingAirGap
         ? PATENT_DEFAULT_MISSING_AIR_GAP_MM
         : Math.max(0, rear.distanceToNext || 0);
@@ -4682,7 +4692,7 @@ const isConcaveDisplaySurface = (lens, side) => {
   return isConcaveLensSurfaceByTypeAndRadius(lens, side);
 };
 
-const renderConcaveDisplayTrimSide = (lens, side, label) => {
+const renderConcaveDisplayTrimSide = (lens, side, label, options = {}) => {
   const normalized = normalizeLens(lens);
   const enabledField = `${side}ConcaveTrimEnabled`;
   const sampleField = `${side}ConcaveTrimSampleRadiusRatio`;
@@ -4692,8 +4702,16 @@ const renderConcaveDisplayTrimSide = (lens, side, label) => {
 
   if (!isConcaveDisplaySurface(normalized, side)) return "";
 
+  const inlineClass = options.inline ? " is-inline" : "";
+  const inlineSummary = options.inline ? `<summary>${label}</summary>` : "";
+  const openAttribute = normalized[enabledField] ? " open" : "";
+  const note = options.inline
+    ? `<p class="manufacturing-note">Display only. Optical prescription unchanged.</p>`
+    : "";
+
   return `
-    <div class="concave-display-trim-side">
+    <details class="concave-display-trim-side${inlineClass}"${openAttribute}>
+      ${inlineSummary}
       <label class="check-control">
         <input
           type="checkbox"
@@ -4710,7 +4728,8 @@ const renderConcaveDisplayTrimSide = (lens, side, label) => {
         ${steppableInput(normalized, chamferField, "Chamfer run", FIELD_STEPS[chamferField], "x gap")}
         ${steppableInput(normalized, outerField, "Visual outer radius", FIELD_STEPS[outerField], "xD/2")}
       </div>
-    </div>
+      ${note}
+    </details>
   `;
 };
 
@@ -4728,6 +4747,13 @@ const renderConcaveDisplayTrimControl = (lens) => {
     </details>
   `;
 };
+
+const renderPrescriptionField = (lens, field, label, step, unit, inlineControl = "") => `
+  <div class="lens-prescription-field">
+    ${steppableInput(lens, field, label, step, unit)}
+    ${inlineControl}
+  </div>
+`;
 
 const renderManufacturingEdgeControl = (lens, model) => {
   const normalized = normalizeLens(lens);
@@ -4939,13 +4965,27 @@ const renderLens = (lens, index, result, manufacturingModel = null) => `
     </div>
     <div class="lens-card-body">
       <div class="lens-main-prescription-grid">
-        ${steppableInput(lens, "r1", "Front R1", FIELD_STEPS.r1, "mm")}
-        ${steppableInput(lens, "thickness", "Thickness T", FIELD_STEPS.thickness, "mm")}
-        ${steppableInput(lens, "r2", "Rear R2", FIELD_STEPS.r2, "mm")}
-        ${steppableInput(lens, "diameter", "Diameter D", FIELD_STEPS.diameter, "mm")}
+        ${renderPrescriptionField(
+          lens,
+          "r1",
+          "Front R1",
+          FIELD_STEPS.r1,
+          "mm",
+          renderConcaveDisplayTrimSide(lens, "front", "Front concave side", { inline: true })
+        )}
+        ${renderPrescriptionField(lens, "thickness", "Thickness T", FIELD_STEPS.thickness, "mm")}
+        ${renderPrescriptionField(
+          lens,
+          "r2",
+          "Rear R2",
+          FIELD_STEPS.r2,
+          "mm",
+          renderConcaveDisplayTrimSide(lens, "rear", "Rear concave side", { inline: true })
+        )}
+        ${renderPrescriptionField(lens, "diameter", "Diameter D", FIELD_STEPS.diameter, "mm")}
         ${
           index < state.lenses.length - 1
-            ? steppableInput(lens, "gapAfter", "Air gap", FIELD_STEPS.gapAfter, "mm")
+            ? renderPrescriptionField(lens, "gapAfter", "Air gap", FIELD_STEPS.gapAfter, "mm")
             : `<div class="control gap-placeholder"><span class="control-label">Air gap</span><span class="placeholder-text">Last element</span></div>`
         }
       </div>
@@ -4958,7 +4998,6 @@ const renderLens = (lens, index, result, manufacturingModel = null) => `
       </div>
       <div class="lens-advanced-sections">
         ${renderAsphereControl(lens)}
-        ${renderConcaveDisplayTrimControl(lens)}
         ${renderManufacturingEdgeControl(lens, manufacturingModel)}
         ${renderToleranceOverrideControl(lens)}
         ${renderOptimizerLensControl(lens)}
@@ -11505,30 +11544,31 @@ const buildPrescriptionLensRenderModel = (position, mapper, result, lens, lensIn
   const displayDiameterFromLens = (candidateLens) => {
     if (!candidateLens) return NaN;
     return [
+      candidateLens.clearApertureDiameter,
       candidateLens.diameter,
       candidateLens.visualDiameter,
-      candidateLens.mechanicalDiameter,
-      candidateLens.clearApertureDiameter
+      candidateLens.mechanicalDiameter
     ]
       .map(toNumber)
       .find((value) => Number.isFinite(value) && value > 0);
   };
   const ownDisplaySemiDiameter = Math.max(
-    semiDiameter,
-    clearApertureSemiDiameter,
-    (displayDiameterFromLens(lens) || 0) / 2
+    0.05,
+    (displayDiameterFromLens(lens) || clearApertureSemiDiameter * 2 || semiDiameter * 2) / 2
   );
   const previousDisplaySemiDiameter = (displayDiameterFromLens(state.lenses[lensIndex - 1]) || 0) / 2;
   const nextDisplaySemiDiameter = (displayDiameterFromLens(state.lenses[lensIndex + 1]) || 0) / 2;
-  const cementedLinkedDisplaySemiDiameter = Math.max(
-    ownDisplaySemiDiameter,
+  const cementedLinkedDisplayCandidates = [
     lens.patentFrontSharedCementedSurface === true && Number.isFinite(previousDisplaySemiDiameter)
       ? previousDisplaySemiDiameter
-      : 0,
+      : NaN,
     lens.patentRearCementedToNextGlass === true && Number.isFinite(nextDisplaySemiDiameter)
       ? nextDisplaySemiDiameter
-      : 0
-  );
+      : NaN
+  ].filter(Number.isFinite);
+  const cementedLinkedDisplaySemiDiameter = cementedLinkedDisplayCandidates.length
+    ? Math.max(...cementedLinkedDisplayCandidates)
+    : ownDisplaySemiDiameter;
   const buildPatentIllustrationProfile = () => {
     if (!needsPatentIllustrationTrim) return null;
     const displayBaseSemiDiameter = Math.max(
@@ -22569,12 +22609,110 @@ const renderChromaticReadout = (spectralSystems) => {
   `;
 };
 
+
+const normalizeSystemResultApertureKey = (key) => apertureOptionByKey(key).key;
+
+const calculateSystemResultMtfSummary = (lenses, system) => {
+  const aperture = apertureOptionByKey(state.systemResultApertureKey || "wideOpen");
+  const apertureDiameter = aperture.fNumber
+    ? physicalStopDiameterForRequestedFNumber(lenses, system, aperture.fNumber)
+    : state.apertureDiameter;
+  const fNumber = aperture.fNumber || calculateFNumber(system, apertureDiameter, lenses, {
+    ...rayTraceApertureOptions({ ...state, apertureDiameter }),
+    apertureDiameter
+  });
+  const options = {
+    ...rayTraceApertureOptions({ ...state, apertureDiameter }),
+    apertureDiameter,
+    mtfEngine: "fastRmsGaussian",
+    quality: "interactive",
+    maxFrequencyLpMm: 50,
+    frequencyStepLpMm: 5,
+    rayCount: Math.min(9, Math.max(5, toNumber(state.rayTraceRayCount) || 7)),
+    spectralLineKey: "d",
+    wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+    imagePlaneX: 0
+  };
+  const rows = RAY_TRACE_FIELDS.map((field) => {
+    const result = calculateSagittalTangentialGeometricMTF(lenses, system, {
+      ...options,
+      fieldKey: field.key,
+      fieldName: field.name,
+      fieldAngleDegrees: field.angle
+    });
+    const averageAt = (frequency) => {
+      const sagittal = mtfValueAtFrequency(result.sagittal, frequency);
+      const tangential = mtfValueAtFrequency(result.tangential, frequency);
+      const values = [sagittal, tangential].filter(Number.isFinite);
+      return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : NaN;
+    };
+    return {
+      key: field.key,
+      label: field.shortName || field.name,
+      status: result.status,
+      validRayCount: result.validRayCount,
+      totalRayCount: result.totalRayCount,
+      mtf10: averageAt(10),
+      mtf30: averageAt(30),
+      mtf40: averageAt(40)
+    };
+  });
+  return {
+    aperture,
+    apertureDiameter,
+    fNumber,
+    rows,
+    engineLabel: "Fast RMS Gaussian preview"
+  };
+};
+
+const renderSystemResultMtfSummary = (summary) => {
+  const activeKey = normalizeSystemResultApertureKey(state.systemResultApertureKey || "wideOpen");
+  return `
+    <div class="system-mtf-summary" aria-label="Simplified MTF summary">
+      <div class="system-mtf-heading">
+        <div>
+          <strong>Simplified MTF</strong>
+          <span>${escapeHtml(summary.engineLabel)} · averaged Sag/Tan</span>
+        </div>
+        <span>f/${formatNumber(summary.fNumber, 2)} · stop ${formatNumber(summary.apertureDiameter, 2)} mm</span>
+      </div>
+      <div class="system-mtf-aperture-row" role="tablist" aria-label="System result MTF aperture size">
+        ${MTF_APERTURE_SWEEP_OPTIONS.map((option) => `
+          <button class="system-mtf-aperture-chip ${activeKey === option.key ? "is-active" : ""}" type="button" role="tab" aria-selected="${activeKey === option.key}" data-action="select-system-result-aperture" data-stop="${option.key}">
+            ${escapeHtml(option.label)}
+          </button>
+        `).join("")}
+      </div>
+      <div class="system-mtf-table" role="table" aria-label="Simplified geometric MTF readout">
+        <div class="system-mtf-row system-mtf-head" role="row">
+          <span role="columnheader">Field</span>
+          <span role="columnheader">10</span>
+          <span role="columnheader">30</span>
+          <span role="columnheader">40</span>
+          <span role="columnheader">Rays</span>
+        </div>
+        ${summary.rows.map((row) => `
+          <div class="system-mtf-row" role="row">
+            <span role="rowheader">${escapeHtml(row.label)}</span>
+            <span role="cell">${renderMTFValue(row.mtf10)}</span>
+            <span role="cell">${renderMTFValue(row.mtf30)}</span>
+            <span role="cell">${renderMTFValue(row.mtf40)}</span>
+            <span role="cell">${Number.isFinite(row.validRayCount) ? `${row.validRayCount}/${row.totalRayCount}` : "--"}</span>
+          </div>
+        `).join("")}
+      </div>
+    </div>
+  `;
+};
+
 const renderSystemSummary = (system, spectralSystems, rayTraceResults = []) => {
   const fNumber = calculateFNumber(system);
   const bfdDelta = system.backFocalLength - SONY_E_FLANGE_DISTANCE;
   const stopSurface = (Array.isArray(rayTraceResults) ? rayTraceResults : [rayTraceResults])
     .flatMap((result) => result?.surfaces || [])
     .find((surface) => surface.isStop);
+  const mtfSummary = calculateSystemResultMtfSummary(state.lenses, system);
   return `
     <section class="summary-panel system-result-panel">
       <div class="system-status-row">
@@ -22606,6 +22744,7 @@ const renderSystemSummary = (system, spectralSystems, rayTraceResults = []) => {
         ${metric(tx("diopters"), formatNumber(system.diopters, 3), "D")}
         ${metric("Stop source", escapeHtml(stopSurface?.stopSourceBadge || "Auto"), escapeHtml(stopSurface?.stopSource || "Auto / preset default"))}
       </div>
+      ${renderSystemResultMtfSummary(mtfSummary)}
       ${renderChromaticReadout(spectralSystems)}
     </section>
   `;
@@ -28651,6 +28790,29 @@ const runOpticsSelfCheck = (options = {}) => {
       && Number.isFinite(stop.x)
       && stop.stopSourceBadge === "Verified"
       && String(stop.stopLabel || stop.stopSource || stop.label).includes("surface 6");
+  }));
+
+  test("Gauss US4123144 Example 1 keeps full diaphragm-split L3 to L4 air gap", () => withTemporaryState(() => {
+    setCurrentPrescription(clonePresetPrescription("gaussF2Us4123144Ex1"));
+    const l3 = state.lenses.find((lens) => lens.patentSurfaceStart === 4 && lens.patentSurfaceEnd === 5);
+    const l4 = state.lenses.find((lens) => lens.patentSurfaceStart === 7 && lens.patentSurfaceEnd === 8);
+    const system = calculateSystem(state.lenses);
+    const surfaces = buildSurfaceList(state.lenses, system, {
+      apertureStopMode: "patentStop",
+      apertureDiameter: 20,
+      wavelengthNm: SPECTRAL_LINES.d.wavelengthNm
+    });
+    const surface5 = surfaces.find((surface) => toNumber(surface.patentSurfaceNumber) === 5);
+    const stop = surfaces.find((surface) => surface.isStop && toNumber(surface.patentSurfaceNumber) === 6);
+    const surface7 = surfaces.find((surface) => toNumber(surface.patentSurfaceNumber) === 7);
+    return l3
+      && l4
+      && Math.abs(l3.gapAfter - 22.5) < 1e-9
+      && Number.isFinite(surface5?.x)
+      && Number.isFinite(stop?.x)
+      && Number.isFinite(surface7?.x)
+      && Math.abs((surface5.x - stop.x) - 9.14) < 1e-6
+      && Math.abs((stop.x - surface7.x) - 13.36) < 1e-6;
   }));
 
   test("invalid aperture stop inputs fall back safely", () => {

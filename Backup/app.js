@@ -10,7 +10,7 @@ const DIAGRAM_SIZE = {
   height: 480
 };
 
-const ANALYSIS_WORKER_VERSION = "20260701-visible-mtf-worker-1";
+const ANALYSIS_WORKER_VERSION = "20260703-mtf-open-nonblocking-2";
 const GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION = "geometric-lsf-contract-20260630-1";
 const DEFAULT_PRESET_KEY = "zeissBiotar50F14Us1786916Ex2";
 const OLD_MISLEADING_ZEISS_PRESET_KEYS = [
@@ -1575,76 +1575,6 @@ const PATENT_SURFACE_PRESCRIPTION_DATA = {
       { no: 13, radius: -910.494, distanceToNext: null }
     ]
   },
-  olympusZuikoAutoMacro90F2Us4792219Ex3: {
-    patentDataStatus: "verified",
-    sourcePatent: "US4792219A",
-    example: "Embodiment 3",
-    focalLength: 100,
-    apertureRatio: "1:2.06",
-    fieldAngleDeg: 27,
-    imageFormat: "35 mm SLR / full-frame intended",
-    prescriptionStatus: "verified-patent-production-candidate",
-    normalizationBasis: "Physical millimetres stated in US4792219A Embodiment 3; no focal-length scaling applied.",
-    sourceNotes: [
-      "US4792219A Embodiment 3 is a patent numerical example with f = 100 mm and F/2.06.",
-      "It is a 9-element / 9-group large-aperture macro-telephoto design and a plausible Olympus Zuiko Auto-Macro 90mm f/2 production candidate.",
-      "The exact production numerical prescription has not been confirmed; this preset must not be presented as a production-exact 90 mm formula.",
-      "The patent documents coordinated macro focusing motion, but the current app loads and analyses the infinity prescription only."
-    ].join(" "),
-    note: "US4792219A Embodiment 3 numerical example: f = 100 mm, F/2.06, 27° field. This is loaded as a patent-verified production candidate for Olympus Zuiko Auto-Macro 90mm f/2, not as a confirmed production-exact 90 mm formula. Clear apertures and mechanical diameters are estimated from ray envelopes because the patent table does not state them.",
-    diameterSource: "rayEnvelope",
-    diameterNote: "Patent numerical table does not provide clear apertures or mechanical diameters. The app estimates them from ray envelopes; they are not production dimensions.",
-    numericalAudit: {
-      expectedEflMm: 100,
-      eflToleranceMm: 0.5,
-      status: "pending"
-    },
-    productionMatch: {
-      status: "candidate",
-      lens: "Olympus Zuiko Auto-Macro 90mm f/2",
-      confidence: "probable",
-      note: "Architecture and specification correspondence only; production numerical identity is not confirmed."
-    },
-    macroFocusModel: {
-      status: "documented-patent-motion-not-yet-finite-conjugate-solved",
-      groups: {
-        first: "S1-S6",
-        stop: "S7",
-        second: "S8-S13",
-        third: "S14-S19"
-      },
-      variableAirGapAfterSurface: 13,
-      alpha: 0.370,
-      infinityD13Mm: 0.8888,
-      patentConfigurations: [
-        { magnification: 0, d13Mm: 0.8888 },
-        { magnification: 0.1, d13Mm: 5.2830 },
-        { magnification: 0.5, d13Mm: 20.2770 }
-      ],
-      motionRule: "Groups I + II and the stop advance together toward the object. Group III also advances toward the object at a lower speed. The current app does not expose a macro-focus control because it has no finite-conjugate multi-group motion solver."
-    },
-    surfaces: [
-      { no: 1, radius: 58.7838, distanceToNext: 7.7996, nAfter: 1.69680, vdAfter: 55.52, mediumLabel: "Patent Glass 1" },
-      { no: 2, radius: 1041.9554, distanceToNext: 0.1167 },
-      { no: 3, radius: 42.7287, distanceToNext: 14.0103, nAfter: 1.71300, vdAfter: 53.84, mediumLabel: "Patent Glass 2" },
-      { no: 4, radius: 76.1347, distanceToNext: 1.2110 },
-      { no: 5, radius: 156.5924, distanceToNext: 3.8220, nAfter: 1.74000, vdAfter: 28.29, mediumLabel: "Patent Glass 3" },
-      { no: 6, radius: 27.1363, distanceToNext: 11.8882 },
-      { no: 7, radius: Infinity, distanceToNext: 4.7775, isStop: true, role: "apertureStop", comment: "Patent stop plane" },
-      { no: 8, radius: -42.4410, distanceToNext: 2.1221, nAfter: 1.56732, vdAfter: 42.83, mediumLabel: "Patent Glass 4" },
-      { no: 9, radius: -532.6149, distanceToNext: 2.0220 },
-      { no: 10, radius: -112.3871, distanceToNext: 4.9997, nAfter: 1.74400, vdAfter: 44.73, mediumLabel: "Patent Glass 5" },
-      { no: 11, radius: -63.3587, distanceToNext: 0.1667 },
-      { no: 12, radius: 85.5630, distanceToNext: 4.8331, nAfter: 1.77250, vdAfter: 49.66, mediumLabel: "Patent Glass 6" },
-      { no: 13, radius: -153.0026, distanceToNext: 0.8888 },
-      { no: 14, radius: -1087.1052, distanceToNext: 2.1110, nAfter: 1.51742, vdAfter: 52.41, mediumLabel: "Patent Glass 7" },
-      { no: 15, radius: 53.3337, distanceToNext: 3.6554 },
-      { no: 16, radius: 105.3986, distanceToNext: 3.3331, nAfter: 1.69895, vdAfter: 30.12, mediumLabel: "Patent Glass 8" },
-      { no: 17, radius: 70.6361, distanceToNext: 3.3554 },
-      { no: 18, radius: 70.5272, distanceToNext: 8.4995, nAfter: 1.65160, vdAfter: 58.52, mediumLabel: "Patent Glass 9" },
-      { no: 19, radius: -118.0057, distanceToNext: null }
-    ]
-  },
   pentaxSuperTakumar50F14Jp4028384Ex2: {
     patentDataStatus: "needsManualVerification",
     sourcePatent: "Japanese Patent No. 40-28384",
@@ -1862,16 +1792,6 @@ const PATENT_APERTURE_STOP_SPECS = {
     sourceLabel: "Patent states diaphragm is between the third and fourth components.",
     sourceUrl: "https://patents.google.com/patent/US3738736A/en",
     note: "Patent confirms the component gap but does not provide an exact axial fraction; midpoint remains editable."
-  },
-  olympusZuikoAutoMacro90F2Us4792219Ex3: {
-    kind: "surface",
-    surfaceNumber: 7,
-    sourceLevel: "patent",
-    confidence: "verified",
-    topologyLocked: true,
-    sourceLabel: "US4792219A Embodiment 3 explicitly defines r7 = infinity (stop).",
-    sourceUrl: "https://patents.google.com/patent/US4792219A/en",
-    note: "True plane stop at S7 between S6 and S8. The stop is patent-confirmed and must not fall back to an estimated central air gap."
   }
 };
 
@@ -2411,16 +2331,6 @@ const PATENT_PRESET_DEFINITIONS = [
     brand: "Olympus",
     designType: "Ultra-fast",
     analysisDefaults: TELEPHOTO_ANALYSIS_DEFAULTS
-  }),
-  makePatentPreset({
-    key: "olympusZuikoAutoMacro90F2Us4792219Ex3",
-    name: "Olympus Zuiko Auto-Macro 90mm f/2 — US4792219A Embodiment 3",
-    sourcePatent: "US4792219A",
-    example: "Embodiment 3",
-    brand: "Olympus",
-    designType: "Macro telephoto",
-    analysisDefaults: TELEPHOTO_ANALYSIS_DEFAULTS,
-    presetGroup: "Olympus patent-based prescriptions"
   })
 ];
 
@@ -2452,8 +2362,6 @@ const normalizePrescription = (prescription = {}) => {
       normalizationBasis: prescription.normalizationBasis || null,
       prescriptionStatus: prescription.prescriptionStatus || null,
       sourceNotes: prescription.sourceNotes || null,
-      productionMatch: prescription.productionMatch || null,
-      macroFocusModel: prescription.macroFocusModel || null,
       explicitImagePlaneSurfaceNumber: Number.isFinite(numericValue(prescription.explicitImagePlaneSurfaceNumber))
         ? Math.round(numericValue(prescription.explicitImagePlaneSurfaceNumber))
         : null,
@@ -2556,8 +2464,6 @@ const clonePresetPrescription = (presetKey) => {
       normalizationBasis: preset.normalizationBasis || null,
       prescriptionStatus: preset.prescriptionStatus || null,
       sourceNotes: preset.sourceNotes || null,
-      productionMatch: preset.productionMatch || null,
-      macroFocusModel: preset.macroFocusModel || null,
       explicitImagePlaneSurfaceNumber: preset.explicitImagePlaneSurfaceNumber ?? null,
       imagePlaneSource: preset.imagePlaneSource || null,
       finalSurfaceRole: preset.finalSurfaceRole || null,
@@ -3211,6 +3117,29 @@ const geometricMtfWorkerClient = new PersistentWorkerClient(
   () => `geometric-mtf-worker.js?v=${ANALYSIS_WORKER_VERSION}`,
   "geometric-mtf"
 );
+
+const geometricMtfCoreVersion = () => globalThis.geometricMtfCore?.GEOMETRIC_MTF_CORE_VERSION || "";
+
+const geometricMtfCoreIntegrity = () => {
+  const coreVersion = geometricMtfCoreVersion();
+  if (coreVersion === ANALYSIS_WORKER_VERSION) {
+    return { ok: true, coreVersion, expectedVersion: ANALYSIS_WORKER_VERSION, warning: "" };
+  }
+  return {
+    ok: false,
+    coreVersion,
+    expectedVersion: ANALYSIS_WORKER_VERSION,
+    warning: `Mixed MTF browser assets detected: app expects ${ANALYSIS_WORKER_VERSION}, but geometric-mtf-core.js is ${coreVersion || "not loaded"}. Refresh the page so app, core and workers use one build.`
+  };
+};
+
+const geometricMtfWorkerStatusLabel = (result = {}) => {
+  if (result.mtfAnalysisCacheHit) return "Cached result";
+  const source = result.mtfAnalysisSource || result.workerEligibility?.reason || "";
+  if (source === "worker" || result.workerParityStatus === "shared-core") return "Worker";
+  if (source.includes("fallback") || result.workerFallbackReason || result.workerEligibility?.supported === false) return "Main-thread fallback";
+  return "MTF pending";
+};
 
 const rememberBoundedCacheValue = (cache, key, value, limit) => {
   if (cache.has(key)) cache.delete(key);
@@ -4311,14 +4240,12 @@ const resolvePatentAuditDisplayStatus = (preset, audit) => {
       detail: ""
     };
   }
-  if (audit.eflPass && (audit.bflPass === true || audit.bflPass === null)) {
+  if (audit.eflPass && audit.bflPass) {
     const verified = preset.patentDataStatus === "verified";
     return {
       key: verified ? "verified" : "audit-pass",
       label: verified ? "Verified" : "Audit passes",
-      detail: audit.bflPass === null
-        ? "Patent EFL matches within tolerance; no BFL target is stated for this numerical example."
-        : "EFL and BFL match within tolerance."
+      detail: `EFL and BFL match within tolerance.`
     };
   }
   if (audit.eflPass && audit.bflPass === false) {
@@ -14945,7 +14872,7 @@ const emptyMtfResolutionResult = (analysis = state.mtfAnalysis?.main || {}) => (
   lsfConvergence: null,
   throughFocusResult: null,
   throughFocusDeferred: true,
-  warnings: analysis.error ? [analysis.error] : []
+  warnings: [analysis.error, geometricMtfCoreIntegrity().warning].filter(Boolean)
 });
 
 const mtfAnalysisStatusLabel = (status) => {
@@ -14960,8 +14887,10 @@ const mtfAnalysisStatusLabel = (status) => {
 const currentMtfMainResultForRender = () => {
   const main = state.mtfAnalysis?.main || {};
   if (main.result && state.mtfAnalysis?.signature === mtfMainAnalysisSignature()) {
+    const coreIntegrity = geometricMtfCoreIntegrity();
     return {
       ...main.result,
+      warnings: coreIntegrity.ok ? (main.result.warnings || []) : [coreIntegrity.warning, ...(main.result.warnings || [])],
       mtfAnalysisStatus: main.status,
       mtfAnalysisDurationMs: main.durationMs,
       mtfAnalysisCacheHit: main.cacheHit,
@@ -19335,6 +19264,15 @@ const geometricMtfSurfaceModelForOptions = (lenses, system, options = {}) => {
 };
 
 const canUseGeometricMtfMainWorker = (lenses, system) => {
+  const coreIntegrity = geometricMtfCoreIntegrity();
+  if (!coreIntegrity.ok) {
+    return {
+      supported: false,
+      reason: "Main-thread fallback — mixed MTF browser assets.",
+      details: coreIntegrity.warning,
+      coreIntegrity
+    };
+  }
   if (normalizeMtfEngine(state.mtfEngine) !== "geometricLsfFft") {
     return {
       supported: false,
@@ -19475,12 +19413,30 @@ const isGeometricMtfMainWorkerResponseCurrent = (response, payload, token, signa
   && state.mtfAnalysis?.signature === signature
   && response.status === "complete"
   && response.workerVersion === ANALYSIS_WORKER_VERSION
+  && response.coreVersion === ANALYSIS_WORKER_VERSION
   && response.solverContractVersion === GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION
+  && (!response.result?.coreVersion || response.result.coreVersion === ANALYSIS_WORKER_VERSION)
+  && (!response.result?.solverContractVersion || response.result.solverContractVersion === GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION)
   && (!payload.expectedSurfaceSignature || !response.surfaceSignature || response.surfaceSignature === payload.expectedSurfaceSignature)
   && (!payload.expectedSurfaceSignature || !response.result?.surfaceSignature || response.result.surfaceSignature === payload.expectedSurfaceSignature)
 );
 
 const calculateGeometricMtfMainPanelInCore = (payload) => {
+  const coreIntegrity = geometricMtfCoreIntegrity();
+  if (!coreIntegrity.ok) {
+    return {
+      status: "engine-mismatch",
+      diagnostics: {
+        warning: coreIntegrity.warning,
+        coreVersion: coreIntegrity.coreVersion,
+        expectedCoreVersion: coreIntegrity.expectedVersion
+      },
+      comparisons: [],
+      activeResults: [],
+      apertureSweepResults: [],
+      warnings: [coreIntegrity.warning]
+    };
+  }
   if (!globalThis.geometricMtfCore?.calculateGeometricLsfMainPanel) {
     throw new Error("geometric-mtf-core.js main-panel solver is unavailable.");
   }
@@ -19513,7 +19469,7 @@ const calculateGeometricMtfMainPanelInWorker = (payload, token, signature) => ne
       }
       if (!isGeometricMtfMainWorkerResponseCurrent(response, payload, token, signature)) {
         if (state.mtfAnalysis) state.mtfAnalysis.cancelledStaleJobs = (state.mtfAnalysis.cancelledStaleJobs || 0) + 1;
-        reject(new Error("Geometric MTF main worker returned stale or mismatched metadata."));
+        reject(new Error(`Geometric MTF main worker returned stale or mismatched metadata. Worker ${response.workerVersion || "unknown"}, core ${response.coreVersion || response.result?.coreVersion || "unknown"}, contract ${response.solverContractVersion || response.result?.solverContractVersion || "unknown"}.`));
         return;
       }
       resolve(response.result);
@@ -19549,6 +19505,8 @@ const finalizeGeometricMtfMainWorkerResult = (result, system, eligibility) => ({
   ].filter((warning, index, list) => warning && list.indexOf(warning) === index),
   workerEligibility: eligibility,
   workerParityStatus: "shared-core",
+  workerVersion: result.workerVersion || ANALYSIS_WORKER_VERSION,
+  workerCoreVersion: result.coreVersion || ANALYSIS_WORKER_VERSION,
   workerSurfaceSignature: result.surfaceSignature || "",
   workerContractVersion: result.solverContractVersion || GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION
 });
@@ -19574,14 +19532,29 @@ const calculateGeometricMtfConvergenceInWorker = (payload, token) => new Promise
     .then((message) => {
       if (message.status === "complete") {
         const result = message.result || {};
-        if (message.workerVersion !== ANALYSIS_WORKER_VERSION) {
+        if (message.workerVersion !== ANALYSIS_WORKER_VERSION || message.coreVersion !== ANALYSIS_WORKER_VERSION) {
           resolve({
             status: "engine-mismatch",
             label: "MTF sampling: provisional",
             diagnostics: {
-              warning: "Geometric MTF worker version mismatch.",
+              warning: "Geometric MTF worker/core version mismatch.",
               workerVersion: message.workerVersion,
-              expectedWorkerVersion: ANALYSIS_WORKER_VERSION
+              coreVersion: message.coreVersion || result.coreVersion || "",
+              expectedWorkerVersion: ANALYSIS_WORKER_VERSION,
+              expectedCoreVersion: ANALYSIS_WORKER_VERSION
+            },
+            comparisons: []
+          });
+          return;
+        }
+        if (result.coreVersion && result.coreVersion !== ANALYSIS_WORKER_VERSION) {
+          resolve({
+            status: "engine-mismatch",
+            label: "MTF sampling: provisional",
+            diagnostics: {
+              warning: "Geometric MTF core version mismatch.",
+              coreVersion: result.coreVersion,
+              expectedCoreVersion: ANALYSIS_WORKER_VERSION
             },
             comparisons: []
           });
@@ -20887,6 +20860,7 @@ const renderSagittalTangentialGeometricMTFPanel = (result) => {
     <section class="st-mtf-panel">
       <div class="panel-heading">
         <h3>${normalizeMtfEngine(state.mtfEngine) === "geometricLsfFft" ? "MTF vs image height — geometric LSF/FFT preview" : "Fast RMS Gaussian preview"}</h3>
+        <span class="badge mtf-worker-status-badge">${escapeHtml(geometricMtfWorkerStatusLabel(result))}</span>
         <span class="badge">Preview</span>
         <span class="badge">Educational</span>
       </div>
@@ -21044,7 +21018,7 @@ const renderSagittalTangentialGeometricMTFPanel = (result) => {
       ${renderSagittalTangentialMTFReadoutTable(result.activeResults)}
       <details class="mtf-diagnostics-details">
         <summary>Geometric preview diagnostics</summary>
-        <p class="diagram-note">Visible chart: ${escapeHtml(mtfAnalysisStatusLabel(result.mtfAnalysisStatus || result.status))} · Main calculation: ${Number.isFinite(result.mtfAnalysisDurationMs) ? `${formatNumber(result.mtfAnalysisDurationMs, 0)} ms` : "--"} · Source: ${escapeHtml(result.mtfAnalysisSource || "queued")} · Cache: ${result.mtfAnalysisCacheHit ? "hit" : "miss"} · Worker eligibility: ${escapeHtml(result.workerEligibility?.supported ? "eligible" : (result.workerEligibility?.details || "not checked"))} · Parity: ${escapeHtml(result.workerParityStatus || "pending")} · Cancelled stale jobs: ${formatNumber(result.cancelledStaleJobs || 0, 0)}</p>
+        <p class="diagram-note">Visible chart: ${escapeHtml(mtfAnalysisStatusLabel(result.mtfAnalysisStatus || result.status))} · Main calculation: ${Number.isFinite(result.mtfAnalysisDurationMs) ? `${formatNumber(result.mtfAnalysisDurationMs, 0)} ms` : "--"} · Source: ${escapeHtml(result.mtfAnalysisSource || "queued")} · Cache: ${result.mtfAnalysisCacheHit ? "hit" : "miss"} · Worker eligibility: ${escapeHtml(result.workerEligibility?.supported ? "eligible" : (result.workerEligibility?.details || "not checked"))} · Parity: ${escapeHtml(result.workerParityStatus || "pending")} · Core: ${escapeHtml(result.workerCoreVersion || geometricMtfCoreVersion() || "unknown")} · Cancelled stale jobs: ${formatNumber(result.cancelledStaleJobs || 0, 0)}</p>
         <p class="diagram-note">Deferred sections: diffraction / hybrid, through-focus, convergence diagnostics.</p>
         <p class="diagram-note">Engine: ${manufacturerFieldData.engine === "geometricLsfFft" ? "Geometric LSF/FFT" : "Fast RMS Gaussian"}.</p>
         <p class="diagram-note">MTF effective pupil samples: ${escapeHtml(String(effectiveMtfPupilSampleCount()))}. Traced rays: ${manufacturerFieldData.samples?.[0]?.result?.totalRayCount ?? "--"}. Energy-carrying pupil samples: ${manufacturerFieldData.samples?.[0]?.result?.totalEnergyRayCount ?? "--"}. Chief reference ray: ${manufacturerFieldData.samples?.[0]?.result?.chiefReferenceRayCount ?? "--"}. Valid energy samples: ${manufacturerFieldData.samples?.[0]?.result?.validEnergyRayCount ?? "--"}. Field samples: ${manufacturerFieldData.fieldSampleCount || manufacturerFieldData.samples?.length || 0}. Focus policy: ${manufacturerFieldData.focusPolicy === "center-refocused" ? "Centre-refocused common plane" : "Fixed Sony sensor plane"}.</p>
@@ -21865,19 +21839,12 @@ const renderPatentPrescriptionTable = (preset) => {
   || preset.surfaces
   || []).map(normalizePatentSurface);
   const warnings = validatePatentPreset({ ...preset, surfaces: patentSurfaces });
-  const sourceNote = preset.note || preset.sourceNotes || "";
-  const macroFocus = preset.macroFocusModel || null;
-  const macroFocusNote = macroFocus
-    ? `Patent macro movement documented: d13 = ${formatNumber(macroFocus.infinityD13Mm, 4)} mm at infinity, ${formatNumber(macroFocus.patentConfigurations?.[1]?.d13Mm, 3)} mm at 1:10, and ${formatNumber(macroFocus.patentConfigurations?.[2]?.d13Mm, 3)} mm at 1:2. ${macroFocus.motionRule || ""}`
-    : "";
   return `
     <div class="patent-prescription-block">
       <div class="patent-prescription-heading">
         <strong>Patent source prescription</strong>
         <span>${escapeHtml(preset.sourcePatent || "Unknown source")}${preset.example ? ` · ${escapeHtml(preset.example)}` : ""}</span>
       </div>
-      ${sourceNote ? `<p class="diagram-note patent-source-note">${escapeHtml(sourceNote)}</p>` : ""}
-      ${macroFocusNote ? `<p class="diagram-note patent-macro-note"><strong>Read-only:</strong> ${escapeHtml(macroFocusNote)}</p>` : ""}
       ${renderPatentNumericalAudit(preset, patentSurfaces)}
       ${warnings.length ? `<div class="warning-box">${warnings.map((warning) => `<span>${escapeHtml(warning)}</span>`).join("")}</div>` : ""}
       <div class="surface-table-wrap">
@@ -26144,8 +26111,6 @@ const runOpticsSelfCheck = (options = {}) => {
       && PRESETS.nikonF12Us3738736.surfaces.length === 13
       && PRESETS.olympusF12Us4099843.patentDataStatus === "needsTranscriptionAudit"
       && PRESETS.olympusF12Us4099843.surfaces.length === 13
-      && PRESETS.olympusZuikoAutoMacro90F2Us4792219Ex3.patentDataStatus === "verified"
-      && PRESETS.olympusZuikoAutoMacro90F2Us4792219Ex3.surfaces.length === 19
   ));
 
   test("Historical Voigtlander patent presets preserve source metadata and reference boundaries", () => {
@@ -26335,42 +26300,6 @@ const runOpticsSelfCheck = (options = {}) => {
       && audit.status === "needs-transcription-audit"
       && audit.eflPass === true
       && audit.bflPass === false;
-  });
-
-  test("Olympus Zuiko Auto-Macro 90mm f/2 candidate preserves US4792219 Embodiment 3 geometry", () => {
-    const preset = PRESETS.olympusZuikoAutoMacro90F2Us4792219Ex3;
-    const lenses = prescriptionToLenses(clonePresetPrescription("olympusZuikoAutoMacro90F2Us4792219Ex3"));
-    const audit = calculateDirectPatentSequentialParaxialAudit(preset);
-    const stopSpec = preset.apertureStopSpec;
-    const macro = preset.macroFocusModel;
-    return preset.name.includes("90mm f/2")
-      && preset.note.includes("f = 100 mm")
-      && preset.note.includes("not as a confirmed production-exact 90 mm formula")
-      && preset.surfaces.length === 19
-      && lenses.length === 9
-      && Math.abs(preset.surfaces[5].distanceToNext - 11.8882) < 1e-9
-      && Math.abs(preset.surfaces[10].distanceToNext - 0.1667) < 1e-9
-      && Math.abs(audit.effectiveFocalLength - 100) <= 0.5
-      && audit.status === "pass"
-      && stopSpec?.kind === "surface"
-      && stopSpec.surfaceNumber === 7
-      && stopSpec.sourceLevel === "patent"
-      && stopSpec.confidence === "verified"
-      && stopSpec.topologyLocked === true
-      && macro?.variableAirGapAfterSurface === 13
-      && Math.abs(macro?.infinityD13Mm - 0.8888) < 1e-9
-      && Math.abs(macro?.patentConfigurations?.[2]?.d13Mm - 20.277) < 1e-9;
-  });
-
-  test("US4792219 stop remains a true plane in the surface prescription", () => {
-    const preset = PRESETS.olympusZuikoAutoMacro90F2Us4792219Ex3;
-    const stop = preset.surfaces.find((surface) => surface.no === 7);
-    const derived = prescriptionToLenses(clonePresetPrescription("olympusZuikoAutoMacro90F2Us4792219Ex3"));
-    return stop?.isStop === true
-      && stop.radius === Infinity
-      && Math.abs(stop.distanceToNext - 4.7775) < 1e-9
-      && derived.every((lens) => lens.gapAfter >= 0)
-      && derived[2]?.gapAfter > 0;
   });
 
   test("patent audit display status is derived from direct sequential audit", () => {
@@ -30589,6 +30518,37 @@ const runOpticsSelfCheck = (options = {}) => {
       && frequencyPayload.apertureSweepRequest.options.map((item) => item.key).join(",") === "wideOpen,f4,f8";
   }));
 
+  test("MTF app and geometric core versions match release", () => (
+    ANALYSIS_WORKER_VERSION === "20260703-mtf-open-nonblocking-2"
+      && geometricMtfCoreVersion() === ANALYSIS_WORKER_VERSION
+  ));
+
+  test("visible MTF worker response requires matching core version", () => withTemporaryState(() => {
+    loadPresetIntoState("manual");
+    state.mtfEngine = "geometricLsfFft";
+    state.mtfPlaneMode = "current";
+    state.mtfFieldFocusPolicy = "fixed";
+    state.mtfApertureSweepFocusPolicy = "fixed";
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const payload = buildGeometricMtfMainWorkerPayload(lenses, system);
+    state.mtfAnalysis = { ...state.mtfAnalysis, signature: "sig", requestToken: 4 };
+    const good = {
+      requestId: 4,
+      status: "complete",
+      workerVersion: ANALYSIS_WORKER_VERSION,
+      coreVersion: ANALYSIS_WORKER_VERSION,
+      solverContractVersion: GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION,
+      surfaceSignature: payload.surfaceSignature,
+      result: { surfaceSignature: payload.surfaceSignature, coreVersion: ANALYSIS_WORKER_VERSION }
+    };
+    const mixed = { ...good, coreVersion: "older-core", result: { ...good.result, coreVersion: "older-core" } };
+    const contractMismatch = { ...good, result: { ...good.result, solverContractVersion: "old-contract" } };
+    return isGeometricMtfMainWorkerResponseCurrent(good, payload, 4, "sig") === true
+      && isGeometricMtfMainWorkerResponseCurrent(mixed, payload, 4, "sig") === false
+      && isGeometricMtfMainWorkerResponseCurrent(contractMismatch, payload, 4, "sig") === false;
+  }));
+
   test("visible MTF worker stale responses cannot replace newer output", () => withTemporaryState(() => {
     loadPresetIntoState("manual");
     state.mtfEngine = "geometricLsfFft";
@@ -30608,9 +30568,10 @@ const runOpticsSelfCheck = (options = {}) => {
       requestId: 1,
       status: "complete",
       workerVersion: ANALYSIS_WORKER_VERSION,
+      coreVersion: ANALYSIS_WORKER_VERSION,
       solverContractVersion: GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION,
       surfaceSignature: payload.surfaceSignature,
-      result: { surfaceSignature: payload.surfaceSignature }
+      result: { surfaceSignature: payload.surfaceSignature, coreVersion: ANALYSIS_WORKER_VERSION }
     };
     const staleError = {
       requestId: 1,
@@ -30622,9 +30583,10 @@ const runOpticsSelfCheck = (options = {}) => {
       requestId: 2,
       status: "complete",
       workerVersion: ANALYSIS_WORKER_VERSION,
+      coreVersion: ANALYSIS_WORKER_VERSION,
       solverContractVersion: GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION,
       surfaceSignature: payload.surfaceSignature,
-      result: { surfaceSignature: payload.surfaceSignature }
+      result: { surfaceSignature: payload.surfaceSignature, coreVersion: ANALYSIS_WORKER_VERSION }
     };
     return isGeometricMtfMainWorkerResponseCurrent(staleSuccess, payload, 2, signature) === false
       && isGeometricMtfMainWorkerResponseCurrent(staleError, payload, 2, signature) === false

@@ -1,0 +1,220 @@
+--- /mnt/data/app(87).js	2026-07-03 06:37:14.643485146 +0000
++++ /mnt/data/app(88).js	2026-07-03 06:38:47.909974439 +0000
+@@ -1575,6 +1575,76 @@
+       { no: 13, radius: -910.494, distanceToNext: null }
+     ]
+   },
++  olympusZuikoAutoMacro90F2Us4792219Ex3: {
++    patentDataStatus: "verified",
++    sourcePatent: "US4792219A",
++    example: "Embodiment 3",
++    focalLength: 100,
++    apertureRatio: "1:2.06",
++    fieldAngleDeg: 27,
++    imageFormat: "35 mm SLR / full-frame intended",
++    prescriptionStatus: "verified-patent-production-candidate",
++    normalizationBasis: "Physical millimetres stated in US4792219A Embodiment 3; no focal-length scaling applied.",
++    sourceNotes: [
++      "US4792219A Embodiment 3 is a patent numerical example with f = 100 mm and F/2.06.",
++      "It is a 9-element / 9-group large-aperture macro-telephoto design and a plausible Olympus Zuiko Auto-Macro 90mm f/2 production candidate.",
++      "The exact production numerical prescription has not been confirmed; this preset must not be presented as a production-exact 90 mm formula.",
++      "The patent documents coordinated macro focusing motion, but the current app loads and analyses the infinity prescription only."
++    ].join(" "),
++    note: "US4792219A Embodiment 3 numerical example: f = 100 mm, F/2.06, 27° field. This is loaded as a patent-verified production candidate for Olympus Zuiko Auto-Macro 90mm f/2, not as a confirmed production-exact 90 mm formula. Clear apertures and mechanical diameters are estimated from ray envelopes because the patent table does not state them.",
++    diameterSource: "rayEnvelope",
++    diameterNote: "Patent numerical table does not provide clear apertures or mechanical diameters. The app estimates them from ray envelopes; they are not production dimensions.",
++    numericalAudit: {
++      expectedEflMm: 100,
++      eflToleranceMm: 0.5,
++      status: "pending"
++    },
++    productionMatch: {
++      status: "candidate",
++      lens: "Olympus Zuiko Auto-Macro 90mm f/2",
++      confidence: "probable",
++      note: "Architecture and specification correspondence only; production numerical identity is not confirmed."
++    },
++    macroFocusModel: {
++      status: "documented-patent-motion-not-yet-finite-conjugate-solved",
++      groups: {
++        first: "S1-S6",
++        stop: "S7",
++        second: "S8-S13",
++        third: "S14-S19"
++      },
++      variableAirGapAfterSurface: 13,
++      alpha: 0.370,
++      infinityD13Mm: 0.8888,
++      patentConfigurations: [
++        { magnification: 0, d13Mm: 0.8888 },
++        { magnification: 0.1, d13Mm: 5.2830 },
++        { magnification: 0.5, d13Mm: 20.2770 }
++      ],
++      motionRule: "Groups I + II and the stop advance together toward the object. Group III also advances toward the object at a lower speed. The current app does not expose a macro-focus control because it has no finite-conjugate multi-group motion solver."
++    },
++    surfaces: [
++      { no: 1, radius: 58.7838, distanceToNext: 7.7996, nAfter: 1.69680, vdAfter: 55.52, mediumLabel: "Patent Glass 1" },
++      { no: 2, radius: 1041.9554, distanceToNext: 0.1167 },
++      { no: 3, radius: 42.7287, distanceToNext: 14.0103, nAfter: 1.71300, vdAfter: 53.84, mediumLabel: "Patent Glass 2" },
++      { no: 4, radius: 76.1347, distanceToNext: 1.2110 },
++      { no: 5, radius: 156.5924, distanceToNext: 3.8220, nAfter: 1.74000, vdAfter: 28.29, mediumLabel: "Patent Glass 3" },
++      { no: 6, radius: 27.1363, distanceToNext: 11.8882 },
++      { no: 7, radius: Infinity, distanceToNext: 4.7775, isStop: true, role: "apertureStop", comment: "Patent stop plane" },
++      { no: 8, radius: -42.4410, distanceToNext: 2.1221, nAfter: 1.56732, vdAfter: 42.83, mediumLabel: "Patent Glass 4" },
++      { no: 9, radius: -532.6149, distanceToNext: 2.0220 },
++      { no: 10, radius: -112.3871, distanceToNext: 4.9997, nAfter: 1.74400, vdAfter: 44.73, mediumLabel: "Patent Glass 5" },
++      { no: 11, radius: -63.3587, distanceToNext: 0.1667 },
++      { no: 12, radius: 85.5630, distanceToNext: 4.8331, nAfter: 1.77250, vdAfter: 49.66, mediumLabel: "Patent Glass 6" },
++      { no: 13, radius: -153.0026, distanceToNext: 0.8888 },
++      { no: 14, radius: -1087.1052, distanceToNext: 2.1110, nAfter: 1.51742, vdAfter: 52.41, mediumLabel: "Patent Glass 7" },
++      { no: 15, radius: 53.3337, distanceToNext: 3.6554 },
++      { no: 16, radius: 105.3986, distanceToNext: 3.3331, nAfter: 1.69895, vdAfter: 30.12, mediumLabel: "Patent Glass 8" },
++      { no: 17, radius: 70.6361, distanceToNext: 3.3554 },
++      { no: 18, radius: 70.5272, distanceToNext: 8.4995, nAfter: 1.65160, vdAfter: 58.52, mediumLabel: "Patent Glass 9" },
++      { no: 19, radius: -118.0057, distanceToNext: null }
++    ]
++  },
+   pentaxSuperTakumar50F14Jp4028384Ex2: {
+     patentDataStatus: "needsManualVerification",
+     sourcePatent: "Japanese Patent No. 40-28384",
+@@ -1792,6 +1862,16 @@
+     sourceLabel: "Patent states diaphragm is between the third and fourth components.",
+     sourceUrl: "https://patents.google.com/patent/US3738736A/en",
+     note: "Patent confirms the component gap but does not provide an exact axial fraction; midpoint remains editable."
++  },
++  olympusZuikoAutoMacro90F2Us4792219Ex3: {
++    kind: "surface",
++    surfaceNumber: 7,
++    sourceLevel: "patent",
++    confidence: "verified",
++    topologyLocked: true,
++    sourceLabel: "US4792219A Embodiment 3 explicitly defines r7 = infinity (stop).",
++    sourceUrl: "https://patents.google.com/patent/US4792219A/en",
++    note: "True plane stop at S7 between S6 and S8. The stop is patent-confirmed and must not fall back to an estimated central air gap."
+   }
+ };
+ 
+@@ -2331,6 +2411,16 @@
+     brand: "Olympus",
+     designType: "Ultra-fast",
+     analysisDefaults: TELEPHOTO_ANALYSIS_DEFAULTS
++  }),
++  makePatentPreset({
++    key: "olympusZuikoAutoMacro90F2Us4792219Ex3",
++    name: "Olympus Zuiko Auto-Macro 90mm f/2 — US4792219A Embodiment 3",
++    sourcePatent: "US4792219A",
++    example: "Embodiment 3",
++    brand: "Olympus",
++    designType: "Macro telephoto",
++    analysisDefaults: TELEPHOTO_ANALYSIS_DEFAULTS,
++    presetGroup: "Olympus patent-based prescriptions"
+   })
+ ];
+ 
+@@ -2362,6 +2452,8 @@
+       normalizationBasis: prescription.normalizationBasis || null,
+       prescriptionStatus: prescription.prescriptionStatus || null,
+       sourceNotes: prescription.sourceNotes || null,
++      productionMatch: prescription.productionMatch || null,
++      macroFocusModel: prescription.macroFocusModel || null,
+       explicitImagePlaneSurfaceNumber: Number.isFinite(numericValue(prescription.explicitImagePlaneSurfaceNumber))
+         ? Math.round(numericValue(prescription.explicitImagePlaneSurfaceNumber))
+         : null,
+@@ -2464,6 +2556,8 @@
+       normalizationBasis: preset.normalizationBasis || null,
+       prescriptionStatus: preset.prescriptionStatus || null,
+       sourceNotes: preset.sourceNotes || null,
++      productionMatch: preset.productionMatch || null,
++      macroFocusModel: preset.macroFocusModel || null,
+       explicitImagePlaneSurfaceNumber: preset.explicitImagePlaneSurfaceNumber ?? null,
+       imagePlaneSource: preset.imagePlaneSource || null,
+       finalSurfaceRole: preset.finalSurfaceRole || null,
+@@ -4217,12 +4311,14 @@
+       detail: ""
+     };
+   }
+-  if (audit.eflPass && audit.bflPass) {
++  if (audit.eflPass && (audit.bflPass === true || audit.bflPass === null)) {
+     const verified = preset.patentDataStatus === "verified";
+     return {
+       key: verified ? "verified" : "audit-pass",
+       label: verified ? "Verified" : "Audit passes",
+-      detail: `EFL and BFL match within tolerance.`
++      detail: audit.bflPass === null
++        ? "Patent EFL matches within tolerance; no BFL target is stated for this numerical example."
++        : "EFL and BFL match within tolerance."
+     };
+   }
+   if (audit.eflPass && audit.bflPass === false) {
+@@ -21769,12 +21865,19 @@
+   || preset.surfaces
+   || []).map(normalizePatentSurface);
+   const warnings = validatePatentPreset({ ...preset, surfaces: patentSurfaces });
++  const sourceNote = preset.note || preset.sourceNotes || "";
++  const macroFocus = preset.macroFocusModel || null;
++  const macroFocusNote = macroFocus
++    ? `Patent macro movement documented: d13 = ${formatNumber(macroFocus.infinityD13Mm, 4)} mm at infinity, ${formatNumber(macroFocus.patentConfigurations?.[1]?.d13Mm, 3)} mm at 1:10, and ${formatNumber(macroFocus.patentConfigurations?.[2]?.d13Mm, 3)} mm at 1:2. ${macroFocus.motionRule || ""}`
++    : "";
+   return `
+     <div class="patent-prescription-block">
+       <div class="patent-prescription-heading">
+         <strong>Patent source prescription</strong>
+         <span>${escapeHtml(preset.sourcePatent || "Unknown source")}${preset.example ? ` · ${escapeHtml(preset.example)}` : ""}</span>
+       </div>
++      ${sourceNote ? `<p class="diagram-note patent-source-note">${escapeHtml(sourceNote)}</p>` : ""}
++      ${macroFocusNote ? `<p class="diagram-note patent-macro-note"><strong>Read-only:</strong> ${escapeHtml(macroFocusNote)}</p>` : ""}
+       ${renderPatentNumericalAudit(preset, patentSurfaces)}
+       ${warnings.length ? `<div class="warning-box">${warnings.map((warning) => `<span>${escapeHtml(warning)}</span>`).join("")}</div>` : ""}
+       <div class="surface-table-wrap">
+@@ -26041,6 +26144,8 @@
+       && PRESETS.nikonF12Us3738736.surfaces.length === 13
+       && PRESETS.olympusF12Us4099843.patentDataStatus === "needsTranscriptionAudit"
+       && PRESETS.olympusF12Us4099843.surfaces.length === 13
++      && PRESETS.olympusZuikoAutoMacro90F2Us4792219Ex3.patentDataStatus === "verified"
++      && PRESETS.olympusZuikoAutoMacro90F2Us4792219Ex3.surfaces.length === 19
+   ));
+ 
+   test("Historical Voigtlander patent presets preserve source metadata and reference boundaries", () => {
+@@ -26232,6 +26337,42 @@
+       && audit.bflPass === false;
+   });
+ 
++  test("Olympus Zuiko Auto-Macro 90mm f/2 candidate preserves US4792219 Embodiment 3 geometry", () => {
++    const preset = PRESETS.olympusZuikoAutoMacro90F2Us4792219Ex3;
++    const lenses = prescriptionToLenses(clonePresetPrescription("olympusZuikoAutoMacro90F2Us4792219Ex3"));
++    const audit = calculateDirectPatentSequentialParaxialAudit(preset);
++    const stopSpec = preset.apertureStopSpec;
++    const macro = preset.macroFocusModel;
++    return preset.name.includes("90mm f/2")
++      && preset.note.includes("f = 100 mm")
++      && preset.note.includes("not as a confirmed production-exact 90 mm formula")
++      && preset.surfaces.length === 19
++      && lenses.length === 9
++      && Math.abs(preset.surfaces[5].distanceToNext - 11.8882) < 1e-9
++      && Math.abs(preset.surfaces[10].distanceToNext - 0.1667) < 1e-9
++      && Math.abs(audit.effectiveFocalLength - 100) <= 0.5
++      && audit.status === "pass"
++      && stopSpec?.kind === "surface"
++      && stopSpec.surfaceNumber === 7
++      && stopSpec.sourceLevel === "patent"
++      && stopSpec.confidence === "verified"
++      && stopSpec.topologyLocked === true
++      && macro?.variableAirGapAfterSurface === 13
++      && Math.abs(macro?.infinityD13Mm - 0.8888) < 1e-9
++      && Math.abs(macro?.patentConfigurations?.[2]?.d13Mm - 20.277) < 1e-9;
++  });
++
++  test("US4792219 stop remains a true plane in the surface prescription", () => {
++    const preset = PRESETS.olympusZuikoAutoMacro90F2Us4792219Ex3;
++    const stop = preset.surfaces.find((surface) => surface.no === 7);
++    const derived = prescriptionToLenses(clonePresetPrescription("olympusZuikoAutoMacro90F2Us4792219Ex3"));
++    return stop?.isStop === true
++      && stop.radius === Infinity
++      && Math.abs(stop.distanceToNext - 4.7775) < 1e-9
++      && derived.every((lens) => lens.gapAfter >= 0)
++      && derived[2]?.gapAfter > 0;
++  });
++
+   test("patent audit display status is derived from direct sequential audit", () => {
+     const nikonAudit = calculateDirectPatentSequentialParaxialAudit(PRESETS.nikonF12Us3738736);
+     const olympusAudit = calculateDirectPatentSequentialParaxialAudit(PRESETS.olympusF12Us4099843);

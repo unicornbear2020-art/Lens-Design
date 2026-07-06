@@ -10,7 +10,7 @@ const DIAGRAM_SIZE = {
   height: 480
 };
 
-const ANALYSIS_WORKER_VERSION = "20260701-visible-mtf-worker-1";
+const ANALYSIS_WORKER_VERSION = "20260703-mtf-open-nonblocking-2";
 const GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION = "geometric-lsf-contract-20260630-1";
 const DEFAULT_PRESET_KEY = "zeissBiotar50F14Us1786916Ex2";
 const OLD_MISLEADING_ZEISS_PRESET_KEYS = [
@@ -388,6 +388,7 @@ const DEFAULT_ANALYSIS_SETTINGS = {
   mtfThroughFocusRangeMm: 2,
   mtfBestFocusComparisonRequested: false,
   systemResultApertureKey: "wideOpen",
+  imageMagnificationFocusKey: "auto",
   diagramAperturePreviewMode: "followSweep",
   diagramAperturePreviewKey: "wideOpen",
   diagramGeometryDisplayMode: "safe",
@@ -1576,73 +1577,74 @@ const PATENT_SURFACE_PRESCRIPTION_DATA = {
     ]
   },
   olympusZuikoAutoMacro90F2Us4792219Ex3: {
-    patentDataStatus: "verified",
+    patentDataStatus: "verifiedPatentNumericalTable",
+    sourceType: "patent",
     sourcePatent: "US4792219A",
+    sourceUrl: "https://patents.google.com/patent/US4792219A/en",
     example: "Embodiment 3",
+    sourceExample: "Embodiment 3",
+    brand: "Olympus",
+    designType: "Macro telephoto",
     focalLength: 100,
     apertureRatio: "1:2.06",
     fieldAngleDeg: 27,
     imageFormat: "35 mm SLR / full-frame intended",
-    prescriptionStatus: "verified-patent-production-candidate",
-    normalizationBasis: "Physical millimetres stated in US4792219A Embodiment 3; no focal-length scaling applied.",
-    sourceNotes: [
-      "US4792219A Embodiment 3 is a patent numerical example with f = 100 mm and F/2.06.",
-      "It is a 9-element / 9-group large-aperture macro-telephoto design and a plausible Olympus Zuiko Auto-Macro 90mm f/2 production candidate.",
-      "The exact production numerical prescription has not been confirmed; this preset must not be presented as a production-exact 90 mm formula.",
-      "The patent documents coordinated macro focusing motion, but the current app loads and analyses the infinity prescription only."
-    ].join(" "),
-    note: "US4792219A Embodiment 3 numerical example: f = 100 mm, F/2.06, 27° field. This is loaded as a patent-verified production candidate for Olympus Zuiko Auto-Macro 90mm f/2, not as a confirmed production-exact 90 mm formula. Clear apertures and mechanical diameters are estimated from ray envelopes because the patent table does not state them.",
+    presetGroup: "Olympus patent-based prescriptions",
+    prescriptionStatus: "verifiedPatentNumericalTable",
+    normalizationBasis: "Physical millimetres stated in US4792219 Embodiment 3",
     diameterSource: "rayEnvelope",
-    diameterNote: "Patent numerical table does not provide clear apertures or mechanical diameters. The app estimates them from ray envelopes; they are not production dimensions.",
+    diameterNote: "Patent numerical table does not state clear apertures or mechanical diameters. Use ray-envelope estimates only; do not present them as production dimensions.",
+    sourceNotes: [
+      "US4792219 Embodiment 3 is a 100 mm, F/2.06 patent example.",
+      "It is a 9-element / 9-group macro-telephoto design and is a plausible Olympus Zuiko Auto-Macro 90mm f/2 production candidate, but production numerical identity is not confirmed.",
+      "The patent documents coordinated macro focusing motion; the current app loads and analyses the infinity prescription only."
+    ].join(" "),
+    note: "US4792219 Embodiment 3 is a 100 mm, F/2.06 patent example. It is a 9-element / 9-group macro-telephoto design and is a plausible Olympus Zuiko Auto-Macro 90mm f/2 production candidate, but production numerical identity is not confirmed.",
     numericalAudit: {
       expectedEflMm: 100,
-      eflToleranceMm: 0.5,
-      status: "pending"
-    },
-    productionMatch: {
-      status: "candidate",
-      lens: "Olympus Zuiko Auto-Macro 90mm f/2",
-      confidence: "probable",
-      note: "Architecture and specification correspondence only; production numerical identity is not confirmed."
+      eflToleranceMm: 1.0,
+      expectedFNumber: 2.06,
+      status: "pendingRuntimeValidation"
     },
     macroFocusModel: {
-      status: "documented-patent-motion-not-yet-finite-conjugate-solved",
-      groups: {
-        first: "S1-S6",
-        stop: "S7",
-        second: "S8-S13",
-        third: "S14-S19"
-      },
+      status: "patentMotionDocumented_notYetFiniteConjugateSolved",
       variableAirGapAfterSurface: 13,
       alpha: 0.370,
       infinityD13Mm: 0.8888,
       patentConfigurations: [
-        { magnification: 0, d13Mm: 0.8888 },
+        { magnification: 0, d13Mm: 0.8890 },
         { magnification: 0.1, d13Mm: 5.2830 },
         { magnification: 0.5, d13Mm: 20.2770 }
       ],
-      motionRule: "Groups I + II and the stop advance together toward the object. Group III also advances toward the object at a lower speed. The current app does not expose a macro-focus control because it has no finite-conjugate multi-group motion solver."
+      motionRule: "Groups I + II + stop advance together toward the object. Group III also advances toward the object, but more slowly. alpha = (A12 - A3) / A12."
     },
     surfaces: [
-      { no: 1, radius: 58.7838, distanceToNext: 7.7996, nAfter: 1.69680, vdAfter: 55.52, mediumLabel: "Patent Glass 1" },
-      { no: 2, radius: 1041.9554, distanceToNext: 0.1167 },
-      { no: 3, radius: 42.7287, distanceToNext: 14.0103, nAfter: 1.71300, vdAfter: 53.84, mediumLabel: "Patent Glass 2" },
-      { no: 4, radius: 76.1347, distanceToNext: 1.2110 },
-      { no: 5, radius: 156.5924, distanceToNext: 3.8220, nAfter: 1.74000, vdAfter: 28.29, mediumLabel: "Patent Glass 3" },
-      { no: 6, radius: 27.1363, distanceToNext: 11.8882 },
-      { no: 7, radius: Infinity, distanceToNext: 4.7775, isStop: true, role: "apertureStop", comment: "Patent stop plane" },
-      { no: 8, radius: -42.4410, distanceToNext: 2.1221, nAfter: 1.56732, vdAfter: 42.83, mediumLabel: "Patent Glass 4" },
-      { no: 9, radius: -532.6149, distanceToNext: 2.0220 },
-      { no: 10, radius: -112.3871, distanceToNext: 4.9997, nAfter: 1.74400, vdAfter: 44.73, mediumLabel: "Patent Glass 5" },
-      { no: 11, radius: -63.3587, distanceToNext: 0.1667 },
-      { no: 12, radius: 85.5630, distanceToNext: 4.8331, nAfter: 1.77250, vdAfter: 49.66, mediumLabel: "Patent Glass 6" },
-      { no: 13, radius: -153.0026, distanceToNext: 0.8888 },
-      { no: 14, radius: -1087.1052, distanceToNext: 2.1110, nAfter: 1.51742, vdAfter: 52.41, mediumLabel: "Patent Glass 7" },
-      { no: 15, radius: 53.3337, distanceToNext: 3.6554 },
-      { no: 16, radius: 105.3986, distanceToNext: 3.3331, nAfter: 1.69895, vdAfter: 30.12, mediumLabel: "Patent Glass 8" },
-      { no: 17, radius: 70.6361, distanceToNext: 3.3554 },
-      { no: 18, radius: 70.5272, distanceToNext: 8.4995, nAfter: 1.65160, vdAfter: 58.52, mediumLabel: "Patent Glass 9" },
-      { no: 19, radius: -118.0057, distanceToNext: null }
+      { no: 1, radius: 58.7838, distanceToNext: 7.7996, nAfter: 1.69680, vdAfter: 55.52 },
+      { no: 2, radius: 1041.9554, distanceToNext: 0.1167, nAfter: 1.0 },
+      { no: 3, radius: 42.7287, distanceToNext: 14.0103, nAfter: 1.71300, vdAfter: 53.84 },
+      { no: 4, radius: 76.1347, distanceToNext: 1.2110, nAfter: 1.0 },
+      { no: 5, radius: 156.5924, distanceToNext: 3.8220, nAfter: 1.74000, vdAfter: 28.29 },
+      { no: 6, radius: 27.1363, distanceToNext: 1.8882, nAfter: 1.0 },
+      {
+        no: 7,
+        radius: Infinity,
+        distanceToNext: 4.7775,
+        nAfter: 1.0,
+        isStop: true,
+        sourceLabel: "Patent diaphragm surface"
+      },
+      { no: 8, radius: -42.4410, distanceToNext: 2.1221, nAfter: 1.56732, vdAfter: 42.83 },
+      { no: 9, radius: -532.6149, distanceToNext: 2.0220, nAfter: 1.0 },
+      { no: 10, radius: -112.3871, distanceToNext: 4.9997, nAfter: 1.74400, vdAfter: 44.73 },
+      { no: 11, radius: -63.3587, distanceToNext: 0.1667, nAfter: 1.0 },
+      { no: 12, radius: 85.5630, distanceToNext: 4.8331, nAfter: 1.77250, vdAfter: 49.66 },
+      { no: 13, radius: -153.0026, distanceToNext: 0.8888, nAfter: 1.0 },
+      { no: 14, radius: -1087.1052, distanceToNext: 2.1110, nAfter: 1.51742, vdAfter: 52.41 },
+      { no: 15, radius: 53.3337, distanceToNext: 3.6554, nAfter: 1.0 },
+      { no: 16, radius: 105.3986, distanceToNext: 3.3331, nAfter: 1.69895, vdAfter: 30.12 },
+      { no: 17, radius: 70.6361, distanceToNext: 3.3554, nAfter: 1.0 },
+      { no: 18, radius: 70.5272, distanceToNext: 8.4995, nAfter: 1.65160, vdAfter: 58.52 },
+      { no: 19, radius: -118.0057, distanceToNext: null, nAfter: 1.0 }
     ]
   },
   pentaxSuperTakumar50F14Jp4028384Ex2: {
@@ -1868,10 +1870,9 @@ const PATENT_APERTURE_STOP_SPECS = {
     surfaceNumber: 7,
     sourceLevel: "patent",
     confidence: "verified",
-    topologyLocked: true,
-    sourceLabel: "US4792219A Embodiment 3 explicitly defines r7 = infinity (stop).",
+    sourceLabel: "US4792219 Embodiment 3 explicitly specifies r7 = infinity (stop).",
     sourceUrl: "https://patents.google.com/patent/US4792219A/en",
-    note: "True plane stop at S7 between S6 and S8. The stop is patent-confirmed and must not fall back to an estimated central air gap."
+    note: "The aperture stop is a true plane at surface 7, between S6 and S8. It is not an estimated midpoint."
   }
 };
 
@@ -2414,7 +2415,7 @@ const PATENT_PRESET_DEFINITIONS = [
   }),
   makePatentPreset({
     key: "olympusZuikoAutoMacro90F2Us4792219Ex3",
-    name: "Olympus Zuiko Auto-Macro 90mm f/2 — US4792219A Embodiment 3",
+    name: "Olympus Zuiko Auto-Macro 90mm f/2 — US4792219 Embodiment 3",
     sourcePatent: "US4792219A",
     example: "Embodiment 3",
     brand: "Olympus",
@@ -2445,13 +2446,17 @@ const normalizePrescription = (prescription = {}) => {
       fieldAngleDeg: normalizePatentSurfaceValue(prescription.fieldAngleDeg),
       imageFormat: prescription.imageFormat ?? null,
       sourcePatent: prescription.sourcePatent ?? null,
+      sourceUrl: prescription.sourceUrl || null,
       example: prescription.example ?? null,
+      brand: prescription.brand || null,
+      designType: prescription.designType || null,
       patentDataStatus: prescription.patentDataStatus ?? null,
       presetGroup: prescription.presetGroup || null,
       sourceExample: prescription.sourceExample || null,
       normalizationBasis: prescription.normalizationBasis || null,
       prescriptionStatus: prescription.prescriptionStatus || null,
       sourceNotes: prescription.sourceNotes || null,
+      numericalAudit: prescription.numericalAudit || null,
       productionMatch: prescription.productionMatch || null,
       macroFocusModel: prescription.macroFocusModel || null,
       explicitImagePlaneSurfaceNumber: Number.isFinite(numericValue(prescription.explicitImagePlaneSurfaceNumber))
@@ -2549,7 +2554,10 @@ const clonePresetPrescription = (presetKey) => {
       fieldAngleDeg: preset.fieldAngleDeg,
       imageFormat: preset.imageFormat,
       sourcePatent: preset.sourcePatent,
+      sourceUrl: preset.sourceUrl || null,
       example: preset.example,
+      brand: preset.brand || null,
+      designType: preset.designType || null,
       patentDataStatus: preset.patentDataStatus,
       presetGroup: preset.presetGroup || null,
       sourceExample: preset.sourceExample || null,
@@ -3384,6 +3392,7 @@ const snapshotState = () => ({
   mtfLsfQuality: state.mtfLsfQuality,
   mtfPupilSampleCount: effectiveMtfPupilSampleCount(),
   mtfFieldFocusPolicy: state.mtfFieldFocusPolicy,
+  imageMagnificationFocusKey: state.imageMagnificationFocusKey,
   apertureStopMode: state.apertureStopMode,
   apertureStopIndex: state.apertureStopIndex,
   derivedApertureStopSpec: normalizeApertureStopSpec(state.derivedApertureStopSpec),
@@ -3435,6 +3444,7 @@ const restoreSnapshot = (snapshot) => {
   state.mtfLsfQuality = normalizeGeometricLsfQuality(snapshot.mtfLsfQuality);
   state.mtfPupilSampleCount = effectiveMtfPupilSampleCount(snapshot.mtfPupilSampleCount);
   state.mtfFieldFocusPolicy = snapshot.mtfFieldFocusPolicy === "centerRefocus" ? "centerRefocus" : "fixed";
+  state.imageMagnificationFocusKey = normalizeImageMagnificationFocusKey(snapshot.imageMagnificationFocusKey);
   state.apertureStopMode = snapshot.apertureStopMode || state.apertureStopMode || DEFAULT_ANALYSIS_SETTINGS.apertureStopMode;
   state.apertureStopIndex = snapshot.apertureStopIndex || state.apertureStopIndex || DEFAULT_ANALYSIS_SETTINGS.apertureStopIndex;
   state.derivedApertureStopSpec = normalizeApertureStopSpec(snapshot.derivedApertureStopSpec)
@@ -3558,6 +3568,7 @@ const saveCurrentDesign = ({ preferExisting = false } = {}) => {
       mtfLsfQuality: state.mtfLsfQuality,
       mtfPupilSampleCount: effectiveMtfPupilSampleCount(),
       mtfFieldFocusPolicy: state.mtfFieldFocusPolicy,
+      imageMagnificationFocusKey: state.imageMagnificationFocusKey,
       apertureStopMode: state.apertureStopMode,
       apertureStopIndex: state.apertureStopIndex,
       derivedApertureStopSpec: normalizeApertureStopSpec(state.derivedApertureStopSpec),
@@ -3672,6 +3683,7 @@ const loadDesign = (design) => {
     state.mtfLsfQuality = normalizeGeometricLsfQuality(design.analysisSettings.mtfLsfQuality);
     state.mtfPupilSampleCount = effectiveMtfPupilSampleCount(design.analysisSettings.mtfPupilSampleCount);
     state.mtfFieldFocusPolicy = design.analysisSettings.mtfFieldFocusPolicy === "centerRefocus" ? "centerRefocus" : "fixed";
+    state.imageMagnificationFocusKey = normalizeImageMagnificationFocusKey(design.analysisSettings.imageMagnificationFocusKey);
     state.apertureStopMode = design.analysisSettings.apertureStopMode || state.apertureStopMode || DEFAULT_ANALYSIS_SETTINGS.apertureStopMode;
     state.apertureStopIndex = design.analysisSettings.apertureStopIndex || state.apertureStopIndex || DEFAULT_ANALYSIS_SETTINGS.apertureStopIndex;
     state.derivedApertureStopSpec = normalizeApertureStopSpec(design.analysisSettings.derivedApertureStopSpec)
@@ -3681,6 +3693,25 @@ const loadDesign = (design) => {
   state.designName = design.name;
   state.selectedSavedDesignId = design.id;
   resetGeneratedAnalysisState();
+};
+
+const serializeCurrentAnalysisResults = () => {
+  const system = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
+  const magnification = calculateImageMagnificationAnalysis(system);
+  return {
+    system: {
+      validCount: system.validCount,
+      elementCount: state.lenses.length,
+      effectiveFocalLengthMm: Number.isFinite(system.effectiveFocalLength) ? system.effectiveFocalLength : null,
+      backFocalLengthMm: Number.isFinite(system.backFocalLength) ? system.backFocalLength : null,
+      totalTrackMm: Number.isFinite(system.totalTrack) ? system.totalTrack : null,
+      totalPowerPerMm: Number.isFinite(system.totalPower) ? system.totalPower : null,
+      diopters: Number.isFinite(system.diopters) ? system.diopters : null,
+      principalPlaneObjectMm: Number.isFinite(system.principalPlaneObjectMm) ? system.principalPlaneObjectMm : null,
+      principalPlaneImageMm: Number.isFinite(system.principalPlaneImageMm) ? system.principalPlaneImageMm : null
+    },
+    imageMagnification: serializeImageMagnificationAnalysis(magnification)
+  };
 };
 
 const serializeProjectJson = () => ({
@@ -3709,9 +3740,11 @@ const serializeProjectJson = () => ({
     optimizerAllowStopShiftInAnchorGap: state.optimizerAllowStopShiftInAnchorGap,
     apertureDiameter: state.apertureDiameter,
     rayTraceRayCount: state.rayTraceRayCount,
+    imageMagnificationFocusKey: state.imageMagnificationFocusKey,
     mtfEngine: state.mtfEngine,
     mtfLsfQuality: state.mtfLsfQuality
   },
+  analysisResults: serializeCurrentAnalysisResults(),
   svgReferenceMetadata: getProductionSvgReferenceForPreset(PRESETS[state.preset]) || null
 });
 
@@ -4232,9 +4265,397 @@ const calculateSystem = (lenses, wavelengthNm = SPECTRAL_LINES.d.wavelengthNm) =
     totalTrack,
     effectiveFocalLength,
     backFocalLength,
+    principalPlaneObjectMm: Number.isFinite(effectiveFocalLength) ? effectiveFocalLength * (1 - matrix.d) : NaN,
+    principalPlaneImageMm: Number.isFinite(effectiveFocalLength) ? effectiveFocalLength * (1 - matrix.a) : NaN,
     diopters: Number.isFinite(effectiveFocalLength) ? 1000 / effectiveFocalLength : NaN
   };
 };
+
+const finitePositiveNumber = (value) => {
+  const numeric = toNumber(value);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
+};
+
+const formatDistanceForMacro = (value, decimals = 2) => {
+  if (value === Infinity) return "∞";
+  return Number.isFinite(value) ? formatNumber(value, decimals) : "--";
+};
+
+const formatMacroRatioNumber = (value) => {
+  if (!Number.isFinite(value)) return "--";
+  if (Math.abs(value - Math.round(value)) < 0.005) return `${Math.round(value)}`;
+  if (value < 10) return formatNumber(value, 2);
+  return formatNumber(value, 1);
+};
+
+const formatMagnificationValue = (magnification) => (
+  Number.isFinite(magnification) ? `${formatNumber(magnification, magnification < 0.1 ? 3 : 2)}×` : "--"
+);
+
+const magnificationRatioLabel = (magnification) => {
+  if (!Number.isFinite(magnification)) return "--";
+  if (Math.abs(magnification) < 1e-9) return "1:∞";
+  if (Math.abs(magnification - 1) < 0.005) return "1:1";
+  return magnification < 1
+    ? `1:${formatMacroRatioNumber(1 / magnification)}`
+    : `${formatMacroRatioNumber(magnification)}:1`;
+};
+
+const classifyMagnification = (magnification) => {
+  if (!Number.isFinite(magnification)) return "Finite object data required";
+  if (Math.abs(magnification - 1) < 0.005) return "True Macro";
+  if (magnification < 0.1) return "Normal photography";
+  if (magnification < 0.5) return "Close-up";
+  if (magnification < 1) return "Near Macro";
+  return "High Magnification Macro";
+};
+
+const DISTANCE_FOCUS_OPTIONS = [
+  { key: "distance-5000", label: "5 m", objectDistanceMm: 5000 },
+  { key: "distance-2000", label: "2 m", objectDistanceMm: 2000 },
+  { key: "distance-1000", label: "1 m", objectDistanceMm: 1000 },
+  { key: "distance-500", label: "0.5 m", objectDistanceMm: 500 },
+  { key: "distance-300", label: "0.3 m", objectDistanceMm: 300 }
+];
+
+const RATIO_FOCUS_OPTIONS = [
+  { key: "ratio-0.1", label: "1:10", magnification: 0.1 },
+  { key: "ratio-0.25", label: "1:4", magnification: 0.25 },
+  { key: "ratio-0.5", label: "1:2", magnification: 0.5 },
+  { key: "ratio-1", label: "1:1", magnification: 1 },
+  { key: "ratio-2", label: "2:1", magnification: 2 },
+  { key: "ratio-5", label: "5:1", magnification: 5 }
+];
+
+const normalizeImageMagnificationFocusKey = (key) => {
+  if (key === "auto" || key === "infinity" || key === "minimum") return key;
+  if (DISTANCE_FOCUS_OPTIONS.some((option) => option.key === key)) return key;
+  if (RATIO_FOCUS_OPTIONS.some((option) => option.key === key)) return key;
+  const numericRatio = String(key || "").match(/^ratio-([0-9.]+)$/);
+  return numericRatio && Number.isFinite(toNumber(numericRatio[1])) ? key : DEFAULT_ANALYSIS_SETTINGS.imageMagnificationFocusKey;
+};
+
+const activeMacroFocusModel = (options = {}) => (
+  options.macroFocusModel
+  || state.prescription?.macroFocusModel
+  || PRESETS[state.preset]?.macroFocusModel
+  || null
+);
+
+const macroFocusPatentConfigurations = (macroFocusModel) => (
+  (macroFocusModel?.patentConfigurations || [])
+    .map((config) => ({
+      ...config,
+      magnification: toNumber(config.magnification),
+      d13Mm: toNumber(config.d13Mm)
+    }))
+    .filter((config) => Number.isFinite(config.magnification))
+    .sort((left, right) => left.magnification - right.magnification)
+);
+
+const patentMacroConfigurationForMagnification = (macroFocusModel, magnification) => {
+  const target = toNumber(magnification);
+  if (!Number.isFinite(target)) return null;
+  return macroFocusPatentConfigurations(macroFocusModel)
+    .find((config) => Math.abs(config.magnification - target) < 0.0005) || null;
+};
+
+const imageMagnificationFocusOptions = (macroFocusModel = activeMacroFocusModel()) => {
+  const patentConfigs = macroFocusPatentConfigurations(macroFocusModel);
+  const supportedRatios = new Set(patentConfigs
+    .filter((config) => config.magnification > 0)
+    .map((config) => `ratio-${formatNumber(config.magnification, 6).replace(/0+$/, "").replace(/[.]$/, "")}`));
+  const ratioOptions = RATIO_FOCUS_OPTIONS.map((option) => ({
+    ...option,
+    supportedByMacroModel: !macroFocusModel || supportedRatios.has(option.key)
+  }));
+  patentConfigs
+    .filter((config) => config.magnification > 0)
+    .forEach((config) => {
+      const key = `ratio-${formatNumber(config.magnification, 6).replace(/0+$/, "").replace(/[.]$/, "")}`;
+      if (!ratioOptions.some((option) => option.key === key)) {
+        ratioOptions.push({
+          key,
+          label: magnificationRatioLabel(config.magnification),
+          magnification: config.magnification,
+          supportedByMacroModel: true
+        });
+      }
+    });
+  return [
+    { key: "auto", label: macroFocusModel ? "Auto (Minimum Focus)" : "Auto (Infinity)" },
+    { key: "infinity", label: "Infinity" },
+    ...DISTANCE_FOCUS_OPTIONS,
+    ...(macroFocusModel ? [{ key: "minimum", label: "Minimum Focus" }] : []),
+    ...ratioOptions.sort((left, right) => left.magnification - right.magnification)
+  ];
+};
+
+const selectedImageMagnificationFocusKey = (macroFocusModel = activeMacroFocusModel()) => {
+  const key = normalizeImageMagnificationFocusKey(state.imageMagnificationFocusKey);
+  if (key !== "auto") return key;
+  return macroFocusModel ? "minimum" : "infinity";
+};
+
+const firstOrderObjectDistanceForMagnification = (focalLength, magnification) => {
+  const f = Math.abs(toNumber(focalLength));
+  const m = Math.abs(toNumber(magnification));
+  return f > 0 && m > 0 ? f * (1 + m) / m : NaN;
+};
+
+const firstOrderImageDistanceForMagnification = (focalLength, magnification) => {
+  const f = Math.abs(toNumber(focalLength));
+  const m = Math.abs(toNumber(magnification));
+  return f > 0 && m >= 0 ? f * (1 + m) : NaN;
+};
+
+const cloneLensesForMacroAnalysis = (lenses = state.lenses) => cloneLensesForHistory(lenses);
+
+const applyMacroFocusModelToAnalysisLenses = (lenses, macroFocusModel, focusSelection) => {
+  if (!macroFocusModel || !Number.isFinite(toNumber(focusSelection?.d13Mm))) return { applied: false, lenses };
+  const variableSurface = Math.round(toNumber(macroFocusModel.variableAirGapAfterSurface));
+  if (!Number.isFinite(variableSurface)) return { applied: false, lenses };
+  const targetLens = lenses.find((lens) => Math.round(toNumber(lens.patentSurfaceEnd)) === variableSurface);
+  if (!targetLens) return { applied: false, lenses };
+  targetLens.gapAfter = Math.max(0, toNumber(focusSelection.d13Mm) || 0);
+  return { applied: true, lenses };
+};
+
+const resolveImageMagnificationFocusSelection = (system, options = {}) => {
+  const macroFocusModel = activeMacroFocusModel(options);
+  const focusKey = normalizeImageMagnificationFocusKey(options.focusKey ?? state.imageMagnificationFocusKey);
+  const resolvedKey = focusKey === "auto" ? selectedImageMagnificationFocusKey(macroFocusModel) : focusKey;
+  const infinityConfig = patentMacroConfigurationForMagnification(macroFocusModel, 0);
+
+  if (resolvedKey === "infinity") {
+    return {
+      key: "infinity",
+      label: "Infinity",
+      type: "infinity",
+      magnification: 0,
+      objectDistanceMm: Infinity,
+      d13Mm: infinityConfig?.d13Mm,
+      source: macroFocusModel && infinityConfig ? "Patent macro focus model · infinity configuration" : "Explicit infinity focus"
+    };
+  }
+
+  if (resolvedKey === "minimum" && macroFocusModel) {
+    const positiveConfigs = macroFocusPatentConfigurations(macroFocusModel)
+      .filter((config) => config.magnification > 0);
+    const maximum = positiveConfigs[positiveConfigs.length - 1];
+    if (maximum) {
+      return {
+        key: "minimum",
+        label: `Minimum Focus (${magnificationRatioLabel(maximum.magnification)})`,
+        type: "patentRatio",
+        magnification: maximum.magnification,
+        d13Mm: maximum.d13Mm,
+        source: "Patent macro focus model · nearest documented minimum focus"
+      };
+    }
+  }
+
+  const distanceOption = DISTANCE_FOCUS_OPTIONS.find((option) => option.key === resolvedKey);
+  if (distanceOption) {
+    return {
+      key: distanceOption.key,
+      label: distanceOption.label,
+      type: "distance",
+      objectDistanceMm: distanceOption.objectDistanceMm,
+      source: "Selected finite object distance"
+    };
+  }
+
+  const ratioOption = RATIO_FOCUS_OPTIONS.find((option) => option.key === resolvedKey)
+    || imageMagnificationFocusOptions(macroFocusModel).find((option) => option.key === resolvedKey && Number.isFinite(option.magnification));
+  if (ratioOption) {
+    const patentConfig = patentMacroConfigurationForMagnification(macroFocusModel, ratioOption.magnification);
+    return {
+      key: ratioOption.key,
+      label: ratioOption.label,
+      type: patentConfig ? "patentRatio" : "ratio",
+      magnification: ratioOption.magnification,
+      d13Mm: patentConfig?.d13Mm,
+      source: patentConfig
+        ? "Patent macro focus model · documented magnification"
+        : macroFocusModel
+          ? "First-order target ratio · no matching patent macro-spacing row"
+          : "First-order target ratio"
+    };
+  }
+
+  return resolveImageMagnificationFocusSelection(system, { ...options, focusKey: macroFocusModel ? "minimum" : "infinity" });
+};
+
+const resolveMacroObjectDistance = (options = {}) => {
+  const candidates = [
+    { value: options.objectDistanceMm, source: options.objectDistanceSource || "Object distance" },
+    { value: state.macroObjectDistanceMm, source: "Macro object distance" },
+    { value: state.focusDistanceMm, source: "Focus distance" },
+    { value: state.objectDistanceMm, source: "Object distance" }
+  ];
+  const found = candidates.find((candidate) => finitePositiveNumber(candidate.value) !== null);
+  if (found) {
+    return {
+      value: finitePositiveNumber(found.value),
+      source: found.source,
+      finite: true
+    };
+  }
+  return {
+    value: Infinity,
+    source: "Infinity-focus paraxial model",
+    finite: false
+  };
+};
+
+const calculateParaxialMagnificationFromObjectDistance = (system, objectDistanceMm) => {
+  const focalLength = Math.abs(toNumber(system?.effectiveFocalLength));
+  if (!(focalLength > 0)) {
+    return {
+      status: "invalid",
+      magnification: NaN,
+      imageDistanceMm: NaN,
+      warning: "Effective focal length is not finite."
+    };
+  }
+  if (objectDistanceMm === Infinity) {
+    return {
+      status: "infinity",
+      magnification: 0,
+      imageDistanceMm: focalLength,
+      warning: ""
+    };
+  }
+  if (!(objectDistanceMm > focalLength)) {
+    return {
+      status: "invalid",
+      magnification: NaN,
+      imageDistanceMm: NaN,
+      warning: "Object distance must be greater than focal length for a real first-order image."
+    };
+  }
+  const imageDistanceMm = 1 / ((1 / focalLength) - (1 / objectDistanceMm));
+  const magnification = Math.abs(imageDistanceMm / objectDistanceMm);
+  return {
+    status: Number.isFinite(magnification) ? "finite" : "invalid",
+    magnification,
+    imageDistanceMm,
+    warning: ""
+  };
+};
+
+const calculateImageMagnificationAnalysis = (system, options = {}) => {
+  const objectHeightMm = finitePositiveNumber(options.objectHeightMm ?? state.macroObjectHeightMm);
+  const imageHeightMm = finitePositiveNumber(options.imageHeightMm ?? state.macroImageHeightMm);
+  const measuredMagnification = objectHeightMm && imageHeightMm ? Math.abs(imageHeightMm / objectHeightMm) : NaN;
+  const macroFocusModel = activeMacroFocusModel(options);
+  const baseLenses = options.lenses || state.lenses;
+  const focusSelection = resolveImageMagnificationFocusSelection(system, { ...options, macroFocusModel });
+  const analysisLenses = cloneLensesForMacroAnalysis(baseLenses);
+  const macroApplication = applyMacroFocusModelToAnalysisLenses(analysisLenses, macroFocusModel, focusSelection);
+  const focusedSystem = macroApplication.applied ? calculateSystem(analysisLenses, SPECTRAL_LINES.d.wavelengthNm) : system;
+  const focalLength = Math.abs(toNumber(focusedSystem?.effectiveFocalLength));
+  const ratioMagnification = Number.isFinite(toNumber(focusSelection.magnification))
+    ? Math.abs(toNumber(focusSelection.magnification))
+    : NaN;
+  const objectDistance = Number.isFinite(ratioMagnification)
+    ? {
+      value: ratioMagnification === 0 ? Infinity : firstOrderObjectDistanceForMagnification(focalLength, ratioMagnification),
+      source: focusSelection.source,
+      finite: ratioMagnification > 0
+    }
+    : resolveMacroObjectDistance({
+      ...options,
+      objectDistanceMm: focusSelection.objectDistanceMm,
+      objectDistanceSource: focusSelection.source
+    });
+  const paraxial = Number.isFinite(ratioMagnification)
+    ? {
+      status: ratioMagnification === 0 ? "infinity" : "finite",
+      magnification: ratioMagnification,
+      imageDistanceMm: ratioMagnification === 0
+        ? focalLength
+        : firstOrderImageDistanceForMagnification(focalLength, ratioMagnification),
+      warning: ""
+    }
+    : calculateParaxialMagnificationFromObjectDistance(focusedSystem, objectDistance.value);
+  const rayTrace = traceSystemRealRays(analysisLenses, focusedSystem, {
+    ...rayTraceApertureOptions({ ...state, prescription: options.prescription || state.prescription }),
+    fieldAngleDegrees: 0,
+    fieldKey: "center",
+    fieldName: "On-axis",
+    rayCount: Math.min(9, Math.max(5, toNumber(state.rayTraceRayCount) || 7)),
+    apertureDiameter: state.apertureDiameter
+  });
+  const magnification = Number.isFinite(measuredMagnification) ? measuredMagnification : paraxial.magnification;
+  const source = Number.isFinite(measuredMagnification)
+    ? "Measured image height / object height"
+    : `${focusSelection.source} · first-order recalculation`;
+  const workingDistance = finitePositiveNumber(options.workingDistanceMm ?? state.workingDistanceMm);
+  const firstOrderWorkingDistance = objectDistance.finite
+    && Number.isFinite(objectDistance.value)
+    && Number.isFinite(toNumber(focusedSystem?.principalPlaneObjectMm))
+    ? Math.max(0, objectDistance.value - toNumber(focusedSystem.principalPlaneObjectMm))
+    : NaN;
+  const warning = Number.isFinite(measuredMagnification)
+    ? ""
+    : [
+      paraxial.warning,
+      focusSelection.type === "ratio" && macroFocusModel ? "Selected ratio is not directly documented by the preset macroFocusModel; first-order target ratio is shown without changing patent group motion." : "",
+      !objectDistance.finite && focusSelection.key !== "infinity" ? "Finite object distance is unavailable for this focus selection." : ""
+    ].filter(Boolean).join(" ");
+
+  return {
+    status: Number.isFinite(magnification) ? "valid" : "unavailable",
+    focusKey: focusSelection.key,
+    focusLabel: focusSelection.label,
+    focusType: focusSelection.type,
+    magnification,
+    magnificationRatio: magnificationRatioLabel(magnification),
+    reproductionRatio: magnificationRatioLabel(magnification),
+    classification: classifyMagnification(magnification),
+    objectDistanceMm: objectDistance.value,
+    objectDistanceSource: objectDistance.source,
+    imageDistanceMm: paraxial.imageDistanceMm,
+    workingDistanceMm: workingDistance ?? (Number.isFinite(firstOrderWorkingDistance) ? firstOrderWorkingDistance : objectDistance.finite ? NaN : Infinity),
+    imageHeightMm: imageHeightMm ?? NaN,
+    objectHeightMm: objectHeightMm ?? NaN,
+    paraxialMagnification: paraxial.magnification,
+    effectiveFocalLengthMm: focusedSystem?.effectiveFocalLength,
+    principalPlaneObjectMm: focusedSystem?.principalPlaneObjectMm,
+    principalPlaneImageMm: focusedSystem?.principalPlaneImageMm,
+    internalFocusApplied: macroApplication.applied,
+    macroSpacingSurface: macroFocusModel?.variableAirGapAfterSurface || null,
+    macroSpacingMm: macroApplication.applied ? focusSelection.d13Mm : null,
+    rayTraceValidCount: rayTrace.validRayCount,
+    rayTraceTotalCount: rayTrace.totalRayCount,
+    rayTraceStatus: rayTrace.warning || "",
+    source,
+    warning
+  };
+};
+
+const serializeImageMagnificationAnalysis = (analysis) => ({
+  status: analysis.status,
+  magnification: Number.isFinite(analysis.magnification) ? analysis.magnification : null,
+  magnificationRatio: analysis.magnificationRatio,
+  reproductionRatio: analysis.reproductionRatio,
+  objectDistanceMm: analysis.objectDistanceMm === Infinity ? "Infinity" : (Number.isFinite(analysis.objectDistanceMm) ? analysis.objectDistanceMm : null),
+  imageDistanceMm: Number.isFinite(analysis.imageDistanceMm) ? analysis.imageDistanceMm : null,
+  workingDistanceMm: analysis.workingDistanceMm === Infinity ? "Infinity" : (Number.isFinite(analysis.workingDistanceMm) ? analysis.workingDistanceMm : null),
+  macroClassification: analysis.classification,
+  focusKey: analysis.focusKey,
+  focusLabel: analysis.focusLabel,
+  effectiveFocalLengthMm: Number.isFinite(analysis.effectiveFocalLengthMm) ? analysis.effectiveFocalLengthMm : null,
+  internalFocusApplied: analysis.internalFocusApplied === true,
+  macroSpacingSurface: analysis.macroSpacingSurface ?? null,
+  macroSpacingMm: Number.isFinite(analysis.macroSpacingMm) ? analysis.macroSpacingMm : null,
+  rayTraceValidCount: Number.isFinite(analysis.rayTraceValidCount) ? analysis.rayTraceValidCount : null,
+  rayTraceTotalCount: Number.isFinite(analysis.rayTraceTotalCount) ? analysis.rayTraceTotalCount : null,
+  source: analysis.source,
+  warning: analysis.warning || ""
+});
 
 const calculateDirectPatentSequentialParaxialAudit = (presetOrPrescription, wavelengthNm = SPECTRAL_LINES.d.wavelengthNm) => {
   const prescription = normalizePrescription(presetOrPrescription);
@@ -22909,6 +23330,46 @@ const renderSystemResultMtfSummary = (summary) => {
   `;
 };
 
+const renderImageMagnificationSection = (analysis) => {
+  const macroFocusModel = activeMacroFocusModel();
+  const options = imageMagnificationFocusOptions(macroFocusModel);
+  const selectedKey = normalizeImageMagnificationFocusKey(state.imageMagnificationFocusKey);
+  return `
+    <details class="image-magnification-section" open>
+      <summary>
+        <span>Image Magnification</span>
+        <span class="badge">${escapeHtml(analysis.classification)}</span>
+      </summary>
+      <div class="image-magnification-controls">
+        <label>
+          <span>Focus Distance</span>
+          <select data-action="update-image-magnification-focus" aria-label="Image magnification focus distance">
+            ${options.map((option) => `
+              <option value="${escapeHtml(option.key)}" ${selectedKey === option.key ? "selected" : ""}>
+                ${escapeHtml(option.label)}${option.supportedByMacroModel === false ? " · first-order" : ""}
+              </option>
+            `).join("")}
+          </select>
+        </label>
+        <span class="macro-focus-current">${escapeHtml(analysis.focusLabel || "")}</span>
+      </div>
+      <div class="image-magnification-grid">
+        ${metric("Image Magnification", formatMagnificationValue(analysis.magnification), escapeHtml(analysis.source))}
+        ${metric("Magnification Ratio", escapeHtml(analysis.magnificationRatio), "image : object")}
+        ${metric("Object Distance", formatDistanceForMacro(analysis.objectDistanceMm), analysis.objectDistanceMm === Infinity ? "object at infinity" : "mm from object principal plane")}
+        ${metric("Image Distance", formatDistanceForMacro(analysis.imageDistanceMm), "mm sensor to image principal plane")}
+        ${metric("Working Distance", formatDistanceForMacro(analysis.workingDistanceMm), analysis.workingDistanceMm === Infinity ? "not finite" : "mm")}
+        ${metric("Reproduction Ratio", escapeHtml(analysis.reproductionRatio), "same as magnification ratio")}
+        ${metric("Macro Classification", escapeHtml(analysis.classification), analysis.status === "valid" ? "automatic" : "needs finite data")}
+        ${metric("Focused EFL", formatDistanceForMacro(analysis.effectiveFocalLengthMm), "mm first-order")}
+        ${metric("Ray trace", Number.isFinite(analysis.rayTraceValidCount) ? `${analysis.rayTraceValidCount}/${analysis.rayTraceTotalCount}` : "--", "valid rays")}
+        ${analysis.internalFocusApplied ? metric(`Macro spacing S${analysis.macroSpacingSurface}`, formatDistanceForMacro(analysis.macroSpacingMm, 4), "mm from macroFocusModel") : ""}
+      </div>
+      ${analysis.warning ? `<p class="diagram-note macro-analysis-note">${escapeHtml(analysis.warning)}</p>` : ""}
+    </details>
+  `;
+};
+
 const renderSystemSummary = (system, spectralSystems, rayTraceResults = []) => {
   const fNumber = calculateFNumber(system);
   const bfdDelta = system.backFocalLength - SONY_E_FLANGE_DISTANCE;
@@ -22916,6 +23377,7 @@ const renderSystemSummary = (system, spectralSystems, rayTraceResults = []) => {
     .flatMap((result) => result?.surfaces || [])
     .find((surface) => surface.isStop);
   const mtfSummary = calculateSystemResultMtfSummary(state.lenses, system);
+  const magnificationAnalysis = calculateImageMagnificationAnalysis(system);
   return `
     <section class="summary-panel system-result-panel">
       <div class="system-status-row">
@@ -22952,6 +23414,7 @@ const renderSystemSummary = (system, spectralSystems, rayTraceResults = []) => {
             ${metric(tx("diopters"), formatNumber(system.diopters, 3), "D")}
             ${metric("Stop source", escapeHtml(stopSurface?.stopSourceBadge || "Auto"), escapeHtml(stopSurface?.stopSource || "Auto / preset default"))}
           </div>
+          ${renderImageMagnificationSection(magnificationAnalysis)}
           ${renderChromaticReadout(spectralSystems)}
         </div>
       </div>
@@ -24809,6 +25272,13 @@ mount.addEventListener("change", (event) => {
     return;
   }
 
+  if (event.target.dataset.action === "update-image-magnification-focus") {
+    state.imageMagnificationFocusKey = normalizeImageMagnificationFocusKey(event.target.value);
+    resetGeneratedAnalysisState();
+    update();
+    return;
+  }
+
   if (event.target.dataset.action === "update-mtf-max-frequency") {
     const value = event.target.value === "auto" ? "auto" : toNumber(event.target.value);
     state.mtfMaxFrequencyLpMm = MTF_MAX_FREQUENCY_OPTIONS.includes(value) ? value : "auto";
@@ -25871,6 +26341,46 @@ const runOpticsSelfCheck = (options = {}) => {
       && invalidSag.status.level === "red";
   });
 
+  test("image magnification reports infinity-focus normal photography without guessing finite distance", () => {
+    const lenses = [{ diameter: 40, thickness: 6, refractiveIndex: 1.5168, r1: 80, r2: -80, gapAfter: 0 }];
+    const system = calculateSystem(lenses);
+    const analysis = calculateImageMagnificationAnalysis(system);
+    return analysis.status === "valid"
+      && analysis.objectDistanceMm === Infinity
+      && Math.abs(analysis.magnification) < 1e-12
+      && analysis.magnificationRatio === "1:∞"
+      && analysis.classification === "Normal photography";
+  });
+
+  test("image magnification finite conjugate reaches 1:1 at two focal lengths", () => {
+    const system = { effectiveFocalLength: 100 };
+    const analysis = calculateImageMagnificationAnalysis(system, { objectDistanceMm: 200, objectDistanceSource: "test object distance" });
+    return Math.abs(analysis.magnification - 1) < 1e-9
+      && Math.abs(analysis.imageDistanceMm - 200) < 1e-9
+      && analysis.magnificationRatio === "1:1"
+      && analysis.classification === "True Macro";
+  });
+
+  test("image height over object height has priority when supplied", () => {
+    const system = { effectiveFocalLength: 50 };
+    const analysis = calculateImageMagnificationAnalysis(system, {
+      objectDistanceMm: 500,
+      objectHeightMm: 20,
+      imageHeightMm: 10
+    });
+    return Math.abs(analysis.magnification - 0.5) < 1e-12
+      && analysis.magnificationRatio === "1:2"
+      && analysis.classification === "Near Macro";
+  });
+
+  test("macro classification thresholds match requested ranges", () => (
+    classifyMagnification(0.05) === "Normal photography"
+      && classifyMagnification(0.12) === "Close-up"
+      && classifyMagnification(0.5) === "Near Macro"
+      && classifyMagnification(1) === "True Macro"
+      && classifyMagnification(2) === "High Magnification Macro"
+  ));
+
   test("plano-plano lens does not focus and does not crash", () => {
     const lenses = [{ diameter: 40, thickness: 5, refractiveIndex: 1.5, r1: 0, r2: 0, gapAfter: 0 }];
     const system = calculateSystem(lenses);
@@ -26085,7 +26595,7 @@ const runOpticsSelfCheck = (options = {}) => {
   });
 
   test("active patent entries exist as surface prescriptions", () => (
-    PATENT_PRESET_KEYS.length === 22
+    PATENT_PRESET_KEYS.length === 23
       && !PATENT_PRESET_KEYS.includes("zeissTessar50F28Fr1066698Ex1")
       && !("zeissTessar50F28Fr1066698Ex1" in PRESETS)
       && PATENT_PRESET_KEYS.every((key) => PRESETS[key]?.sourceType === "patent" && PRESETS[key]?.prescriptionType === "surface")
@@ -26144,7 +26654,7 @@ const runOpticsSelfCheck = (options = {}) => {
       && PRESETS.nikonF12Us3738736.surfaces.length === 13
       && PRESETS.olympusF12Us4099843.patentDataStatus === "needsTranscriptionAudit"
       && PRESETS.olympusF12Us4099843.surfaces.length === 13
-      && PRESETS.olympusZuikoAutoMacro90F2Us4792219Ex3.patentDataStatus === "verified"
+      && PRESETS.olympusZuikoAutoMacro90F2Us4792219Ex3.patentDataStatus === "verifiedPatentNumericalTable"
       && PRESETS.olympusZuikoAutoMacro90F2Us4792219Ex3.surfaces.length === 19
   ));
 
@@ -26343,22 +26853,27 @@ const runOpticsSelfCheck = (options = {}) => {
     const audit = calculateDirectPatentSequentialParaxialAudit(preset);
     const stopSpec = preset.apertureStopSpec;
     const macro = preset.macroFocusModel;
-    return preset.name.includes("90mm f/2")
-      && preset.note.includes("f = 100 mm")
-      && preset.note.includes("not as a confirmed production-exact 90 mm formula")
+    return preset.name === "Olympus Zuiko Auto-Macro 90mm f/2 — US4792219 Embodiment 3"
+      && preset.sourceUrl === "https://patents.google.com/patent/US4792219A/en"
+      && preset.patentDataStatus === "verifiedPatentNumericalTable"
+      && preset.prescriptionStatus === "verifiedPatentNumericalTable"
+      && preset.note.includes("100 mm, F/2.06 patent example")
+      && preset.note.includes("production numerical identity is not confirmed")
       && preset.surfaces.length === 19
       && lenses.length === 9
-      && Math.abs(preset.surfaces[5].distanceToNext - 11.8882) < 1e-9
+      && Math.abs(preset.surfaces[5].distanceToNext - 1.8882) < 1e-9
       && Math.abs(preset.surfaces[10].distanceToNext - 0.1667) < 1e-9
-      && Math.abs(audit.effectiveFocalLength - 100) <= 0.5
-      && audit.status === "pass"
+      && Math.abs(preset.surfaces[12].distanceToNext - 0.8888) < 1e-9
+      && Math.abs(audit.effectiveFocalLength - 100) <= 1.0
       && stopSpec?.kind === "surface"
       && stopSpec.surfaceNumber === 7
       && stopSpec.sourceLevel === "patent"
       && stopSpec.confidence === "verified"
-      && stopSpec.topologyLocked === true
+      && !Object.hasOwn(stopSpec, "topologyLocked")
+      && macro?.status === "patentMotionDocumented_notYetFiniteConjugateSolved"
       && macro?.variableAirGapAfterSurface === 13
       && Math.abs(macro?.infinityD13Mm - 0.8888) < 1e-9
+      && Math.abs(macro?.patentConfigurations?.[0]?.d13Mm - 0.8890) < 1e-9
       && Math.abs(macro?.patentConfigurations?.[2]?.d13Mm - 20.277) < 1e-9;
   });
 
@@ -26370,7 +26885,9 @@ const runOpticsSelfCheck = (options = {}) => {
       && stop.radius === Infinity
       && Math.abs(stop.distanceToNext - 4.7775) < 1e-9
       && derived.every((lens) => lens.gapAfter >= 0)
-      && derived[2]?.gapAfter > 0;
+      && derived.every((lens) => lens.patentRearCementedToNextGlass !== true)
+      && derived[2]?.gapAfter > 0
+      && Math.abs(derived[2]?.gapAfter - 1.8882) < 1e-9;
   });
 
   test("patent audit display status is derived from direct sequential audit", () => {

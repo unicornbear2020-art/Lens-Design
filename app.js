@@ -10,7 +10,7 @@ const DIAGRAM_SIZE = {
   height: 480
 };
 
-const ANALYSIS_WORKER_VERSION = "20260706-macro-focus-1";
+const ANALYSIS_WORKER_VERSION = "20260706-macro-focus-2";
 const GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION = "geometric-lsf-contract-20260630-1";
 const DEFAULT_PRESET_KEY = "zeissBiotar50F14Us1786916Ex2";
 const OLD_MISLEADING_ZEISS_PRESET_KEYS = [
@@ -1610,13 +1610,43 @@ const PATENT_SURFACE_PRESCRIPTION_DATA = {
       status: "patentMotionDocumented_notYetFiniteConjugateSolved",
       variableAirGapAfterSurface: 13,
       alpha: 0.370,
+      reconstructionStatus: "relativeD13Only",
+      fixedReference: "sensor",
+      focusGroups: {
+        groupIAndIIAndStop: {
+          surfaceRange: [1, 13],
+          elementRange: [1, 6],
+          includesStopSurface: 7,
+          motion: "advancesTowardObjectTogether"
+        },
+        groupIII: {
+          surfaceRange: [14, 19],
+          elementRange: [7, 9],
+          motion: "advancesTowardObjectMoreSlowly"
+        }
+      },
+      documentedAxialMovementValues: {
+        status: "notTranscribed",
+        note: "The loaded numerical data includes D13 rows for infinity, 1:10 and 1:2. Absolute A12 and A3 group travel values are not present in this preset entry."
+      },
+      d13Relation: {
+        afterSurfaceNumber: 13,
+        meaning: "Variable air spacing between Groups I+II and Group III."
+      },
+      alphaRelation: {
+        alpha: 0.370,
+        formula: "alpha = (A12 - A3) / A12",
+        requiredUnknowns: ["A12", "A3"],
+        status: "unavailableWithoutDocumentedGroupTravels"
+      },
       infinityD13Mm: 0.8888,
       patentConfigurations: [
         { magnification: 0, d13Mm: 0.8890 },
         { magnification: 0.1, d13Mm: 5.2830 },
         { magnification: 0.5, d13Mm: 20.2770 }
       ],
-      motionRule: "Groups I + II + stop advance together toward the object. Group III also advances toward the object, but more slowly. alpha = (A12 - A3) / A12."
+      motionRule: "Groups I + II + stop advance together toward the object. Group III also advances toward the object, but more slowly. alpha = (A12 - A3) / A12.",
+      reconstructionNote: "Relative patent spacing model — full mechanical group translation not yet reconstructed."
     },
     surfaces: [
       { no: 1, radius: 58.7838, distanceToNext: 7.7996, nAfter: 1.69680, vdAfter: 55.52 },
@@ -3696,12 +3726,34 @@ const loadDesign = (design) => {
 };
 
 const serializeCurrentAnalysisResults = () => {
-  const system = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
-  const magnification = calculateImageMagnificationAnalysis(system);
+  const sourceSystem = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
+  const focusedConfiguration = getFocusedAnalysisConfiguration({
+    lenses: state.lenses,
+    system: sourceSystem,
+    prescription: state.prescription,
+    wavelengthNm: SPECTRAL_LINES.d.wavelengthNm
+  });
+  const system = focusedConfiguration.focusedSystem;
+  const magnification = calculateImageMagnificationAnalysis(system, {
+    lenses: focusedConfiguration.focusedLenses,
+    prescription: focusedConfiguration.focusedPrescription,
+    focusedConfiguration
+  });
   return {
+    basePrescription: {
+      lensCount: state.lenses.length,
+      lenses: serializeDesign()
+    },
+    focusedPrescription: {
+      internalFocusApplied: focusedConfiguration.internalFocusApplied === true,
+      lensCount: focusedConfiguration.focusedLenses.length,
+      lenses: focusedConfiguration.focusedLenses.map((lens) => ({
+        ...lens
+      }))
+    },
     system: {
       validCount: system.validCount,
-      elementCount: state.lenses.length,
+      elementCount: focusedConfiguration.focusedLenses.length,
       effectiveFocalLengthMm: Number.isFinite(system.effectiveFocalLength) ? system.effectiveFocalLength : null,
       backFocalLengthMm: Number.isFinite(system.backFocalLength) ? system.backFocalLength : null,
       totalTrackMm: Number.isFinite(system.totalTrack) ? system.totalTrack : null,
@@ -3709,6 +3761,23 @@ const serializeCurrentAnalysisResults = () => {
       diopters: Number.isFinite(system.diopters) ? system.diopters : null,
       principalPlaneObjectMm: Number.isFinite(system.principalPlaneObjectMm) ? system.principalPlaneObjectMm : null,
       principalPlaneImageMm: Number.isFinite(system.principalPlaneImageMm) ? system.principalPlaneImageMm : null
+    },
+    macroFocus: {
+      focusKey: focusedConfiguration.macroFocusSelection?.key || null,
+      focusLabel: focusedConfiguration.macroFocusSelection?.label || "",
+      status: focusedConfiguration.finiteConjugateStatus,
+      patentConfiguration: focusedConfiguration.macroFocusSelection?.isPatentConfiguration === true,
+      theoreticalOnly: focusedConfiguration.macroFocusSelection?.unsupportedByMacroModel === true,
+      internalFocusApplied: focusedConfiguration.internalFocusApplied === true,
+      d13Mm: Number.isFinite(toNumber(focusedConfiguration.macroFocusSelection?.d13Mm))
+        ? toNumber(focusedConfiguration.macroFocusSelection.d13Mm)
+        : null,
+      variableAirGapAfterSurface: focusedConfiguration.macroApplication?.variableAirGapAfterSurface ?? focusedConfiguration.macroFocusModel?.variableAirGapAfterSurface ?? null,
+      groupMotionStatus: focusedConfiguration.macroGroupMotionStatus || null,
+      groupMotionLabel: focusedConfiguration.macroGroupMotionLabel || "",
+      groupMotionApplied: focusedConfiguration.macroGroupMotionApplied === true,
+      relativeSpacingOnly: focusedConfiguration.macroRelativeSpacingOnly === true,
+      finiteConjugateValidation: magnification.finiteConjugateValidation || null
     },
     imageMagnification: serializeImageMagnificationAnalysis(magnification)
   };
@@ -4472,14 +4541,83 @@ const firstOrderImageDistanceForMagnification = (focalLength, magnification) => 
 
 const cloneLensesForMacroAnalysis = (lenses = state.lenses) => cloneLensesForHistory(lenses);
 
+const macroFocusGroupMotionStatus = (macroFocusModel) => {
+  if (!macroFocusModel) {
+    return {
+      status: "none",
+      label: "No macro group-motion model",
+      groupMotionApplied: false,
+      relativeSpacingOnly: false,
+      warning: ""
+    };
+  }
+  if (macroFocusModel.reconstructionStatus === "fullGroupTranslation") {
+    return {
+      status: "fullGroupTranslation",
+      label: "Documented macro group translation",
+      groupMotionApplied: true,
+      relativeSpacingOnly: false,
+      warning: ""
+    };
+  }
+  return {
+    status: "relativeD13Only",
+    label: "Relative D13 spacing only",
+    groupMotionApplied: false,
+    relativeSpacingOnly: true,
+    warning: macroFocusModel.reconstructionNote || "Relative patent spacing model — full mechanical group translation not yet reconstructed."
+  };
+};
+
 const applyMacroFocusModelToAnalysisLenses = (lenses, macroFocusModel, focusSelection) => {
-  if (!macroFocusModel || !Number.isFinite(toNumber(focusSelection?.d13Mm))) return { applied: false, lenses };
+  const groupMotion = macroFocusGroupMotionStatus(macroFocusModel);
+  if (!macroFocusModel || !Number.isFinite(toNumber(focusSelection?.d13Mm))) {
+    return {
+      applied: false,
+      lenses,
+      groupMotionStatus: groupMotion.status,
+      groupMotionLabel: groupMotion.label,
+      groupMotionApplied: false,
+      relativeSpacingOnly: groupMotion.relativeSpacingOnly,
+      warning: groupMotion.warning
+    };
+  }
   const variableSurface = Math.round(toNumber(macroFocusModel.variableAirGapAfterSurface));
-  if (!Number.isFinite(variableSurface)) return { applied: false, lenses };
+  if (!Number.isFinite(variableSurface)) {
+    return {
+      applied: false,
+      lenses,
+      groupMotionStatus: groupMotion.status,
+      groupMotionLabel: groupMotion.label,
+      groupMotionApplied: false,
+      relativeSpacingOnly: groupMotion.relativeSpacingOnly,
+      warning: groupMotion.warning || "Macro variable air-gap surface is unavailable."
+    };
+  }
   const targetLens = lenses.find((lens) => Math.round(toNumber(lens.patentSurfaceEnd)) === variableSurface);
-  if (!targetLens) return { applied: false, lenses };
+  if (!targetLens) {
+    return {
+      applied: false,
+      lenses,
+      groupMotionStatus: groupMotion.status,
+      groupMotionLabel: groupMotion.label,
+      groupMotionApplied: false,
+      relativeSpacingOnly: groupMotion.relativeSpacingOnly,
+      warning: groupMotion.warning || `Macro spacing surface S${variableSurface} was not found in the derived lens list.`
+    };
+  }
   targetLens.gapAfter = Math.max(0, toNumber(focusSelection.d13Mm) || 0);
-  return { applied: true, lenses };
+  return {
+    applied: true,
+    lenses,
+    variableAirGapAfterSurface: variableSurface,
+    d13Mm: targetLens.gapAfter,
+    groupMotionStatus: groupMotion.status,
+    groupMotionLabel: groupMotion.label,
+    groupMotionApplied: groupMotion.groupMotionApplied,
+    relativeSpacingOnly: groupMotion.relativeSpacingOnly,
+    warning: groupMotion.warning
+  };
 };
 
 const calculateFiniteConjugateFocusValidation = (lenses, system, focusSelection, rayTrace = null) => {
@@ -4509,15 +4647,15 @@ const calculateFiniteConjugateFocusValidation = (lenses, system, focusSelection,
     };
   }
   return {
-    status: "pending",
-    label: "Finite-conjugate validation pending",
+    status: "not-implemented",
+    label: "Finite-object validation unavailable",
     targetMagnification,
     rayDerivedMagnification: null,
     focusErrorAtSensorMm: null,
     differencePercent: null,
     transmittedRayCount: rayTrace?.validRayCount ?? null,
     totalRayCount: rayTrace?.totalRayCount ?? null,
-    warning: "Focused macro spacing is applied, but finite-object ray-derived magnification validation is not yet complete."
+    warning: "Relative D13 spacing is applied, but finite-object ray-derived magnification validation requires reconstructed group translation and finite-object ray tracing."
   };
 };
 
@@ -4550,6 +4688,10 @@ const getFocusedAnalysisConfiguration = (options = {}) => {
     macroFocusSelection,
     internalFocusApplied: macroApplication.applied,
     macroApplication,
+    macroGroupMotionStatus: macroApplication.groupMotionStatus,
+    macroGroupMotionLabel: macroApplication.groupMotionLabel,
+    macroGroupMotionApplied: macroApplication.groupMotionApplied === true,
+    macroRelativeSpacingOnly: macroApplication.relativeSpacingOnly === true,
     finiteConjugateStatus,
     focusValidation: {
       status: finiteConjugateStatus,
@@ -4769,6 +4911,7 @@ const calculateImageMagnificationAnalysis = (system, options = {}) => {
       paraxial.warning,
       focusSelection.type === "ratio" && macroFocusModel ? "Selected ratio is not directly documented by the preset macroFocusModel; first-order target ratio is shown without changing patent group motion." : "",
       !objectDistance.finite && focusSelection.key !== "infinity" ? "Finite object distance is unavailable for this focus selection." : "",
+      focusedConfiguration.macroApplication?.warning,
       finiteConjugateValidation.warning
     ].filter(Boolean).join(" ");
 
@@ -4797,6 +4940,10 @@ const calculateImageMagnificationAnalysis = (system, options = {}) => {
     internalFocusApplied: focusedConfiguration.internalFocusApplied,
     macroSpacingSurface: macroFocusModel?.variableAirGapAfterSurface || null,
     macroSpacingMm: focusedConfiguration.internalFocusApplied ? focusSelection.d13Mm : null,
+    macroGroupMotionStatus: focusedConfiguration.macroGroupMotionStatus || null,
+    macroGroupMotionLabel: focusedConfiguration.macroGroupMotionLabel || "",
+    macroGroupMotionApplied: focusedConfiguration.macroGroupMotionApplied === true,
+    macroRelativeSpacingOnly: focusedConfiguration.macroRelativeSpacingOnly === true,
     finiteConjugateStatus: focusedConfiguration.finiteConjugateStatus,
     finiteConjugateValidation,
     rayTraceValidCount: rayTrace.validRayCount,
@@ -4827,6 +4974,10 @@ const serializeImageMagnificationAnalysis = (analysis) => ({
   finiteConjugateValidation: analysis.finiteConjugateValidation || null,
   macroSpacingSurface: analysis.macroSpacingSurface ?? null,
   macroSpacingMm: Number.isFinite(analysis.macroSpacingMm) ? analysis.macroSpacingMm : null,
+  macroGroupMotionStatus: analysis.macroGroupMotionStatus || null,
+  macroGroupMotionLabel: analysis.macroGroupMotionLabel || "",
+  macroGroupMotionApplied: analysis.macroGroupMotionApplied === true,
+  macroRelativeSpacingOnly: analysis.macroRelativeSpacingOnly === true,
   rayTraceValidCount: Number.isFinite(analysis.rayTraceValidCount) ? analysis.rayTraceValidCount : null,
   rayTraceTotalCount: Number.isFinite(analysis.rayTraceTotalCount) ? analysis.rayTraceTotalCount : null,
   source: analysis.source,
@@ -15822,8 +15973,16 @@ const queueDiffractionMtfAnalysis = ({ reason = "explicit" } = {}) => {
     };
     const startedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
     try {
-      const system = calculateSystem(state.lenses);
-      const result = calculateDiffractionHybridMTFPanelData(state.lenses, system);
+      const sourceSystem = calculateSystem(state.lenses);
+      const focusedConfiguration = getFocusedAnalysisConfiguration({
+        lenses: state.lenses,
+        system: sourceSystem,
+        prescription: state.prescription
+      });
+      const result = calculateDiffractionHybridMTFPanelData(
+        focusedConfiguration.focusedLenses,
+        focusedConfiguration.focusedSystem
+      );
       const durationMs = (typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt;
       if (
         token !== state.mtfAnalysis.diffraction?.requestToken
@@ -20606,6 +20765,10 @@ const calculateDiffractionHybridMTFPanelData = (lenses, system) => {
     fNumber,
     rayCount,
     maxFrequencyLpMm,
+    inputLensCount: lenses.length,
+    inputTrackLengthMm: Number.isFinite(system?.totalTrack) ? system.totalTrack : null,
+    inputEffectiveFocalLengthMm: Number.isFinite(system?.effectiveFocalLength) ? system.effectiveFocalLength : null,
+    inputBackFocalLengthMm: Number.isFinite(system?.backFocalLength) ? system.backFocalLength : null,
     results,
     warnings: [...warnings]
   };
@@ -23552,6 +23715,7 @@ const renderImageMagnificationSection = (analysis) => {
         ${metric("Focused EFL", formatDistanceForMacro(analysis.effectiveFocalLengthMm), "mm first-order")}
         ${metric("On-axis transmitted rays", Number.isFinite(analysis.rayTraceValidCount) ? `${analysis.rayTraceValidCount}/${analysis.rayTraceTotalCount}` : "--", "not finite-focus validation")}
         ${metric("Finite-conjugate validation", escapeHtml(analysis.finiteConjugateValidation?.label || analysis.finiteConjugateStatus || "Not available"), escapeHtml(analysis.finiteConjugateValidation?.status || ""))}
+        ${analysis.macroGroupMotionLabel ? metric("Macro motion model", escapeHtml(analysis.macroGroupMotionLabel), analysis.macroRelativeSpacingOnly ? "full group translation unavailable" : "group translation applied") : ""}
         ${analysis.internalFocusApplied ? metric(`Macro spacing S${analysis.macroSpacingSurface}`, formatDistanceForMacro(analysis.macroSpacingMm, 4), "mm from macroFocusModel") : ""}
       </div>
       ${analysis.warning ? `<p class="diagram-note macro-analysis-note">${escapeHtml(analysis.warning)}</p>` : ""}
@@ -27159,6 +27323,67 @@ const runOpticsSelfCheck = (options = {}) => {
       && Math.abs(toNumber(stateGapBefore) - toNumber(stateGapAfter)) < 1e-12
       && focused.focusedSystem.totalTrack > sourceSystem.totalTrack + 10
       && focused.focusedLenses !== state.lenses;
+  }));
+
+  test("US4792219 macro focus labels group motion as relative D13 only", () => withTemporaryState(() => {
+    loadPresetIntoState("olympusZuikoAutoMacro90F2Us4792219Ex3");
+    ensurePatentOpticalGeometry();
+    state.imageMagnificationFocusKey = "ratio-0.5";
+    const focused = getFocusedAnalysisConfiguration({
+      system: calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm)
+    });
+    const analysis = calculateImageMagnificationAnalysis(focused.focusedSystem, { focusedConfiguration: focused });
+    return focused.macroGroupMotionStatus === "relativeD13Only"
+      && focused.macroGroupMotionApplied === false
+      && focused.macroRelativeSpacingOnly === true
+      && analysis.macroGroupMotionLabel === "Relative D13 spacing only"
+      && analysis.warning.includes("full mechanical group translation not yet reconstructed");
+  }));
+
+  test("US4792219 finite-conjugate validation does not report validated before finite-object tracing exists", () => withTemporaryState(() => {
+    loadPresetIntoState("olympusZuikoAutoMacro90F2Us4792219Ex3");
+    ensurePatentOpticalGeometry();
+    state.imageMagnificationFocusKey = "ratio-0.5";
+    const focused = getFocusedAnalysisConfiguration({
+      system: calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm)
+    });
+    const analysis = calculateImageMagnificationAnalysis(focused.focusedSystem, { focusedConfiguration: focused });
+    return analysis.finiteConjugateValidation.status === "not-implemented"
+      && analysis.finiteConjugateValidation.status !== "validated"
+      && analysis.finiteConjugateValidation.warning.includes("finite-object ray");
+  }));
+
+  test("Diffraction MTF receives focused lenses for US4792219 1:2 macro focus", () => withTemporaryState(() => {
+    loadPresetIntoState("olympusZuikoAutoMacro90F2Us4792219Ex3");
+    ensurePatentOpticalGeometry();
+    state.imageMagnificationFocusKey = "ratio-0.5";
+    const sourceSystem = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const focused = getFocusedAnalysisConfiguration({ system: sourceSystem });
+    const result = calculateDiffractionHybridMTFPanelData(focused.focusedLenses, focused.focusedSystem);
+    return focused.focusedSystem.totalTrack > sourceSystem.totalTrack + 10
+      && Math.abs(result.inputTrackLengthMm - focused.focusedSystem.totalTrack) < 1e-9
+      && Math.abs(result.inputEffectiveFocalLengthMm - focused.focusedSystem.effectiveFocalLength) < 1e-9
+      && result.inputLensCount === focused.focusedLenses.length;
+  }));
+
+  test("Serialized US4792219 analysis exports focused system and macro focus metadata", () => withTemporaryState(() => {
+    loadPresetIntoState("olympusZuikoAutoMacro90F2Us4792219Ex3");
+    ensurePatentOpticalGeometry();
+    state.imageMagnificationFocusKey = "ratio-0.5";
+    const focused = getFocusedAnalysisConfiguration({
+      system: calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm)
+    });
+    const exported = serializeCurrentAnalysisResults();
+    return Math.abs(exported.system.effectiveFocalLengthMm - focused.focusedSystem.effectiveFocalLength) < 1e-9
+      && Math.abs(exported.system.backFocalLengthMm - focused.focusedSystem.backFocalLength) < 1e-9
+      && Math.abs(exported.system.totalTrackMm - focused.focusedSystem.totalTrack) < 1e-9
+      && exported.basePrescription.lensCount === state.lenses.length
+      && exported.focusedPrescription.internalFocusApplied === true
+      && exported.macroFocus.focusKey === "ratio-0.5"
+      && Math.abs(exported.macroFocus.d13Mm - 20.277) < 0.00001
+      && exported.macroFocus.relativeSpacingOnly === true
+      && exported.macroFocus.finiteConjugateValidation.status !== "validated"
+      && exported.imageMagnification.focusKey === "ratio-0.5";
   }));
 
   test("patent audit display status is derived from direct sequential audit", () => {

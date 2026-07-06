@@ -10,7 +10,7 @@ const DIAGRAM_SIZE = {
   height: 480
 };
 
-const ANALYSIS_WORKER_VERSION = "20260703-mtf-open-nonblocking-2";
+const ANALYSIS_WORKER_VERSION = "20260706-macro-focus-1";
 const GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION = "geometric-lsf-contract-20260630-1";
 const DEFAULT_PRESET_KEY = "zeissBiotar50F14Us1786916Ex2";
 const OLD_MISLEADING_ZEISS_PRESET_KEYS = [
@@ -1597,7 +1597,7 @@ const PATENT_SURFACE_PRESCRIPTION_DATA = {
     sourceNotes: [
       "US4792219 Embodiment 3 is a 100 mm, F/2.06 patent example.",
       "It is a 9-element / 9-group macro-telephoto design and is a plausible Olympus Zuiko Auto-Macro 90mm f/2 production candidate, but production numerical identity is not confirmed.",
-      "The patent documents coordinated macro focusing motion; the current app loads and analyses the infinity prescription only."
+      "The app includes documented relative macro-spacing configurations for infinity, 1:10 and 1:2. Full finite-conjugate focus validation depends on the focused-group motion model and fixed-sensor ray trace."
     ].join(" "),
     note: "US4792219 Embodiment 3 is a 100 mm, F/2.06 patent example. It is a 9-element / 9-group macro-telephoto design and is a plausible Olympus Zuiko Auto-Macro 90mm f/2 production candidate, but production numerical identity is not confirmed.",
     numericalAudit: {
@@ -4337,6 +4337,7 @@ const normalizeImageMagnificationFocusKey = (key) => {
 
 const activeMacroFocusModel = (options = {}) => (
   options.macroFocusModel
+  || options.prescription?.macroFocusModel
   || state.prescription?.macroFocusModel
   || PRESETS[state.preset]?.macroFocusModel
   || null
@@ -4360,14 +4361,36 @@ const patentMacroConfigurationForMagnification = (macroFocusModel, magnification
     .find((config) => Math.abs(config.magnification - target) < 0.0005) || null;
 };
 
-const imageMagnificationFocusOptions = (macroFocusModel = activeMacroFocusModel()) => {
+const macroLensCapabilityLabel = (macroFocusModel = activeMacroFocusModel()) => {
+  const documented = macroFocusPatentConfigurations(macroFocusModel)
+    .filter((config) => config.magnification > 0);
+  const maximum = documented[documented.length - 1];
+  return macroFocusModel && maximum
+    ? `Macro lens · patent-documented to ${magnificationRatioLabel(maximum.magnification)}`
+    : "No documented macro-focus model";
+};
+
+const macroFocusConfigurationLabel = (focusSelection) => {
+  if (focusSelection?.isPatentConfiguration) return "Patent configuration";
+  if (focusSelection?.key === "infinity" && focusSelection?.d13Mm !== undefined) return "Patent configuration";
+  if (focusSelection?.type === "infinity") return "Explicit infinity";
+  return "Theoretical first-order estimate";
+};
+
+const imageMagnificationFocusOptionGroups = (macroFocusModel = activeMacroFocusModel()) => {
   const patentConfigs = macroFocusPatentConfigurations(macroFocusModel);
   const supportedRatios = new Set(patentConfigs
     .filter((config) => config.magnification > 0)
     .map((config) => `ratio-${formatNumber(config.magnification, 6).replace(/0+$/, "").replace(/[.]$/, "")}`));
+  const documentedOptions = [
+    { key: "auto", label: macroFocusModel ? "Auto (Minimum Focus)" : "Auto (Infinity)", isPatentConfiguration: Boolean(macroFocusModel) },
+    { key: "infinity", label: "Infinity", isPatentConfiguration: Boolean(macroFocusModel && patentConfigs.some((config) => Math.abs(config.magnification) < 0.0005)) },
+    ...(macroFocusModel ? [{ key: "minimum", label: "Minimum Focus", isPatentConfiguration: true }] : [])
+  ];
   const ratioOptions = RATIO_FOCUS_OPTIONS.map((option) => ({
     ...option,
-    supportedByMacroModel: !macroFocusModel || supportedRatios.has(option.key)
+    supportedByMacroModel: !macroFocusModel || supportedRatios.has(option.key),
+    isPatentConfiguration: Boolean(macroFocusModel && supportedRatios.has(option.key))
   }));
   patentConfigs
     .filter((config) => config.magnification > 0)
@@ -4378,18 +4401,56 @@ const imageMagnificationFocusOptions = (macroFocusModel = activeMacroFocusModel(
           key,
           label: magnificationRatioLabel(config.magnification),
           magnification: config.magnification,
-          supportedByMacroModel: true
+          supportedByMacroModel: true,
+          isPatentConfiguration: true
         });
       }
     });
+  if (!macroFocusModel) {
+    return [{
+      label: "Focus distance",
+      options: [
+        ...documentedOptions,
+        ...DISTANCE_FOCUS_OPTIONS,
+        ...ratioOptions.sort((left, right) => left.magnification - right.magnification)
+      ]
+    }];
+  }
+  const documentedRatios = ratioOptions
+    .filter((option) => option.supportedByMacroModel)
+    .sort((left, right) => left.magnification - right.magnification);
+  const theoreticalRatios = ratioOptions
+    .filter((option) => !option.supportedByMacroModel)
+    .sort((left, right) => left.magnification - right.magnification)
+    .map((option) => ({ ...option, label: `${option.label} · theoretical`, theoreticalOnly: true }));
   return [
-    { key: "auto", label: macroFocusModel ? "Auto (Minimum Focus)" : "Auto (Infinity)" },
-    { key: "infinity", label: "Infinity" },
-    ...DISTANCE_FOCUS_OPTIONS,
-    ...(macroFocusModel ? [{ key: "minimum", label: "Minimum Focus" }] : []),
-    ...ratioOptions.sort((left, right) => left.magnification - right.magnification)
+    {
+      label: "Documented patent configurations",
+      options: [...documentedOptions, ...documentedRatios]
+    },
+    {
+      label: "Theoretical first-order estimates",
+      options: [
+        ...DISTANCE_FOCUS_OPTIONS.map((option) => ({ ...option, theoreticalOnly: true })),
+        ...theoreticalRatios
+      ]
+    }
   ];
 };
+
+const imageMagnificationFocusOptions = (macroFocusModel = activeMacroFocusModel()) => (
+  imageMagnificationFocusOptionGroups(macroFocusModel).flatMap((group) => group.options)
+);
+
+const renderImageMagnificationFocusOptions = (groups, selectedKey) => groups.map((group) => `
+  <optgroup label="${escapeHtml(group.label)}">
+    ${group.options.map((option) => `
+      <option value="${escapeHtml(option.key)}" ${selectedKey === option.key ? "selected" : ""}>
+        ${escapeHtml(option.label)}
+      </option>
+    `).join("")}
+  </optgroup>
+`).join("");
 
 const selectedImageMagnificationFocusKey = (macroFocusModel = activeMacroFocusModel()) => {
   const key = normalizeImageMagnificationFocusKey(state.imageMagnificationFocusKey);
@@ -4421,8 +4482,96 @@ const applyMacroFocusModelToAnalysisLenses = (lenses, macroFocusModel, focusSele
   return { applied: true, lenses };
 };
 
+const calculateFiniteConjugateFocusValidation = (lenses, system, focusSelection, rayTrace = null) => {
+  const targetMagnification = Number.isFinite(toNumber(focusSelection?.magnification))
+    ? Math.abs(toNumber(focusSelection.magnification))
+    : NaN;
+  if (!Number.isFinite(targetMagnification) || targetMagnification <= 0) {
+    return {
+      status: focusSelection?.type === "infinity" ? "infinity" : "not-applicable",
+      label: focusSelection?.type === "infinity" ? "Infinity focus selected" : "Finite-conjugate target unavailable",
+      targetMagnification: Number.isFinite(targetMagnification) ? targetMagnification : null,
+      rayDerivedMagnification: null,
+      focusErrorAtSensorMm: null,
+      differencePercent: null,
+      warning: ""
+    };
+  }
+  if (!focusSelection?.isPatentConfiguration) {
+    return {
+      status: "unsupported",
+      label: "No matching patent focus configuration",
+      targetMagnification,
+      rayDerivedMagnification: null,
+      focusErrorAtSensorMm: null,
+      differencePercent: null,
+      warning: "This focus state is a theoretical first-order estimate; no matching patent macro-spacing configuration is loaded."
+    };
+  }
+  return {
+    status: "pending",
+    label: "Finite-conjugate validation pending",
+    targetMagnification,
+    rayDerivedMagnification: null,
+    focusErrorAtSensorMm: null,
+    differencePercent: null,
+    transmittedRayCount: rayTrace?.validRayCount ?? null,
+    totalRayCount: rayTrace?.totalRayCount ?? null,
+    warning: "Focused macro spacing is applied, but finite-object ray-derived magnification validation is not yet complete."
+  };
+};
+
+const getFocusedAnalysisConfiguration = (options = {}) => {
+  const sourceLenses = options.lenses || state.lenses;
+  const sourcePrescription = options.prescription || state.prescription;
+  const sourceSystem = options.system || calculateSystem(sourceLenses, options.wavelengthNm || SPECTRAL_LINES.d.wavelengthNm);
+  const macroFocusModel = activeMacroFocusModel({ ...options, prescription: sourcePrescription });
+  const macroFocusSelection = resolveImageMagnificationFocusSelection(sourceSystem, {
+    ...options,
+    macroFocusModel
+  });
+  const focusedLenses = cloneLensesForMacroAnalysis(sourceLenses);
+  const macroApplication = applyMacroFocusModelToAnalysisLenses(focusedLenses, macroFocusModel, macroFocusSelection);
+  const focusedSystem = macroApplication.applied
+    ? calculateSystem(focusedLenses, options.wavelengthNm || SPECTRAL_LINES.d.wavelengthNm)
+    : sourceSystem;
+  const finiteConjugateStatus = macroFocusSelection?.unsupportedByMacroModel
+    ? "theoretical-only"
+    : macroApplication.applied
+      ? "patent-spacing-applied"
+      : macroFocusSelection?.type === "infinity"
+        ? "infinity"
+        : "not-applied";
+  return {
+    focusedLenses,
+    focusedPrescription: sourcePrescription,
+    focusedSystem,
+    macroFocusModel,
+    macroFocusSelection,
+    internalFocusApplied: macroApplication.applied,
+    macroApplication,
+    finiteConjugateStatus,
+    focusValidation: {
+      status: finiteConjugateStatus,
+      source: macroFocusSelection?.source || ""
+    }
+  };
+};
+
 const resolveImageMagnificationFocusSelection = (system, options = {}) => {
   const macroFocusModel = activeMacroFocusModel(options);
+  const explicitObjectDistance = finitePositiveNumber(options.objectDistanceMm);
+  if (explicitObjectDistance && options.focusKey === undefined) {
+    return {
+      key: "custom-distance",
+      label: `${formatDistanceForMacro(explicitObjectDistance)} mm`,
+      type: "distance",
+      objectDistanceMm: explicitObjectDistance,
+      isPatentConfiguration: false,
+      unsupportedByMacroModel: Boolean(macroFocusModel),
+      source: options.objectDistanceSource || "Selected finite object distance"
+    };
+  }
   const focusKey = normalizeImageMagnificationFocusKey(options.focusKey ?? state.imageMagnificationFocusKey);
   const resolvedKey = focusKey === "auto" ? selectedImageMagnificationFocusKey(macroFocusModel) : focusKey;
   const infinityConfig = patentMacroConfigurationForMagnification(macroFocusModel, 0);
@@ -4435,6 +4584,7 @@ const resolveImageMagnificationFocusSelection = (system, options = {}) => {
       magnification: 0,
       objectDistanceMm: Infinity,
       d13Mm: infinityConfig?.d13Mm,
+      isPatentConfiguration: Boolean(macroFocusModel && infinityConfig),
       source: macroFocusModel && infinityConfig ? "Patent macro focus model · infinity configuration" : "Explicit infinity focus"
     };
   }
@@ -4450,6 +4600,7 @@ const resolveImageMagnificationFocusSelection = (system, options = {}) => {
         type: "patentRatio",
         magnification: maximum.magnification,
         d13Mm: maximum.d13Mm,
+        isPatentConfiguration: true,
         source: "Patent macro focus model · nearest documented minimum focus"
       };
     }
@@ -4462,6 +4613,8 @@ const resolveImageMagnificationFocusSelection = (system, options = {}) => {
       label: distanceOption.label,
       type: "distance",
       objectDistanceMm: distanceOption.objectDistanceMm,
+      isPatentConfiguration: false,
+      unsupportedByMacroModel: Boolean(macroFocusModel),
       source: "Selected finite object distance"
     };
   }
@@ -4476,6 +4629,8 @@ const resolveImageMagnificationFocusSelection = (system, options = {}) => {
       type: patentConfig ? "patentRatio" : "ratio",
       magnification: ratioOption.magnification,
       d13Mm: patentConfig?.d13Mm,
+      isPatentConfiguration: Boolean(patentConfig),
+      unsupportedByMacroModel: Boolean(macroFocusModel && !patentConfig),
       source: patentConfig
         ? "Patent macro focus model · documented magnification"
         : macroFocusModel
@@ -4549,12 +4704,16 @@ const calculateImageMagnificationAnalysis = (system, options = {}) => {
   const objectHeightMm = finitePositiveNumber(options.objectHeightMm ?? state.macroObjectHeightMm);
   const imageHeightMm = finitePositiveNumber(options.imageHeightMm ?? state.macroImageHeightMm);
   const measuredMagnification = objectHeightMm && imageHeightMm ? Math.abs(imageHeightMm / objectHeightMm) : NaN;
-  const macroFocusModel = activeMacroFocusModel(options);
-  const baseLenses = options.lenses || state.lenses;
-  const focusSelection = resolveImageMagnificationFocusSelection(system, { ...options, macroFocusModel });
-  const analysisLenses = cloneLensesForMacroAnalysis(baseLenses);
-  const macroApplication = applyMacroFocusModelToAnalysisLenses(analysisLenses, macroFocusModel, focusSelection);
-  const focusedSystem = macroApplication.applied ? calculateSystem(analysisLenses, SPECTRAL_LINES.d.wavelengthNm) : system;
+  const focusedConfiguration = options.focusedConfiguration || getFocusedAnalysisConfiguration({
+    ...options,
+    system,
+    lenses: options.lenses || state.lenses,
+    prescription: options.prescription || state.prescription
+  });
+  const macroFocusModel = focusedConfiguration.macroFocusModel;
+  const focusSelection = focusedConfiguration.macroFocusSelection;
+  const analysisLenses = focusedConfiguration.focusedLenses;
+  const focusedSystem = focusedConfiguration.focusedSystem;
   const focalLength = Math.abs(toNumber(focusedSystem?.effectiveFocalLength));
   const ratioMagnification = Number.isFinite(toNumber(focusSelection.magnification))
     ? Math.abs(toNumber(focusSelection.magnification))
@@ -4588,6 +4747,12 @@ const calculateImageMagnificationAnalysis = (system, options = {}) => {
     rayCount: Math.min(9, Math.max(5, toNumber(state.rayTraceRayCount) || 7)),
     apertureDiameter: state.apertureDiameter
   });
+  const finiteConjugateValidation = calculateFiniteConjugateFocusValidation(
+    analysisLenses,
+    focusedSystem,
+    focusSelection,
+    rayTrace
+  );
   const magnification = Number.isFinite(measuredMagnification) ? measuredMagnification : paraxial.magnification;
   const source = Number.isFinite(measuredMagnification)
     ? "Measured image height / object height"
@@ -4603,7 +4768,8 @@ const calculateImageMagnificationAnalysis = (system, options = {}) => {
     : [
       paraxial.warning,
       focusSelection.type === "ratio" && macroFocusModel ? "Selected ratio is not directly documented by the preset macroFocusModel; first-order target ratio is shown without changing patent group motion." : "",
-      !objectDistance.finite && focusSelection.key !== "infinity" ? "Finite object distance is unavailable for this focus selection." : ""
+      !objectDistance.finite && focusSelection.key !== "infinity" ? "Finite object distance is unavailable for this focus selection." : "",
+      finiteConjugateValidation.warning
     ].filter(Boolean).join(" ");
 
   return {
@@ -4611,6 +4777,9 @@ const calculateImageMagnificationAnalysis = (system, options = {}) => {
     focusKey: focusSelection.key,
     focusLabel: focusSelection.label,
     focusType: focusSelection.type,
+    focusConfigurationStatus: macroFocusConfigurationLabel(focusSelection),
+    lensCapability: macroLensCapabilityLabel(macroFocusModel),
+    currentReproduction: `${magnificationRatioLabel(magnification)} · ${classifyMagnification(magnification)}`,
     magnification,
     magnificationRatio: magnificationRatioLabel(magnification),
     reproductionRatio: magnificationRatioLabel(magnification),
@@ -4625,9 +4794,11 @@ const calculateImageMagnificationAnalysis = (system, options = {}) => {
     effectiveFocalLengthMm: focusedSystem?.effectiveFocalLength,
     principalPlaneObjectMm: focusedSystem?.principalPlaneObjectMm,
     principalPlaneImageMm: focusedSystem?.principalPlaneImageMm,
-    internalFocusApplied: macroApplication.applied,
+    internalFocusApplied: focusedConfiguration.internalFocusApplied,
     macroSpacingSurface: macroFocusModel?.variableAirGapAfterSurface || null,
-    macroSpacingMm: macroApplication.applied ? focusSelection.d13Mm : null,
+    macroSpacingMm: focusedConfiguration.internalFocusApplied ? focusSelection.d13Mm : null,
+    finiteConjugateStatus: focusedConfiguration.finiteConjugateStatus,
+    finiteConjugateValidation,
     rayTraceValidCount: rayTrace.validRayCount,
     rayTraceTotalCount: rayTrace.totalRayCount,
     rayTraceStatus: rayTrace.warning || "",
@@ -4645,10 +4816,15 @@ const serializeImageMagnificationAnalysis = (analysis) => ({
   imageDistanceMm: Number.isFinite(analysis.imageDistanceMm) ? analysis.imageDistanceMm : null,
   workingDistanceMm: analysis.workingDistanceMm === Infinity ? "Infinity" : (Number.isFinite(analysis.workingDistanceMm) ? analysis.workingDistanceMm : null),
   macroClassification: analysis.classification,
+  lensCapability: analysis.lensCapability || "",
+  currentReproduction: analysis.currentReproduction || "",
   focusKey: analysis.focusKey,
   focusLabel: analysis.focusLabel,
+  focusConfigurationStatus: analysis.focusConfigurationStatus || "",
   effectiveFocalLengthMm: Number.isFinite(analysis.effectiveFocalLengthMm) ? analysis.effectiveFocalLengthMm : null,
   internalFocusApplied: analysis.internalFocusApplied === true,
+  finiteConjugateStatus: analysis.finiteConjugateStatus || null,
+  finiteConjugateValidation: analysis.finiteConjugateValidation || null,
   macroSpacingSurface: analysis.macroSpacingSurface ?? null,
   macroSpacingMm: Number.isFinite(analysis.macroSpacingMm) ? analysis.macroSpacingMm : null,
   rayTraceValidCount: Number.isFinite(analysis.rayTraceValidCount) ? analysis.rayTraceValidCount : null,
@@ -4758,10 +4934,10 @@ const resolvePatentAuditDisplayStatus = (preset, audit) => {
   };
 };
 
-const getSpectralSystems = () => Object.fromEntries(Object.entries(SPECTRAL_LINES).map(([lineKey, line]) => [
+const getSpectralSystems = (lenses = state.lenses) => Object.fromEntries(Object.entries(SPECTRAL_LINES).map(([lineKey, line]) => [
   lineKey,
   {
-    ...calculateSystem(state.lenses, line.wavelengthNm),
+    ...calculateSystem(lenses, line.wavelengthNm),
     lineKey,
     line
   }
@@ -14628,7 +14804,9 @@ const validateSequentialDisplayConvention = (system, mapper, lenses = state.lens
   return { warnings, valid: warnings.length === 0 };
 };
 
-const renderOpticalDiagram = (system, spectralSystems, rayTraceResult, diagramAperturePreview = null) => {
+const renderOpticalDiagram = (system, spectralSystems, rayTraceResult, diagramAperturePreview = null, options = {}) => {
+  const diagramLenses = options.lenses || state.lenses;
+  const diagramPrescription = options.prescription || state.prescription;
   const diagramRenderStyle = normalizeDiagramRenderStyle(state.diagramRenderStyle);
   const rawGeometryDisplayMode = normalizeDiagramGeometryDisplayMode(state.diagramGeometryDisplayMode);
   const diagramGeometryDisplayMode = isOpticalRayViewMode(state.diagramViewMode)
@@ -14638,9 +14816,9 @@ const renderOpticalDiagram = (system, spectralSystems, rayTraceResult, diagramAp
     geometryDisplayMode: diagramGeometryDisplayMode
   });
   const selectedPreset = PRESETS[state.preset] || PRESETS[DEFAULT_PRESET_KEY];
-  const mechanicalValidation = shouldUseMechanicalValidation(selectedPreset, state.lenses, state.prescription);
+  const mechanicalValidation = shouldUseMechanicalValidation(selectedPreset, diagramLenses, diagramPrescription);
   const diagramViewMode = normalizeDiagramViewMode(state.diagramViewMode);
-  const displayValidation = validateSequentialDisplayConvention(system, mapper, state.lenses, selectedPreset);
+  const displayValidation = validateSequentialDisplayConvention(system, mapper, diagramLenses, selectedPreset);
   const isOpticalRayView = isOpticalRayViewMode(diagramViewMode);
   const isPatentLineView = isPatentLineViewMode(diagramViewMode);
   const isProductionCutawayView = isProductionCutawayViewMode(diagramViewMode);
@@ -14684,10 +14862,10 @@ const renderOpticalDiagram = (system, spectralSystems, rayTraceResult, diagramAp
         if (model) return model.mechanicalDiameter / 2;
         const individualModel = layoutResolution.individualModels[groupIndex];
         if (individualModel) return individualModel.semiDiameter;
-        const lens = state.lenses[group.elements[0]];
+        const lens = diagramLenses[group.elements[0]];
         return (toNumber(lens.mechanicalDiameter) || toNumber(lens.diameter) || 0) / 2;
       })
-      : state.lenses.map((lens) => (
+      : diagramLenses.map((lens) => (
         (toNumber(lens.mechanicalDiameter) || toNumber(lens.diameter) || 0) / 2
       )))
   );
@@ -14709,7 +14887,7 @@ const renderOpticalDiagram = (system, spectralSystems, rayTraceResult, diagramAp
   const mountFlangeSvgX = Number.isFinite(mountFlangePlaneX) ? mapper.x(mountFlangePlaneX) : NaN;
   const sensorTop = mapper.y(FULL_FRAME_SENSOR.height / 2);
   const sensorBottom = mapper.y(-FULL_FRAME_SENSOR.height / 2);
-  const rearMostVertexX = rearMostOpticalVertexX(system, state.lenses);
+  const rearMostVertexX = rearMostOpticalVertexX(system, diagramLenses);
   const rearMostVertexSvgX = hasValidFocus && Number.isFinite(rearMostVertexX) ? mapper.x(rearMostVertexX) : mapper.x(55);
   const actualBfdMm = Number.isFinite(rearMostVertexX) ? rearMostVertexX - referenceImagePlaneXValue : NaN;
   const guideLineTop = mapper.axisY - Math.min(96, mapper.height * 0.22);
@@ -14721,10 +14899,10 @@ const renderOpticalDiagram = (system, spectralSystems, rayTraceResult, diagramAp
     ? Math.min(mapper.height - 24, mountDimensionY + 18)
     : Math.min(mapper.height - 32, annotationLanes.dimensionY + 12);
   const zoomPercent = Math.round(clamp(state.diagramZoom, 1, 6) * 100);
-  const referencePlaneSource = normalizeReferencePlaneSource(selectedPreset, state.prescription);
-  const referencePlaneLabel = referenceImagePlaneLabel(selectedPreset, state.prescription);
+  const referencePlaneSource = normalizeReferencePlaneSource(selectedPreset, diagramPrescription);
+  const referencePlaneLabel = referenceImagePlaneLabel(selectedPreset, diagramPrescription);
   const focusComparisonResult = state.diagramShowFocusComparison && isOpticalRayView
-    ? findBestRealRayFocusPlane(state.lenses, spectralSystems.d || system, {
+    ? findBestRealRayFocusPlane(diagramLenses, spectralSystems.d || system, {
       ...rayTraceApertureOptions(state),
       apertureDiameter: diagramAperturePreview?.apertureDiameter || state.apertureDiameter,
       rayCount: Math.max(9, state.rayTraceRayCount),
@@ -14739,7 +14917,7 @@ const renderOpticalDiagram = (system, spectralSystems, rayTraceResult, diagramAp
     : NaN;
   const hasEstimatedFocusInputs = selectedPreset?.sourceType === "patent"
     && (
-      state.lenses.some((lens) => ["estimated", "rayEnvelope", "svgEstimated", "auto"].includes(lens.apertureSource)
+      diagramLenses.some((lens) => ["estimated", "rayEnvelope", "svgEstimated", "auto"].includes(lens.apertureSource)
         || ["estimated", "svgEstimated", "duplicated"].includes(lens.diameterSource))
       || state.apertureStopMode === "auto"
       || state.apertureStopMode === "patentStop"
@@ -14876,7 +15054,7 @@ const renderOpticalDiagram = (system, spectralSystems, rayTraceResult, diagramAp
                       </select>
                     </label>
                   ` : ""}
-                  ${mechanicalValidation && state.prescription?.prescriptionType !== "visualOnly" ? `
+                  ${mechanicalValidation && diagramPrescription?.prescriptionType !== "visualOnly" ? `
                     <label class="diagram-view-mode-control compact-diagram-control">
                       <span>Geometry</span>
                       <select data-action="update-diagram-geometry-display-mode" aria-label="Optical diagram geometry display mode">
@@ -14970,7 +15148,7 @@ const renderOpticalDiagram = (system, spectralSystems, rayTraceResult, diagramAp
         </g>
         <g class="layer-warnings">${renderLensStackSvg(system, mapper, rayTraceResult, layoutResolution, annotationLanes, "warnings")}</g>
       </svg>
-      ${state.prescription?.prescriptionType === "visualOnly" ? `<p class="diagram-note visual-reference-note">Visual reference only / no full optical prescription. Production layout is not used for ray tracing accuracy.</p>` : ""}
+      ${diagramPrescription?.prescriptionType === "visualOnly" ? `<p class="diagram-note visual-reference-note">Visual reference only / no full optical prescription. Production layout is not used for ray tracing accuracy.</p>` : ""}
       ${diagramAperturePreview?.active ? `<p class="diagram-note aperture-preview-note">${escapeHtml(diagramAperturePreview.label)}</p>` : ""}
       ${focusComparisonResult ? `<p class="diagram-note focus-comparison-note focus-${focusComparisonSeverity}">${escapeHtml(formatFocusShiftDescription(focusComparisonResult.focusShiftMm))}${Number.isFinite(focusComparisonResult.rmsSpotAtReferenceMm) && Number.isFinite(focusComparisonResult.rmsSpotAtBestFocusMm) ? ` · RMS ${escapeHtml(formatNumber(focusComparisonResult.rmsSpotAtReferenceMm, 4))} → ${escapeHtml(formatNumber(focusComparisonResult.rmsSpotAtBestFocusMm, 4))} mm` : ""}</p>` : ""}
       ${state.diagramShowFocusComparison && hasEstimatedFocusInputs ? `<p class="diagram-note focus-fidelity-note">Focus agreement depends on prescription and glass-data fidelity.</p>` : ""}
@@ -15024,7 +15202,7 @@ const renderGeometryAnalysisDiagnosticsPanel = (system, diagramAperturePreview, 
       : state.diagramAperturePreviewKey
   );
   const mtfStopDiameter = activeSweepOption.fNumber
-    ? physicalStopDiameterForRequestedFNumber(state.lenses, system, activeSweepOption.fNumber)
+    ? physicalStopDiameterForRequestedFNumber(diagramLenses, system, activeSweepOption.fNumber)
     : state.apertureDiameter;
   const physicalStatus = state.physicalMtfPending
     ? "Calculating diffraction validation…"
@@ -15039,7 +15217,7 @@ const renderGeometryAnalysisDiagnosticsPanel = (system, diagramAperturePreview, 
   return `
     <section class="geometry-analysis-diagnostics">
       <div class="diagnostic-row-grid">
-        ${state.lenses.map((lens, index) => {
+        ${diagramLenses.map((lens, index) => {
           const info = lensGeometryLimitInfo(lens, null);
           return `
             <div class="diagnostic-row">
@@ -15277,6 +15455,9 @@ const cachedAnalysis = (id, settings, calculate) => {
       front: state.apertureStopDistanceFromFrontMm,
       diameter: state.apertureDiameter
     },
+    focus: {
+      imageMagnificationFocusKey: normalizeImageMagnificationFocusKey(state.imageMagnificationFocusKey)
+    },
     settings
   });
   if (!state.analysisCache) state.analysisCache = {};
@@ -15304,6 +15485,7 @@ const mtfMainAnalysisSignature = () => JSON.stringify({
   comparisonApertures: [...(state.mtfApertureSweepStops || [])].sort().join(","),
   engine: normalizeMtfEngine(state.mtfEngine),
   quality: normalizeGeometricLsfQuality(state.mtfLsfQuality),
+  focus: normalizeImageMagnificationFocusKey(state.imageMagnificationFocusKey),
   stWavelength: state.stMtfWavelengthMode,
   plane: state.mtfPlaneMode,
   bestFocusRequested: state.mtfBestFocusComparisonRequested === true,
@@ -15336,6 +15518,7 @@ const diffractionMtfAnalysisSignature = () => JSON.stringify({
   field: state.diffractionMtfFieldKey,
   wavelength: state.diffractionMtfWavelengthMode,
   maxFrequency: state.mtfMaxFrequencyLpMm,
+  focus: normalizeImageMagnificationFocusKey(state.imageMagnificationFocusKey),
   engine: normalizeMtfEngine(state.mtfEngine),
   quality: normalizeGeometricLsfQuality(state.mtfLsfQuality)
 });
@@ -15466,12 +15649,19 @@ const queueMtfMainAnalysis = ({ reason = "update", immediate = false } = {}) => 
     };
     const startedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
     try {
-      const system = calculateSystem(state.lenses);
-      const eligibility = canUseGeometricMtfMainWorker(state.lenses, system);
+      const sourceSystem = calculateSystem(state.lenses);
+      const focusedConfiguration = getFocusedAnalysisConfiguration({
+        lenses: state.lenses,
+        system: sourceSystem,
+        prescription: state.prescription
+      });
+      const analysisLenses = focusedConfiguration.focusedLenses;
+      const system = focusedConfiguration.focusedSystem;
+      const eligibility = canUseGeometricMtfMainWorker(analysisLenses, system);
       let result;
       let source = "main-thread fallback";
       if (eligibility.supported) {
-        const payload = buildGeometricMtfMainWorkerPayload(state.lenses, system);
+        const payload = buildGeometricMtfMainWorkerPayload(analysisLenses, system);
         try {
           const workerResult = await calculateGeometricMtfMainPanelInWorker(payload, token, signature);
           if (token !== state.mtfAnalysis.requestToken || signature !== state.mtfAnalysis.signature) {
@@ -15484,7 +15674,7 @@ const queueMtfMainAnalysis = ({ reason = "update", immediate = false } = {}) => 
           result = finalizeGeometricMtfMainWorkerResult(workerResult, system, eligibility);
           source = "worker";
         } catch (workerError) {
-          const fallbackResult = calculateSagittalTangentialGeometricMTFPanelData(state.lenses, system);
+          const fallbackResult = calculateSagittalTangentialGeometricMTFPanelData(analysisLenses, system);
           result = {
             ...fallbackResult,
             workerEligibility: eligibility,
@@ -15498,7 +15688,7 @@ const queueMtfMainAnalysis = ({ reason = "update", immediate = false } = {}) => 
           source = "main-thread fallback";
         }
       } else {
-        const fallbackResult = calculateSagittalTangentialGeometricMTFPanelData(state.lenses, system);
+        const fallbackResult = calculateSagittalTangentialGeometricMTFPanelData(analysisLenses, system);
         result = {
           ...fallbackResult,
           workerEligibility: eligibility,
@@ -15530,10 +15720,10 @@ const queueMtfMainAnalysis = ({ reason = "update", immediate = false } = {}) => 
         source
       };
       state.lastMtfResolutionResult = stored;
-      scheduleApertureSweepCacheWarmup(state.lenses, system, {
+      scheduleApertureSweepCacheWarmup(analysisLenses, system, {
         maxFrequencyLpMm: stored.maxFrequencyLpMm
       });
-      scheduleGeometricMtfConvergenceValidation(state.lenses, system, stored.manufacturerFieldData, {
+      scheduleGeometricMtfConvergenceValidation(analysisLenses, system, stored.manufacturerFieldData, {
         maxFrequencyLpMm: stored.maxFrequencyLpMm
       });
     } catch (error) {
@@ -23332,37 +23522,36 @@ const renderSystemResultMtfSummary = (summary) => {
 
 const renderImageMagnificationSection = (analysis) => {
   const macroFocusModel = activeMacroFocusModel();
-  const options = imageMagnificationFocusOptions(macroFocusModel);
+  const optionGroups = imageMagnificationFocusOptionGroups(macroFocusModel);
   const selectedKey = normalizeImageMagnificationFocusKey(state.imageMagnificationFocusKey);
   return `
     <details class="image-magnification-section" open>
       <summary>
         <span>Image Magnification</span>
-        <span class="badge">${escapeHtml(analysis.classification)}</span>
+        <span class="badge">${escapeHtml(analysis.currentReproduction || analysis.classification)}</span>
       </summary>
       <div class="image-magnification-controls">
         <label>
           <span>Focus Distance</span>
           <select data-action="update-image-magnification-focus" aria-label="Image magnification focus distance">
-            ${options.map((option) => `
-              <option value="${escapeHtml(option.key)}" ${selectedKey === option.key ? "selected" : ""}>
-                ${escapeHtml(option.label)}${option.supportedByMacroModel === false ? " · first-order" : ""}
-              </option>
-            `).join("")}
+            ${renderImageMagnificationFocusOptions(optionGroups, selectedKey)}
           </select>
         </label>
-        <span class="macro-focus-current">${escapeHtml(analysis.focusLabel || "")}</span>
+        <span class="macro-focus-current">${escapeHtml(analysis.focusLabel || "")} · ${escapeHtml(analysis.focusConfigurationStatus || "")}</span>
       </div>
       <div class="image-magnification-grid">
+        ${metric("Lens Capability", escapeHtml(analysis.lensCapability || "No documented macro-focus model"), "capability, not current magnification")}
+        ${metric("Current Reproduction", escapeHtml(analysis.currentReproduction || analysis.classification), "based on selected focus")}
         ${metric("Image Magnification", formatMagnificationValue(analysis.magnification), escapeHtml(analysis.source))}
         ${metric("Magnification Ratio", escapeHtml(analysis.magnificationRatio), "image : object")}
         ${metric("Object Distance", formatDistanceForMacro(analysis.objectDistanceMm), analysis.objectDistanceMm === Infinity ? "object at infinity" : "mm from object principal plane")}
-        ${metric("Image Distance", formatDistanceForMacro(analysis.imageDistanceMm), "mm sensor to image principal plane")}
+        ${metric("Image Distance", formatDistanceForMacro(analysis.imageDistanceMm), "required image distance from rear principal plane")}
         ${metric("Working Distance", formatDistanceForMacro(analysis.workingDistanceMm), analysis.workingDistanceMm === Infinity ? "not finite" : "mm")}
         ${metric("Reproduction Ratio", escapeHtml(analysis.reproductionRatio), "same as magnification ratio")}
-        ${metric("Macro Classification", escapeHtml(analysis.classification), analysis.status === "valid" ? "automatic" : "needs finite data")}
+        ${metric("Current Classification", escapeHtml(analysis.classification), analysis.status === "valid" ? "automatic from current magnification" : "needs finite data")}
         ${metric("Focused EFL", formatDistanceForMacro(analysis.effectiveFocalLengthMm), "mm first-order")}
-        ${metric("Ray trace", Number.isFinite(analysis.rayTraceValidCount) ? `${analysis.rayTraceValidCount}/${analysis.rayTraceTotalCount}` : "--", "valid rays")}
+        ${metric("On-axis transmitted rays", Number.isFinite(analysis.rayTraceValidCount) ? `${analysis.rayTraceValidCount}/${analysis.rayTraceTotalCount}` : "--", "not finite-focus validation")}
+        ${metric("Finite-conjugate validation", escapeHtml(analysis.finiteConjugateValidation?.label || analysis.finiteConjugateStatus || "Not available"), escapeHtml(analysis.finiteConjugateValidation?.status || ""))}
         ${analysis.internalFocusApplied ? metric(`Macro spacing S${analysis.macroSpacingSurface}`, formatDistanceForMacro(analysis.macroSpacingMm, 4), "mm from macroFocusModel") : ""}
       </div>
       ${analysis.warning ? `<p class="diagram-note macro-analysis-note">${escapeHtml(analysis.warning)}</p>` : ""}
@@ -23370,14 +23559,19 @@ const renderImageMagnificationSection = (analysis) => {
   `;
 };
 
-const renderSystemSummary = (system, spectralSystems, rayTraceResults = []) => {
+const renderSystemSummary = (system, spectralSystems, rayTraceResults = [], focusedConfiguration = null) => {
   const fNumber = calculateFNumber(system);
   const bfdDelta = system.backFocalLength - SONY_E_FLANGE_DISTANCE;
   const stopSurface = (Array.isArray(rayTraceResults) ? rayTraceResults : [rayTraceResults])
     .flatMap((result) => result?.surfaces || [])
     .find((surface) => surface.isStop);
-  const mtfSummary = calculateSystemResultMtfSummary(state.lenses, system);
-  const magnificationAnalysis = calculateImageMagnificationAnalysis(system);
+  const systemLenses = focusedConfiguration?.focusedLenses || state.lenses;
+  const mtfSummary = calculateSystemResultMtfSummary(systemLenses, system);
+  const magnificationAnalysis = calculateImageMagnificationAnalysis(system, {
+    lenses: systemLenses,
+    prescription: focusedConfiguration?.focusedPrescription || state.prescription,
+    focusedConfiguration: focusedConfiguration || null
+  });
   return `
     <section class="summary-panel system-result-panel">
       <div class="system-status-row">
@@ -23627,34 +23821,41 @@ const render = () => {
 
   ensurePatentOpticalGeometry();
   syncEntrancePupilResult();
-  const system = measureTiming("systemCalculation", { lensCount: state.lenses.length }, () => calculateSystem(state.lenses));
-  const spectralSystems = measureTiming("spectralSystemCalculation", {}, () => getSpectralSystems());
+  const sourceSystem = measureTiming("systemCalculation", { lensCount: state.lenses.length }, () => calculateSystem(state.lenses));
+  const focusedAnalysisConfiguration = getFocusedAnalysisConfiguration({
+    lenses: state.lenses,
+    system: sourceSystem,
+    prescription: state.prescription
+  });
+  const analysisLenses = focusedAnalysisConfiguration.focusedLenses;
+  const system = focusedAnalysisConfiguration.focusedSystem;
+  const spectralSystems = measureTiming("spectralSystemCalculation", {}, () => getSpectralSystems(analysisLenses));
   const baseApertureOptions = rayTraceApertureOptions(state);
-  const diagramAperturePreview = resolveDiagramAperturePreview(state.lenses, spectralSystems.d || system);
+  const diagramAperturePreview = resolveDiagramAperturePreview(analysisLenses, spectralSystems.d || system);
   const diagramApertureOptions = {
     ...baseApertureOptions,
     apertureDiameter: diagramAperturePreview.apertureDiameter
   };
-  const dLineRayTraceResults = measureTiming("rayTrace", { mode: "d-line-field-set" }, () => traceSystemFieldSet(state.lenses, spectralSystems.d || system, {
+  const dLineRayTraceResults = measureTiming("rayTrace", { mode: "d-line-field-set" }, () => traceSystemFieldSet(analysisLenses, spectralSystems.d || system, {
     ...baseApertureOptions,
     rayCount: state.rayTraceRayCount,
     wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
     spectralLineKey: "d"
   }));
-  const spectralRayTraceResults = measureTiming("rayTrace", { mode: "spectral-field-set" }, () => traceSpectralFieldSet(state.lenses, spectralSystems.d || system, {
+  const spectralRayTraceResults = measureTiming("rayTrace", { mode: "spectral-field-set" }, () => traceSpectralFieldSet(analysisLenses, spectralSystems.d || system, {
     ...baseApertureOptions,
     rayCount: state.rayTraceRayCount
   }));
   const diagramRayCount = normalizeDiagramRayDisplayMode(state.diagramRayDisplayMode) === "selected"
     ? 7
     : state.rayTraceRayCount;
-  const diagramDLineRayTraceResults = measureTiming("rayTrace", { mode: "diagram-d-line" }, () => traceDiagramFieldSet(state.lenses, spectralSystems.d || system, {
+  const diagramDLineRayTraceResults = measureTiming("rayTrace", { mode: "diagram-d-line" }, () => traceDiagramFieldSet(analysisLenses, spectralSystems.d || system, {
     ...diagramApertureOptions,
     rayCount: diagramRayCount,
     wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
     spectralLineKey: "d"
   }));
-  const diagramSpectralRayTraceResults = measureTiming("rayTrace", { mode: "diagram-spectral" }, () => traceDiagramSpectralFieldSet(state.lenses, spectralSystems.d || system, {
+  const diagramSpectralRayTraceResults = measureTiming("rayTrace", { mode: "diagram-spectral" }, () => traceDiagramSpectralFieldSet(analysisLenses, spectralSystems.d || system, {
     ...diagramApertureOptions,
     rayCount: diagramRayCount
   }));
@@ -23667,7 +23868,7 @@ const render = () => {
   const needsDebugTools = isPanelExpanded("debugTools");
   const needsRayTrace3D = (needsRayTraceSpot || needsDebugTools) && state.enable3DRayTrace;
   const transmissionResult = needsCoverageIllumination
-    ? cachedAnalysis("transmission", {}, () => calculateSystemTransmission(state.lenses, spectralSystems.d || system, {
+    ? cachedAnalysis("transmission", {}, () => calculateSystemTransmission(analysisLenses, spectralSystems.d || system, {
       apertureDiameter: state.apertureDiameter
     }))
     : null;
@@ -23677,7 +23878,7 @@ const render = () => {
       step: state.rayCircleFieldStepDegrees,
       rays: state.rayTraceRayCount,
       wavelength: state.rayCircleWavelengthMode
-    }, () => sampleImageCircleCoverage(state.lenses, spectralSystems.d || system, {
+    }, () => sampleImageCircleCoverage(analysisLenses, spectralSystems.d || system, {
       ...rayTraceApertureOptions(state),
       maxFieldAngleDegrees: state.rayCircleMaxFieldAngleDegrees,
       fieldStepDegrees: state.rayCircleFieldStepDegrees,
@@ -23693,7 +23894,7 @@ const render = () => {
       field: state.rayFanFieldPreset,
       customField: state.rayFanCustomFieldAngleDegrees,
       wavelength: state.rayFanWavelengthMode
-    }, () => calculateRayFanAberrationData(state.lenses, spectralSystems.d || system, {
+    }, () => calculateRayFanAberrationData(analysisLenses, spectralSystems.d || system, {
       rayCount: state.rayTraceRayCount
     }))
     : null;
@@ -23704,7 +23905,7 @@ const render = () => {
       samples: state.rayTrace3DSampleCount,
       sampling: state.rayTrace3DSampling,
       wavelength: state.rayTrace3DWavelengthMode
-    }, () => traceSystem3DSpectral(state.lenses, spectralSystems.d || system, {
+    }, () => traceSystem3DSpectral(analysisLenses, spectralSystems.d || system, {
       ...rayTraceApertureOptions(state),
       fieldAngleDegrees: state.rayTrace3DFieldAngleDegrees,
       fieldOrientation: state.rayTrace3DOrientation,
@@ -23720,12 +23921,12 @@ const render = () => {
       customField: state.stRayFanCustomFieldAngleDegrees,
       wavelength: state.stRayFanWavelengthMode,
       plane: state.stRayFanImagePlaneMode
-    }, () => calculateSagittalTangentialRayFan3DData(state.lenses, spectralSystems.d || system, {
+    }, () => calculateSagittalTangentialRayFan3DData(analysisLenses, spectralSystems.d || system, {
       rayCount: state.stRayFanRayCount
     }))
     : null;
   const sagittalTangentialMtfResult = needsMtfResolution
-    ? hydratedMtfResultForRender(currentMtfMainResultForRender(), state.lenses, spectralSystems.d || system)
+    ? hydratedMtfResultForRender(currentMtfMainResultForRender(), analysisLenses, spectralSystems.d || system)
     : null;
   const diffractionHybridMtfResult = needsMtfResolution
     ? (
@@ -23738,21 +23939,21 @@ const render = () => {
     ? cachedAnalysis("wavefront", {
       field: state.wavefrontFieldKey,
       wavelength: state.wavefrontWavelengthMode
-    }, () => calculateWavefrontPanelData(state.lenses, spectralSystems.d || system))
+    }, () => calculateWavefrontPanelData(analysisLenses, spectralSystems.d || system))
     : null;
   const waveOpticsResult = needsWavefrontDiagnostics
     ? cachedAnalysis("waveOptics", {
       field: state.waveOpticsFieldKey,
       wavelength: state.waveOpticsWavelengthKey,
       grid: state.waveOpticsGridSize
-    }, () => calculateWavefrontPSFOTFMTFPrototype(state.lenses, spectralSystems.d || system))
+    }, () => calculateWavefrontPSFOTFMTFPrototype(analysisLenses, spectralSystems.d || system))
     : null;
   const polychromaticWavefrontMtfResult = needsWavefrontDiagnostics
     ? cachedAnalysis("polyMtf", {
       field: state.polyMtfFieldKey,
       grid: state.polyMtfGridSize,
       weights: getCurrentPolychromaticWeights()
-    }, () => calculatePolychromaticWavefrontMTF(state.lenses, spectralSystems.d || system, {
+    }, () => calculatePolychromaticWavefrontMTF(analysisLenses, spectralSystems.d || system, {
       ...rayTraceApertureOptions(state),
       fieldKey: state.polyMtfFieldKey,
       gridSize: state.polyMtfGridSize,
@@ -23761,14 +23962,14 @@ const render = () => {
     }))
     : null;
   const preset = PRESETS[state.preset] ?? PRESETS[DEFAULT_PRESET_KEY];
-  const manufacturingPositions = lensPositions(system, state.lenses);
+  const manufacturingPositions = lensPositions(sourceSystem, state.lenses);
   const manufacturingMapper = { x: (value) => value, y: (value) => value };
   const manufacturingModels = state.lenses.map((lens, index) => (
-    system.results[index]?.valid && manufacturingPositions[index]
+    sourceSystem.results[index]?.valid && manufacturingPositions[index]
       ? buildPrescriptionLensRenderModel(
         manufacturingPositions[index],
         manufacturingMapper,
-        system.results[index],
+        sourceSystem.results[index],
         lens,
         index,
         diagramRayTraceResults
@@ -23778,7 +23979,7 @@ const render = () => {
   const visualLensControls = state.lenses.length
     ? state.lenses
       .map((lens, index) => ({ lens, index }))
-      .map(({ lens, index }) => renderLens(lens, index, system.results[index], manufacturingModels[index]))
+      .map(({ lens, index }) => renderLens(lens, index, sourceSystem.results[index], manufacturingModels[index]))
       .join("")
     : `
       <div class="empty-analysis-note">
@@ -23804,12 +24005,15 @@ const render = () => {
         <div class="work-layout">
           <main class="center-workspace" aria-label="Primary optical workspace">
             <section class="top-diagram">
-            ${renderOpticalDiagram(system, spectralSystems, diagramRayTraceResults, diagramAperturePreview)}
+            ${renderOpticalDiagram(system, spectralSystems, diagramRayTraceResults, diagramAperturePreview, {
+              lenses: analysisLenses,
+              prescription: state.prescription
+            })}
             </section>
 
             <div class="center-scroll-stack" aria-label="Lens controls and primary results">
               <div class="system-bottom">
-                ${renderStackedPanel("system", tx("systemResult"), renderSystemSummary(system, spectralSystems, diagramRayTraceResults))}
+                ${renderStackedPanel("system", tx("systemResult"), renderSystemSummary(system, spectralSystems, diagramRayTraceResults, focusedAnalysisConfiguration))}
                 ${renderStackedPanel(
                   "mechanicalDiagnostics",
                   "Mechanical diagnostics",
@@ -26889,6 +27093,73 @@ const runOpticsSelfCheck = (options = {}) => {
       && derived[2]?.gapAfter > 0
       && Math.abs(derived[2]?.gapAfter - 1.8882) < 1e-9;
   });
+
+  test("US4792219 macro focus auto resolves to documented 1:2 spacing", () => withTemporaryState(() => {
+    loadPresetIntoState("olympusZuikoAutoMacro90F2Us4792219Ex3");
+    ensurePatentOpticalGeometry();
+    state.imageMagnificationFocusKey = "auto";
+    const sourceSystem = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const focused = getFocusedAnalysisConfiguration({ system: sourceSystem });
+    const analysis = calculateImageMagnificationAnalysis(focused.focusedSystem, { focusedConfiguration: focused });
+    const macroGapLens = focused.focusedLenses.find((lens) => Math.round(toNumber(lens.patentSurfaceEnd)) === 13);
+    return focused.macroFocusSelection.key === "minimum"
+      && focused.internalFocusApplied === true
+      && Math.abs(toNumber(macroGapLens?.gapAfter) - 20.277) < 0.00001
+      && Math.abs(analysis.magnification - 0.5) < 1e-12
+      && analysis.classification === "Near Macro"
+      && analysis.lensCapability.includes("patent-documented to 1:2")
+      && analysis.currentReproduction.includes("1:2");
+  }));
+
+  test("US4792219 macro focus documented rows preserve infinity and 1:10 spacing", () => withTemporaryState(() => {
+    loadPresetIntoState("olympusZuikoAutoMacro90F2Us4792219Ex3");
+    ensurePatentOpticalGeometry();
+    const sourceSystem = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
+    state.imageMagnificationFocusKey = "infinity";
+    const infinity = getFocusedAnalysisConfiguration({ system: sourceSystem });
+    const infinityAnalysis = calculateImageMagnificationAnalysis(infinity.focusedSystem, { focusedConfiguration: infinity });
+    const infinityGap = infinity.focusedLenses.find((lens) => Math.round(toNumber(lens.patentSurfaceEnd)) === 13);
+    state.imageMagnificationFocusKey = "ratio-0.1";
+    const oneToTen = getFocusedAnalysisConfiguration({ system: sourceSystem });
+    const oneToTenAnalysis = calculateImageMagnificationAnalysis(oneToTen.focusedSystem, { focusedConfiguration: oneToTen });
+    const oneToTenGap = oneToTen.focusedLenses.find((lens) => Math.round(toNumber(lens.patentSurfaceEnd)) === 13);
+    return Math.abs(infinityAnalysis.magnification) < 1e-12
+      && infinityAnalysis.classification === "Normal photography"
+      && Math.abs(toNumber(infinityGap?.gapAfter) - 0.889) < 0.00001
+      && Math.abs(oneToTenAnalysis.magnification - 0.1) < 1e-12
+      && oneToTenAnalysis.classification === "Close-up"
+      && Math.abs(toNumber(oneToTenGap?.gapAfter) - 5.283) < 0.00001
+      && oneToTenAnalysis.focusConfigurationStatus === "Patent configuration";
+  }));
+
+  test("US4792219 unsupported 1:1 remains theoretical and does not apply patent motion", () => withTemporaryState(() => {
+    loadPresetIntoState("olympusZuikoAutoMacro90F2Us4792219Ex3");
+    ensurePatentOpticalGeometry();
+    state.imageMagnificationFocusKey = "ratio-1";
+    const sourceSystem = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const focused = getFocusedAnalysisConfiguration({ system: sourceSystem });
+    const analysis = calculateImageMagnificationAnalysis(focused.focusedSystem, { focusedConfiguration: focused });
+    return focused.internalFocusApplied === false
+      && focused.macroFocusSelection.unsupportedByMacroModel === true
+      && analysis.focusConfigurationStatus === "Theoretical first-order estimate"
+      && analysis.finiteConjugateValidation.status === "unsupported"
+      && analysis.warning.includes("no matching patent");
+  }));
+
+  test("US4792219 focused system results use focused clone without mutating state lenses", () => withTemporaryState(() => {
+    loadPresetIntoState("olympusZuikoAutoMacro90F2Us4792219Ex3");
+    ensurePatentOpticalGeometry();
+    state.imageMagnificationFocusKey = "ratio-0.5";
+    const sourceSystem = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const stateGapBefore = state.lenses.find((lens) => Math.round(toNumber(lens.patentSurfaceEnd)) === 13)?.gapAfter;
+    const focused = getFocusedAnalysisConfiguration({ system: sourceSystem });
+    const focusedGap = focused.focusedLenses.find((lens) => Math.round(toNumber(lens.patentSurfaceEnd)) === 13)?.gapAfter;
+    const stateGapAfter = state.lenses.find((lens) => Math.round(toNumber(lens.patentSurfaceEnd)) === 13)?.gapAfter;
+    return Math.abs(toNumber(focusedGap) - 20.277) < 0.00001
+      && Math.abs(toNumber(stateGapBefore) - toNumber(stateGapAfter)) < 1e-12
+      && focused.focusedSystem.totalTrack > sourceSystem.totalTrack + 10
+      && focused.focusedLenses !== state.lenses;
+  }));
 
   test("patent audit display status is derived from direct sequential audit", () => {
     const nikonAudit = calculateDirectPatentSequentialParaxialAudit(PRESETS.nikonF12Us3738736);

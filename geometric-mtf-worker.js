@@ -1,10 +1,10 @@
 /* eslint-env worker */
 
-const GEOMETRIC_MTF_WORKER_VERSION = "20260703-mtf-open-nonblocking-2";
+const GEOMETRIC_MTF_WORKER_VERSION = "20260706-macro-focus-1";
 const GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION = "geometric-lsf-contract-20260630-1";
 
 try {
-  importScripts("geometric-mtf-core.js?v=20260703-mtf-open-nonblocking-2");
+  importScripts("geometric-mtf-core.js?v=20260706-macro-focus-1");
 } catch (error) {
   self.geometricMtfCoreLoadError = error;
 }

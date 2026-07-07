@@ -10,7 +10,7 @@ const DIAGRAM_SIZE = {
   height: 480
 };
 
-const ANALYSIS_WORKER_VERSION = "20260706-macro-focus-2";
+const ANALYSIS_WORKER_VERSION = "20260707-ipad-system-result-1";
 const GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION = "geometric-lsf-contract-20260630-1";
 const DEFAULT_PRESET_KEY = "zeissBiotar50F14Us1786916Ex2";
 const OLD_MISLEADING_ZEISS_PRESET_KEYS = [
@@ -986,6 +986,10 @@ const normalizePatentSurface = (surface = {}, index = 0) => ({
   isImagePlane: surface.isImagePlane === true,
   type: surface.type || null,
   role: surface.role || null,
+  variableGap: surface.variableGap || null,
+  opticalAccessory: surface.opticalAccessory === true,
+  countAsMainImagingElement: surface.countAsMainImagingElement === false ? false : null,
+  sourceDistanceLabel: surface.sourceDistanceLabel || null,
   comment: surface.comment || surface.note || "",
   clearAperture: normalizePatentSurfaceValue(surface.clearAperture),
   apertureEstimated: surface.apertureEstimated !== false,
@@ -1055,6 +1059,126 @@ const scalePatentSurfacePrescription = (surfaces, targetFocalLengthMm, normalize
 
 const makeCanonDreamLensSurfaces = (targetFocalLengthMm = 50) => (
   scalePatentSurfacePrescription(CANON_DREAM_LENS_NORMALIZED_SURFACES, targetFocalLengthMm, 1)
+);
+
+const US4534626_EX1_RAW = {
+  normalizedFocalLength: 100,
+  fieldAngleDeg: 10.2,
+  targetFNumber: 2.0,
+  scaleFactorFor250mmCandidate: 2.5,
+  anomalousPartialDispersion: {
+    theta1: 0.53695,
+    theta2: 0.54379,
+    theta3: 0.54978,
+    theta4: 0.53695,
+    note: "Retain as source metadata only until the app has an anomalous-dispersion glass model."
+  },
+  focusConfigurations: {
+    infinity: {
+      label: "Patent infinity configuration",
+      objectPointLabel: "∞",
+      D1: 14.211,
+      D2: 4.310,
+      D3: 18.122,
+      sourceEfl: 100.000
+    },
+    object3_05m: {
+      label: "Patent documented focus configuration",
+      objectPointLabel: "3.05 m",
+      D1: 15.440,
+      D2: 5.722,
+      D3: 6.580,
+      sourceEfl: 100.085
+    },
+    object1_03m: {
+      label: "Patent documented close-focus configuration",
+      objectPointLabel: "1.03 m",
+      D1: 18.432,
+      D2: 5.753,
+      D3: 11.510,
+      sourceEfl: 99.948
+    }
+  },
+  surfaces: [
+    { no: 1, radius: 53.4890, distanceToNext: 8.6598, nAfter: 1.49700, vdAfter: 81.61, role: "imagingLens" },
+    { no: 2, radius: -253.9770, distanceToNext: 0.2021, nAfter: 1.0 },
+    { no: 3, radius: 47.1587, distanceToNext: 6.8041, nAfter: 1.61700, vdAfter: 62.79, role: "imagingLens" },
+    { no: 4, radius: 372.5134, distanceToNext: 3.0103, nAfter: 1.0 },
+    { no: 5, radius: -310.9050, distanceToNext: 2.8866, nAfter: 1.65412, vdAfter: 39.70, role: "imagingLens" },
+    { no: 6, radius: 33.9410, distanceToNext: 2.8866, nAfter: 1.0 },
+    { no: 7, radius: 41.2077, distanceToNext: 5.6082, nAfter: 1.49700, vdAfter: 81.61, role: "imagingLens" },
+    { no: 8, radius: 747.8051, distanceToNext: "D1", nAfter: 1.0, variableGap: "D1" },
+    { no: 9, radius: -79.7637, distanceToNext: 3.5052, nAfter: 1.73400, vdAfter: 51.49, role: "imagingLens" },
+    { no: 10, radius: -49.0299, distanceToNext: 2.0619, nAfter: 1.46450, vdAfter: 65.94, role: "imagingLens", cementedInterfaceAfterPrevious: true },
+    { no: 11, radius: 69.9918, distanceToNext: "D2", nAfter: 1.0, variableGap: "D2" },
+    { no: 12, radius: 626.3769, distanceToNext: 3.2990, nAfter: 1.68893, vdAfter: 31.08, role: "imagingLens" },
+    { no: 13, radius: -40.7052, distanceToNext: 1.6495, nAfter: 1.51742, vdAfter: 52.41, role: "imagingLens", cementedInterfaceAfterPrevious: true },
+    { no: 14, radius: 30.5153, distanceToNext: "D3", nAfter: 1.0, variableGap: "D3" },
+    { no: 15, radius: 63.0751, distanceToNext: 3.0928, nAfter: 1.77250, vdAfter: 49.66, role: "imagingLens" },
+    { no: 16, radius: -44.3549, distanceToNext: 1.2371, nAfter: 1.0 },
+    { no: 17, radius: -41.3072, distanceToNext: 1.2371, nAfter: 1.62004, vdAfter: 36.25, role: "imagingLens" },
+    { no: 18, radius: 29.8059, distanceToNext: 2.7629, nAfter: 1.67790, vdAfter: 55.33, role: "imagingLens", cementedInterfaceAfterPrevious: true },
+    { no: 19, radius: -231.6445, distanceToNext: 1.6495, nAfter: 1.0 },
+    {
+      no: 20,
+      radius: Infinity,
+      distanceToNext: 1.0309,
+      nAfter: 1.51633,
+      vdAfter: 64.15,
+      role: "patentFilterF",
+      opticalAccessory: true,
+      countAsMainImagingElement: false,
+      note: "Plane-parallel filter F explicitly included in the patent numerical table."
+    },
+    {
+      no: 21,
+      radius: Infinity,
+      distanceToNext: null,
+      nAfter: 1.0,
+      role: "patentFilterFExit",
+      opticalAccessory: true,
+      countAsMainImagingElement: false
+    }
+  ]
+};
+
+const buildScaledPatentSurfacePrescription = (
+  rawPrescription,
+  focusKey = "infinity",
+  scaleFactor = rawPrescription?.scaleFactorFor250mmCandidate || 1
+) => {
+  const focusConfiguration = rawPrescription?.focusConfigurations?.[focusKey]
+    || rawPrescription?.focusConfigurations?.infinity
+    || {};
+  const resolveDistance = (distance) => {
+    if (typeof distance === "string") {
+      return normalizePatentSurfaceValue(focusConfiguration[distance]);
+    }
+    return normalizePatentSurfaceValue(distance);
+  };
+  const scaleFinite = (value) => {
+    const normalized = normalizePatentSurfaceValue(value);
+    if (normalized === Infinity || normalized === -Infinity) return normalized;
+    return Number.isFinite(normalized) ? normalized * scaleFactor : normalized;
+  };
+  return {
+    focusKey,
+    focusConfiguration,
+    surfaces: (rawPrescription?.surfaces || []).map((surface) => normalizePatentSurface({
+      ...surface,
+      sourceDistanceLabel: typeof surface.distanceToNext === "string" ? surface.distanceToNext : null,
+      radius: scaleFinite(surface.radius),
+      distanceToNext: surface.distanceToNext === null || surface.distanceToNext === undefined
+        ? null
+        : scaleFinite(resolveDistance(surface.distanceToNext))
+    }))
+  };
+};
+
+const US4534626_EX1_250MM_INFINITY = buildScaledPatentSurfacePrescription(
+  US4534626_EX1_RAW,
+  "infinity",
+  US4534626_EX1_RAW.scaleFactorFor250mmCandidate
 );
 
 const PATENT_SURFACE_PRESCRIPTION_DATA = {
@@ -1576,6 +1700,73 @@ const PATENT_SURFACE_PRESCRIPTION_DATA = {
       { no: 13, radius: -910.494, distanceToNext: null }
     ]
   },
+  olympusZuikoAutoT250F2Us4534626Ex1: {
+    patentDataStatus: "verifiedPatentNumericalTable",
+    sourceType: "patent",
+    sourcePatent: "US4534626A",
+    sourceUrl: "https://patents.google.com/patent/US4534626A/en",
+    example: "Embodiment 1",
+    sourceExample: "Embodiment 1",
+    brand: "Olympus",
+    designType: "Large-aperture internal-focus telephoto",
+    productCandidate: "Olympus Zuiko Auto-T 250mm f/2 ED-IF",
+    productionStatus: "plausibleProductionCandidate_notConfirmed",
+    prescriptionStatus: "verifiedPatentNumericalTable_scaledCandidate",
+    focalLength: 250,
+    apertureRatio: "1:2.0",
+    fieldAngleDeg: 10.2,
+    imageFormat: "35 mm SLR / full-frame intended",
+    presetGroup: "Olympus patent-based prescriptions",
+    normalizationBasis: "US4534626 Embodiment 1 gives f = 100. This preset displays a uniformly scaled 250 mm comparison form by multiplying all finite radii, axial thicknesses and airspaces by 2.5.",
+    patentNormalization: {
+      patentFocalLength: 100,
+      displayedFocalLength: 250,
+      scaleFactor: 2.5,
+      fieldAngleDeg: 10.2,
+      scaleMethod: "Uniformly multiply every finite radius, thickness and airspace by 2.5. Keep refractive index, Abbe number, partial-dispersion metadata and infinity unchanged."
+    },
+    source: {
+      patentId: "US4534626A",
+      example: "Embodiment 1",
+      normalizedFocalLength: 100,
+      fieldAngleDeg: 10.2,
+      targetFNumber: 2.0,
+      sourceStatus: "Patent example scaled candidate",
+      productionStatus: "Plausible production candidate, not confirmed"
+    },
+    sourceNotes: [
+      "US4534626 Embodiment 1 gives a normalized f = 100 telephoto prescription with 10.2 degree field angle.",
+      "Displayed 250 mm form: uniform 2.5x normalized scaling for comparison with Olympus Zuiko Auto-T 250mm f/2 ED-IF.",
+      "The patent includes a plane-parallel filter F after the main imaging groups.",
+      "The main prescription is a plausible structural match for Olympus Zuiko Auto-T 250mm f/2 ED-IF, but exact production numerical identity is unconfirmed.",
+      "Patent chromatic correction relies partly on anomalous partial-dispersion glass data not fully represented by an nd/Vd-only glass model.",
+      "Patent IF documentation: at focus, three airspaces vary together: d8 = D1, d11 = D2, d14 = D3. The current implementation loads the infinity configuration only. Close-focus configurations are documented but not yet simulated.",
+      "Chromatic result is nd/Vd approximation only. Patent performance depends partly on anomalous partial-dispersion glass data not yet modeled.",
+      "Estimated aperture location — editable. US4534626 does not numerically specify the diaphragm plane."
+    ].join(" "),
+    note: "Patent numerical example: f = 100, 2ω = 10.2°. Displayed 250 mm form: uniform 2.5× normalized scaling for comparison with Olympus Zuiko Auto-T 250mm f/2 ED-IF. Plausible production candidate only; exact production prescription, clear apertures, mechanical diameters and glass identity are not confirmed. Patent filter F is included. Estimated aperture location — editable. Chromatic result is nd/Vd approximation only; anomalous partial dispersion is stored as metadata but not yet modeled.",
+    opticalCounts: {
+      imagingElementsExcludingFilter: 11,
+      imagingGroupsExcludingFilter: 8,
+      withPatentFilterElements: 12,
+      withPatentFilterGroups: 9,
+      note: "The patent states that its numerical data includes filter F. Do not use the published 12-element / 9-group production count as proof that the prescription is identical."
+    },
+    rawPatentPrescription: US4534626_EX1_RAW,
+    activePatentFocusKey: "infinity",
+    anomalousPartialDispersion: US4534626_EX1_RAW.anomalousPartialDispersion,
+    focusConfigurations: US4534626_EX1_RAW.focusConfigurations,
+    closeFocusSimulationEnabled: false,
+    diameterSource: "rayEnvelope",
+    diameterNote: "Patent clear apertures and mechanical diameters are not supplied. Use ray-envelope-derived apertures only and mark them estimated.",
+    numericalAudit: {
+      expectedEflMm: 250,
+      eflToleranceMm: 1.5,
+      expectedFNumber: 2.0,
+      status: "pendingRuntimeValidation"
+    },
+    surfaces: US4534626_EX1_250MM_INFINITY.surfaces
+  },
   olympusZuikoAutoMacro90F2Us4792219Ex3: {
     patentDataStatus: "verifiedPatentNumericalTable",
     sourceType: "patent",
@@ -1903,6 +2094,16 @@ const PATENT_APERTURE_STOP_SPECS = {
     sourceLabel: "US4792219 Embodiment 3 explicitly specifies r7 = infinity (stop).",
     sourceUrl: "https://patents.google.com/patent/US4792219A/en",
     note: "The aperture stop is a true plane at surface 7, between S6 and S8. It is not an estimated midpoint."
+  },
+  olympusZuikoAutoT250F2Us4534626Ex1: {
+    kind: "airGap",
+    afterSurfaceNumber: 14,
+    fraction: 0.5,
+    sourceLevel: "estimated",
+    confidence: "unverified",
+    sourceLabel: "US4534626 Embodiment 1 has no explicit stop row or split diaphragm distance.",
+    sourceUrl: "https://patents.google.com/patent/US4534626A/en",
+    note: "d14 / D3 midpoint is an editable central-gap analysis default, not a patent-confirmed iris position."
   }
 };
 
@@ -2172,6 +2373,9 @@ const surfacePrescriptionToDerivedLenses = (prescription = {}) => {
       patentGlassLabel: front.mediumLabel || null,
       patentGlassNote: front.mediumLabel ? "Exact catalogue glass designation not specified in the patent." : "",
       patentSpaceLabel: rear.spaceLabel || null,
+      patentOpticalAccessory: front.opticalAccessory === true,
+      patentAccessoryLabel: front.role === "patentFilterF" ? "Patent filter F" : "",
+      countAsMainImagingElement: front.countAsMainImagingElement === false ? false : true,
       r1,
       r2,
       gapAfter,
@@ -2444,6 +2648,19 @@ const PATENT_PRESET_DEFINITIONS = [
     analysisDefaults: TELEPHOTO_ANALYSIS_DEFAULTS
   }),
   makePatentPreset({
+    key: "olympusZuikoAutoT250F2Us4534626Ex1",
+    name: "Olympus Zuiko Auto-T 250mm f/2 ED-IF — US4534626 Embodiment 1",
+    sourcePatent: "US4534626A",
+    example: "Embodiment 1",
+    brand: "Olympus",
+    designType: "Telephoto",
+    analysisDefaults: {
+      ...TELEPHOTO_ANALYSIS_DEFAULTS,
+      matchPatentFNumber: true
+    },
+    presetGroup: "Olympus patent-based prescriptions"
+  }),
+  makePatentPreset({
     key: "olympusZuikoAutoMacro90F2Us4792219Ex3",
     name: "Olympus Zuiko Auto-Macro 90mm f/2 — US4792219 Embodiment 3",
     sourcePatent: "US4792219A",
@@ -2486,6 +2703,16 @@ const normalizePrescription = (prescription = {}) => {
       normalizationBasis: prescription.normalizationBasis || null,
       prescriptionStatus: prescription.prescriptionStatus || null,
       sourceNotes: prescription.sourceNotes || null,
+      source: prescription.source || null,
+      productCandidate: prescription.productCandidate || null,
+      productionStatus: prescription.productionStatus || null,
+      patentNormalization: prescription.patentNormalization || null,
+      opticalCounts: prescription.opticalCounts || null,
+      rawPatentPrescription: prescription.rawPatentPrescription || null,
+      activePatentFocusKey: prescription.activePatentFocusKey || null,
+      anomalousPartialDispersion: prescription.anomalousPartialDispersion || null,
+      focusConfigurations: prescription.focusConfigurations || null,
+      closeFocusSimulationEnabled: prescription.closeFocusSimulationEnabled === true,
       numericalAudit: prescription.numericalAudit || null,
       productionMatch: prescription.productionMatch || null,
       macroFocusModel: prescription.macroFocusModel || null,
@@ -2594,6 +2821,16 @@ const clonePresetPrescription = (presetKey) => {
       normalizationBasis: preset.normalizationBasis || null,
       prescriptionStatus: preset.prescriptionStatus || null,
       sourceNotes: preset.sourceNotes || null,
+      source: preset.source || null,
+      productCandidate: preset.productCandidate || null,
+      productionStatus: preset.productionStatus || null,
+      patentNormalization: preset.patentNormalization || null,
+      opticalCounts: preset.opticalCounts || null,
+      rawPatentPrescription: preset.rawPatentPrescription || null,
+      activePatentFocusKey: preset.activePatentFocusKey || null,
+      anomalousPartialDispersion: preset.anomalousPartialDispersion || null,
+      focusConfigurations: preset.focusConfigurations || null,
+      closeFocusSimulationEnabled: preset.closeFocusSimulationEnabled === true,
       productionMatch: preset.productionMatch || null,
       macroFocusModel: preset.macroFocusModel || null,
       explicitImagePlaneSurfaceNumber: preset.explicitImagePlaneSurfaceNumber ?? null,
@@ -5760,7 +5997,7 @@ const renderLens = (lens, index, result, manufacturingModel = null) => `
         data-id="${lens.id}"
         aria-expanded="${isLensCardCollapsed(lens) ? "false" : "true"}"
       >
-        <span class="lens-summary-title">L${index + 1}</span>
+        <span class="lens-summary-title">${lens.patentOpticalAccessory ? escapeHtml(lens.patentAccessoryLabel || "Filter") : `L${index + 1}`}</span>
         <span class="lens-summary-meta">${formatLensSummary(lens, index)}</span>
         ${lensHasActiveAsphere(lens, result) ? `<span class="lens-asphere-summary-badge" title="Aspherical surface active" aria-label="Aspherical surface active">A</span>` : ""}
         <span class="lens-card-chevron" aria-hidden="true">${isLensCardCollapsed(lens) ? "▸" : "▾"}</span>
@@ -7490,10 +7727,13 @@ const findBestRealRayFocusPlane = (lenses, system, options = {}) => {
       focusShiftMm: NaN,
       rmsSpotAtReferenceMm: trace.rmsSpotRadius,
       rmsSpotAtBestFocusMm: NaN,
+      validRayCount: validRays.length,
+      totalRayCount: trace.totalRayCount,
       maxRayHeight: NaN,
       chiefRayHeight: NaN,
       marginalRaySpread: NaN,
-      status: "insufficient-rays"
+      status: "insufficient-rays",
+      warning: trace.warning || "Insufficient valid rays for focus search."
     };
   }
 
@@ -7528,10 +7768,13 @@ const findBestRealRayFocusPlane = (lenses, system, options = {}) => {
     focusShiftMm: referenceX - best.planeX,
     rmsSpotAtReferenceMm: referenceEvaluation.rmsSpotRadius,
     rmsSpotAtBestFocusMm: best.rmsSpotRadius,
+    validRayCount: best.validRayCount,
+    totalRayCount: trace.totalRayCount,
     maxRayHeight: best.maxRayHeight,
     chiefRayHeight: best.chiefRayHeight,
     marginalRaySpread: best.marginalRaySpread,
-    status: Number.isFinite(best.rmsSpotRadius) ? "valid" : "invalid"
+    status: Number.isFinite(best.rmsSpotRadius) ? "valid" : "invalid",
+    warning: Number.isFinite(best.rmsSpotRadius) ? "" : "Focus search failed for this ray bundle."
   };
 };
 
@@ -18404,10 +18647,10 @@ const resolveMtfMaxFrequency = (system, wavelengthNm = SPECTRAL_LINES.d.waveleng
     const selected = toNumber(state.mtfMaxFrequencyLpMm);
     return MTF_MAX_FREQUENCY_OPTIONS.includes(selected) ? selected : 100;
   }
-  const fNumber = calculateFNumber(system);
+  const nativeFNumber = calculateFNumber(system);
   const wavelengthMm = wavelengthNm / 1000000;
-  const diffractionCutoff = Number.isFinite(fNumber) && fNumber > 0 && wavelengthMm > 0
-    ? 1 / (wavelengthMm * fNumber)
+  const diffractionCutoff = Number.isFinite(nativeFNumber) && nativeFNumber > 0 && wavelengthMm > 0
+    ? 1 / (wavelengthMm * nativeFNumber)
     : 100;
   const sensorNyquist = Number.isFinite(toNumber(state.sensorPixelPitchUm)) && toNumber(state.sensorPixelPitchUm) > 0
     ? 500 / toNumber(state.sensorPixelPitchUm)
@@ -23549,45 +23792,140 @@ const renderOptimizerPanel = () => {
   `;
 };
 
-const renderChromaticReadout = (spectralSystems) => {
-  const redBfd = spectralSystems.C?.backFocalLength;
-  const greenBfd = spectralSystems.d?.backFocalLength;
-  const blueBfd = spectralSystems.F?.backFocalLength;
-  const chromaticShift = Number.isFinite(blueBfd) && Number.isFinite(redBfd) ? blueBfd - redBfd : NaN;
-
-  return `
-    <div class="chromatic-readout">
-      <div class="panel-heading">
-        <h3>Chromatic / Dispersion</h3>
-        <span class="badge">C / d / F lines</span>
-      </div>
-      <div class="chromatic-grid">
-        ${metric("Red BFD", formatNumber(redBfd), "mm")}
-        ${metric("Green BFD", formatNumber(greenBfd), "mm")}
-        ${metric("Blue BFD", formatNumber(blueBfd), "mm")}
-        ${metric("Longitudinal shift", formatNumber(chromaticShift, 4), "blue BFD - red BFD")}
-      </div>
-    </div>
-  `;
-};
-
-
 const normalizeSystemResultApertureKey = (key) => apertureOptionByKey(key).key;
 const activeSystemResultApertureKey = () => normalizeSystemResultApertureKey(
   state.mtfApertureFieldChartKey || state.systemResultApertureKey || "wideOpen"
 );
 
-const calculateSystemResultMtfSummary = (lenses, system) => {
-  const aperture = apertureOptionByKey(activeSystemResultApertureKey());
-  const apertureDiameter = aperture.fNumber
-    ? physicalStopDiameterForRequestedFNumber(lenses, system, aperture.fNumber)
+const resolveSystemResultApertureContext = (lenses, system) => {
+  const key = activeSystemResultApertureKey();
+  const option = apertureOptionByKey(key);
+  const apertureDiameter = option.fNumber
+    ? physicalStopDiameterForRequestedFNumber(lenses, system, option.fNumber)
     : state.apertureDiameter;
-  const fNumber = aperture.fNumber || calculateFNumber(system, apertureDiameter, lenses, {
+  const rayTraceOptions = {
     ...rayTraceApertureOptions({ ...state, apertureDiameter }),
     apertureDiameter
-  });
+  };
+  const fNumber = option.fNumber || calculateFNumber(system, apertureDiameter, lenses, rayTraceOptions);
+  return {
+    key,
+    option,
+    aperture: option,
+    apertureDiameter,
+    fNumber,
+    rayTraceOptions
+  };
+};
+
+const calculateApertureDependentChromaticFocus = (lenses, geometrySystem, spectralSystems, apertureContext) => {
+  const referenceX = referenceImagePlaneX();
+  const rayCount = Math.max(9, Math.min(21, Math.round(toNumber(state.rayTraceRayCount) || 9)));
+  const searchRangeMm = Math.max(
+    1,
+    Math.min(12, Math.abs(toNumber(geometrySystem.effectiveFocalLength) || 50) * 0.12)
+  );
+  const byLine = Object.fromEntries(Object.entries(SPECTRAL_LINES).map(([lineKey, line]) => {
+    const focus = findBestRealRayFocusPlane(lenses, geometrySystem, {
+      ...apertureContext.rayTraceOptions,
+      fieldAngleDegrees: 0,
+      fieldKey: "center",
+      fieldName: "On-axis",
+      rayCount,
+      searchRangeMm,
+      referenceImagePlaneX: referenceX,
+      wavelengthNm: line.wavelengthNm,
+      spectralLineKey: lineKey
+    });
+    const sensorRefocusMm = Number.isFinite(focus.bestRealRayFocusPlaneX)
+      ? focus.bestRealRayFocusPlaneX - referenceX
+      : NaN;
+    return [lineKey, {
+      ...focus,
+      lineKey,
+      line,
+      wavelengthNm: line.wavelengthNm,
+      sensorRefocusMm
+    }];
+  }));
+  const cFocus = byLine.C?.sensorRefocusMm;
+  const dFocus = byLine.d?.sensorRefocusMm;
+  const fFocus = byLine.F?.sensorRefocusMm;
+  return {
+    apertureKey: apertureContext.key,
+    apertureLabel: apertureContext.option?.label || apertureContext.key,
+    apertureDiameter: apertureContext.apertureDiameter,
+    fNumber: apertureContext.fNumber,
+    rayCount,
+    byLine,
+    longitudinalShiftMm: Number.isFinite(fFocus) && Number.isFinite(cFocus)
+      ? fFocus - cFocus
+      : NaN,
+    paraxialBfl: {
+      C: spectralSystems.C?.backFocalLength,
+      d: spectralSystems.d?.backFocalLength,
+      F: spectralSystems.F?.backFocalLength
+    }
+  };
+};
+
+const renderChromaticFocusMetric = (label, focus) => {
+  const status = focus?.status || "invalid";
+  const rays = Number.isFinite(focus?.validRayCount) && Number.isFinite(focus?.totalRayCount)
+    ? `${focus.validRayCount}/${focus.totalRayCount} rays`
+    : "ray count unavailable";
+  const value = Number.isFinite(focus?.sensorRefocusMm)
+    ? formatNumber(focus.sensorRefocusMm, 4)
+    : "--";
+  return metric(
+    escapeHtml(label),
+    escapeHtml(value),
+    `${escapeHtml(rays)} · ${escapeHtml(status)}`
+  );
+};
+
+const renderChromaticReadout = (chromaticFocus) => {
+  const warnings = Object.entries(chromaticFocus.byLine || {})
+    .filter(([, focus]) => focus.status !== "valid" || !Number.isFinite(focus.sensorRefocusMm))
+    .map(([lineKey, focus]) => `${lineKey}: ${focus.warning || focus.status || "Unable to solve focus"}`);
+  return `
+    <div class="chromatic-readout">
+      <div class="panel-heading">
+        <h3>Chromatic / Dispersion</h3>
+        <span class="badge">Real-ray focus</span>
+      </div>
+      <div class="chromatic-focus-meta">
+        <span>f/${formatNumber(chromaticFocus.fNumber, 2)} · stop ${formatNumber(chromaticFocus.apertureDiameter, 2)} mm</span>
+        <span>${escapeHtml(chromaticFocus.apertureLabel || "Selected aperture")}</span>
+      </div>
+      <div class="chromatic-grid">
+        ${renderChromaticFocusMetric("C best-focus offset", chromaticFocus.byLine?.C)}
+        ${renderChromaticFocusMetric("d best-focus offset", chromaticFocus.byLine?.d)}
+        ${renderChromaticFocusMetric("F best-focus offset", chromaticFocus.byLine?.F)}
+        ${metric("F - C longitudinal shift", Number.isFinite(chromaticFocus.longitudinalShiftMm) ? formatNumber(chromaticFocus.longitudinalShiftMm, 4) : "--", "mm")}
+      </div>
+      <p class="diagram-note chromatic-note">Real-ray on-axis best focus at the selected aperture. Positive offset means the best-focus plane lies toward the lens from the current sensor reference plane.</p>
+      ${warnings.length ? `<p class="warning ray-warning">${escapeHtml(warnings.join(" · "))}</p>` : ""}
+      <details class="chromatic-paraxial-reference">
+        <summary>Paraxial C / d / F BFL reference</summary>
+        <div class="chromatic-grid">
+          ${metric("C BFL", formatNumber(chromaticFocus.paraxialBfl?.C), "mm")}
+          ${metric("d BFL", formatNumber(chromaticFocus.paraxialBfl?.d), "mm")}
+          ${metric("F BFL", formatNumber(chromaticFocus.paraxialBfl?.F), "mm")}
+        </div>
+        <p class="diagram-note">Aperture-independent first-order reference.</p>
+      </details>
+    </div>
+  `;
+};
+
+const calculateSystemResultMtfSummary = (lenses, system, apertureContext = null) => {
+  const resolvedAperture = apertureContext || resolveSystemResultApertureContext(lenses, system);
+  const aperture = resolvedAperture.option;
+  const apertureDiameter = resolvedAperture.apertureDiameter;
+  const fNumber = resolvedAperture.fNumber;
   const options = {
-    ...rayTraceApertureOptions({ ...state, apertureDiameter }),
+    ...resolvedAperture.rayTraceOptions,
     apertureDiameter,
     mtfEngine: "fastRmsGaussian",
     quality: "interactive",
@@ -23703,34 +24041,48 @@ const renderImageMagnificationSection = (analysis) => {
         <span class="macro-focus-current">${escapeHtml(analysis.focusLabel || "")} · ${escapeHtml(analysis.focusConfigurationStatus || "")}</span>
       </div>
       <div class="image-magnification-grid">
-        ${metric("Lens Capability", escapeHtml(analysis.lensCapability || "No documented macro-focus model"), "capability, not current magnification")}
-        ${metric("Current Reproduction", escapeHtml(analysis.currentReproduction || analysis.classification), "based on selected focus")}
         ${metric("Image Magnification", formatMagnificationValue(analysis.magnification), escapeHtml(analysis.source))}
         ${metric("Magnification Ratio", escapeHtml(analysis.magnificationRatio), "image : object")}
-        ${metric("Object Distance", formatDistanceForMacro(analysis.objectDistanceMm), analysis.objectDistanceMm === Infinity ? "object at infinity" : "mm from object principal plane")}
-        ${metric("Image Distance", formatDistanceForMacro(analysis.imageDistanceMm), "required image distance from rear principal plane")}
         ${metric("Working Distance", formatDistanceForMacro(analysis.workingDistanceMm), analysis.workingDistanceMm === Infinity ? "not finite" : "mm")}
-        ${metric("Reproduction Ratio", escapeHtml(analysis.reproductionRatio), "same as magnification ratio")}
-        ${metric("Current Classification", escapeHtml(analysis.classification), analysis.status === "valid" ? "automatic from current magnification" : "needs finite data")}
-        ${metric("Focused EFL", formatDistanceForMacro(analysis.effectiveFocalLengthMm), "mm first-order")}
-        ${metric("On-axis transmitted rays", Number.isFinite(analysis.rayTraceValidCount) ? `${analysis.rayTraceValidCount}/${analysis.rayTraceTotalCount}` : "--", "not finite-focus validation")}
-        ${metric("Finite-conjugate validation", escapeHtml(analysis.finiteConjugateValidation?.label || analysis.finiteConjugateStatus || "Not available"), escapeHtml(analysis.finiteConjugateValidation?.status || ""))}
-        ${analysis.macroGroupMotionLabel ? metric("Macro motion model", escapeHtml(analysis.macroGroupMotionLabel), analysis.macroRelativeSpacingOnly ? "full group translation unavailable" : "group translation applied") : ""}
-        ${analysis.internalFocusApplied ? metric(`Macro spacing S${analysis.macroSpacingSurface}`, formatDistanceForMacro(analysis.macroSpacingMm, 4), "mm from macroFocusModel") : ""}
+        ${metric("Classification", escapeHtml(analysis.classification), analysis.status === "valid" ? "current focus" : "needs finite data")}
       </div>
+      <details class="image-magnification-more">
+        <summary>More</summary>
+        <div class="image-magnification-grid is-technical">
+          ${metric("Object Distance", formatDistanceForMacro(analysis.objectDistanceMm), analysis.objectDistanceMm === Infinity ? "object at infinity" : "mm from object principal plane")}
+          ${metric("Image Distance", formatDistanceForMacro(analysis.imageDistanceMm), "from rear principal plane")}
+          ${metric("Focused EFL", formatDistanceForMacro(analysis.effectiveFocalLengthMm), "mm first-order")}
+          ${metric("Lens Capability", escapeHtml(analysis.lensCapability || "No documented macro-focus model"), "capability")}
+          ${metric("Ray check", Number.isFinite(analysis.rayTraceValidCount) ? `${analysis.rayTraceValidCount}/${analysis.rayTraceTotalCount}` : "--", "on-axis rays")}
+          ${metric("Finite validation", escapeHtml(analysis.finiteConjugateValidation?.label || analysis.finiteConjugateStatus || "Not available"), escapeHtml(analysis.finiteConjugateValidation?.status || ""))}
+          ${analysis.macroGroupMotionLabel ? metric("Macro motion", escapeHtml(analysis.macroGroupMotionLabel), analysis.macroRelativeSpacingOnly ? "relative spacing only" : "group translation") : ""}
+          ${analysis.internalFocusApplied ? metric(`Macro spacing S${analysis.macroSpacingSurface}`, formatDistanceForMacro(analysis.macroSpacingMm, 4), "mm") : ""}
+        </div>
+      </details>
       ${analysis.warning ? `<p class="diagram-note macro-analysis-note">${escapeHtml(analysis.warning)}</p>` : ""}
     </details>
   `;
 };
 
+const systemInlineMetric = (name, value, unit = "mm") => `
+  <div class="metric system-inline-metric">
+    <span class="metric-name">${name}</span>
+    <span class="metric-value">${value}<span class="metric-inline-unit"> ${unit}</span></span>
+  </div>
+`;
+
 const renderSystemSummary = (system, spectralSystems, rayTraceResults = [], focusedConfiguration = null) => {
-  const fNumber = calculateFNumber(system);
+  const nativeFNumber = calculateFNumber(system);
   const bfdDelta = system.backFocalLength - SONY_E_FLANGE_DISTANCE;
-  const stopSurface = (Array.isArray(rayTraceResults) ? rayTraceResults : [rayTraceResults])
-    .flatMap((result) => result?.surfaces || [])
-    .find((surface) => surface.isStop);
   const systemLenses = focusedConfiguration?.focusedLenses || state.lenses;
-  const mtfSummary = calculateSystemResultMtfSummary(systemLenses, system);
+  const apertureContext = resolveSystemResultApertureContext(systemLenses, system);
+  const mtfSummary = calculateSystemResultMtfSummary(systemLenses, system, apertureContext);
+  const chromaticFocus = calculateApertureDependentChromaticFocus(
+    systemLenses,
+    spectralSystems.d || system,
+    spectralSystems,
+    apertureContext
+  );
   const magnificationAnalysis = calculateImageMagnificationAnalysis(system, {
     lenses: systemLenses,
     prescription: focusedConfiguration?.focusedPrescription || state.prescription,
@@ -23738,42 +24090,36 @@ const renderSystemSummary = (system, spectralSystems, rayTraceResults = [], focu
   });
   return `
     <section class="summary-panel system-result-panel">
-      <div class="system-status-row">
-        <span class="badge">${system.validCount}/${state.lenses.length} ${tx("valid")}</span>
-        <span>${state.lenses.length} elements · ${formatNumber(system.totalTrack)} mm track</span>
-      </div>
       <div class="system-result-main-layout">
         <div class="system-result-mtf-column">
           ${renderSystemResultMtfSummary(mtfSummary)}
+          ${renderChromaticReadout(chromaticFocus)}
         </div>
         <div class="system-result-info-column">
           <div class="system-kpi-grid">
             <div class="system-kpi is-primary">
               <span class="metric-name">${tx("effectiveFocalLength")}</span>
-              <span class="metric-value">${formatNumber(system.effectiveFocalLength)}</span>
-              <span class="metric-unit">mm</span>
+              <span class="metric-value">${formatNumber(system.effectiveFocalLength)}<span class="metric-inline-unit"> mm</span></span>
             </div>
             <div class="system-kpi">
-              <span class="metric-name">${tx("fNumber")}</span>
-              <span class="metric-value">f/${formatNumber(fNumber, 3)}</span>
-              <span class="metric-unit">EFL / entrance pupil</span>
+              <span class="metric-name">Lens f-number (wide open)</span>
+              <span class="metric-value">f/${formatNumber(nativeFNumber, 3)}</span>
+            </div>
+            <div class="system-kpi">
+              <span class="metric-name">Selected analysis aperture</span>
+              <span class="metric-value">f/${formatNumber(apertureContext.fNumber, 2)}</span>
             </div>
             <div class="system-kpi">
               <span class="metric-name">${tx("backFocalDistance")}</span>
-              <span class="metric-value">${formatNumber(system.backFocalLength)}</span>
-              <span class="metric-unit">mm</span>
+              <span class="metric-value">${formatNumber(system.backFocalLength)}<span class="metric-inline-unit"> mm</span></span>
             </div>
           </div>
           <div class="system-detail-grid">
-            ${metric(tx("sonyFlange"), SONY_E_FLANGE_DISTANCE, "mm")}
-            ${metric(tx("bfdVsSony"), formatNumber(bfdDelta), "mm")}
-            ${metric(tx("trackLength"), formatNumber(system.totalTrack), "mm")}
-            ${metric(tx("totalPower"), formatNumber(system.totalPower, 6), "1/mm")}
-            ${metric(tx("diopters"), formatNumber(system.diopters, 3), "D")}
-            ${metric("Stop source", escapeHtml(stopSurface?.stopSourceBadge || "Auto"), escapeHtml(stopSurface?.stopSource || "Auto / preset default"))}
+            ${systemInlineMetric(tx("sonyFlange"), SONY_E_FLANGE_DISTANCE, "mm")}
+            ${systemInlineMetric(tx("bfdVsSony"), formatNumber(bfdDelta), "mm")}
+            ${systemInlineMetric(tx("trackLength"), formatNumber(system.totalTrack), "mm")}
           </div>
           ${renderImageMagnificationSection(magnificationAnalysis)}
-          ${renderChromaticReadout(spectralSystems)}
         </div>
       </div>
     </section>
@@ -26963,7 +27309,7 @@ const runOpticsSelfCheck = (options = {}) => {
   });
 
   test("active patent entries exist as surface prescriptions", () => (
-    PATENT_PRESET_KEYS.length === 23
+    PATENT_PRESET_KEYS.length === 24
       && !PATENT_PRESET_KEYS.includes("zeissTessar50F28Fr1066698Ex1")
       && !("zeissTessar50F28Fr1066698Ex1" in PRESETS)
       && PATENT_PRESET_KEYS.every((key) => PRESETS[key]?.sourceType === "patent" && PRESETS[key]?.prescriptionType === "surface")
@@ -27213,6 +27559,88 @@ const runOpticsSelfCheck = (options = {}) => {
       && audit.status === "needs-transcription-audit"
       && audit.eflPass === true
       && audit.bflPass === false;
+  });
+
+  test("US4534626 raw source and 2.5x scaled infinity surfaces are preserved", () => {
+    const preset = PRESETS.olympusZuikoAutoT250F2Us4534626Ex1;
+    const prescription = clonePresetPrescription("olympusZuikoAutoT250F2Us4534626Ex1");
+    const sourceMainGlass = US4534626_EX1_RAW.surfaces.filter((surface) => surface.role === "imagingLens" && surface.nAfter > 1).length;
+    const scaledMainGlass = prescription.surfaces.filter((surface) => surface.role === "imagingLens" && surface.nAfter > 1).length;
+    const filterSurfaces = prescription.surfaces.filter((surface) => surface.role?.startsWith("patentFilterF"));
+    return preset.name === "Olympus Zuiko Auto-T 250mm f/2 ED-IF — US4534626 Embodiment 1"
+      && preset.productionStatus === "plausibleProductionCandidate_notConfirmed"
+      && preset.prescriptionStatus === "verifiedPatentNumericalTable_scaledCandidate"
+      && US4534626_EX1_RAW.surfaces.length === 21
+      && prescription.surfaces.length === 21
+      && sourceMainGlass === 11
+      && scaledMainGlass === 11
+      && filterSurfaces.length === 2
+      && filterSurfaces.every((surface) => isPlanoRadius(surface.radius))
+      && preset.opticalCounts.imagingElementsExcludingFilter === 11
+      && preset.opticalCounts.withPatentFilterElements === 12
+      && preset.patentNormalization.scaleFactor === 2.5;
+  });
+
+  test("US4534626 infinity D1 D2 D3 gaps scale exactly while glass data remains unscaled", () => {
+    const prescription = clonePresetPrescription("olympusZuikoAutoT250F2Us4534626Ex1");
+    const byNo = new Map(prescription.surfaces.map((surface) => [surface.no, surface]));
+    return Math.abs(byNo.get(8).distanceToNext - 35.5275) < 1e-9
+      && Math.abs(byNo.get(11).distanceToNext - 10.7750) < 1e-9
+      && Math.abs(byNo.get(14).distanceToNext - 45.3050) < 1e-9
+      && Math.abs(byNo.get(1).radius - 133.7225) < 1e-9
+      && Math.abs(byNo.get(1).nAfter - 1.49700) < 1e-12
+      && Math.abs(byNo.get(1).vdAfter - 81.61) < 1e-12
+      && Math.abs(byNo.get(20).distanceToNext - 2.57725) < 1e-9
+      && byNo.get(20).opticalAccessory === true
+      && byNo.get(20).countAsMainImagingElement === false;
+  });
+
+  test("US4534626 estimated aperture stop and F/2 matching are unverified and editable", () => withTemporaryState(() => {
+    loadPresetIntoState("olympusZuikoAutoT250F2Us4534626Ex1");
+    ensurePatentOpticalGeometry();
+    const spec = state.prescription.apertureStopSpec;
+    const system = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const fNumber = calculateFNumber(system, state.apertureDiameter, state.lenses, {
+      ...rayTraceApertureOptions(state),
+      apertureDiameter: state.apertureDiameter
+    });
+    return spec?.kind === "airGap"
+      && spec.afterSurfaceNumber === 14
+      && spec.sourceLevel === "estimated"
+      && spec.confidence === "unverified"
+      && state.prescription.surfaces.every((surface) => surface.isStop !== true)
+      && Math.abs(fNumber - 2.0) <= 0.01
+      && state.apertureDiameter < 125;
+  }));
+
+  test("US4534626 filter F traces as accessory and fixed-focus worker remains eligible", () => withTemporaryState(() => {
+    loadPresetIntoState("olympusZuikoAutoT250F2Us4534626Ex1");
+    ensurePatentOpticalGeometry();
+    const accessories = state.lenses.filter((lens) => lens.patentOpticalAccessory);
+    const mainLenses = state.lenses.filter((lens) => lens.countAsMainImagingElement !== false);
+    const system = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const eligibility = canUseGeometricMtfMainWorker(state.lenses, system);
+    return state.lenses.length === 12
+      && mainLenses.length === 11
+      && accessories.length === 1
+      && accessories[0].patentAccessoryLabel === "Patent filter F"
+      && eligibility.supported === true;
+  }));
+
+  test("US4534626 close-focus rows are read-only metadata and audit does not silently rescale to force 250mm EFL", () => {
+    const preset = PRESETS.olympusZuikoAutoT250F2Us4534626Ex1;
+    const audit = calculateDirectPatentSequentialParaxialAudit(preset);
+    const panel = renderPatentPrescriptionTable(preset);
+    return preset.closeFocusSimulationEnabled === false
+      && preset.activePatentFocusKey === "infinity"
+      && preset.focusConfigurations.object3_05m.D1 === 15.440
+      && preset.focusConfigurations.object1_03m.D3 === 11.510
+      && audit.expectedEflMm === 250
+      && audit.effectiveFocalLength > 230
+      && audit.effectiveFocalLength < 245
+      && audit.eflPass === false
+      && panel.includes("Estimated aperture location")
+      && panel.includes("Chromatic result is nd/Vd approximation");
   });
 
   test("Olympus Zuiko Auto-Macro 90mm f/2 candidate preserves US4792219 Embodiment 3 geometry", () => {
@@ -32155,6 +32583,143 @@ const runOpticsSelfCheck = (options = {}) => {
       && markup.includes('data-stop="f4"')
       && markup.includes('aria-selected="true"');
   }));
+
+  test("System Result selected f-stop resolves a different stop diameter than wide open", () => withTemporaryState(() => {
+    loadPresetIntoState("manual");
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    state.mtfApertureFieldChartKey = "wideOpen";
+    const wideOpen = resolveSystemResultApertureContext(lenses, system);
+    state.mtfApertureFieldChartKey = "f8";
+    const stoppedDown = resolveSystemResultApertureContext(lenses, system);
+    return Number.isFinite(wideOpen.apertureDiameter)
+      && Number.isFinite(stoppedDown.apertureDiameter)
+      && Math.abs(wideOpen.apertureDiameter - stoppedDown.apertureDiameter) > 0.1;
+  }));
+
+  test("System Result distinguishes wide-open speed from selected analysis aperture", () => withTemporaryState(() => {
+    loadPresetIntoState("manual");
+    state.mtfApertureFieldChartKey = "f4";
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const markup = renderSystemSummary(system, getSpectralSystems(lenses), []);
+    return markup.includes("Lens f-number (wide open)")
+      && markup.includes("Selected analysis aperture")
+      && markup.includes("f/4");
+  }));
+
+  test("Chromatic dispersion readout uses the active System Result aperture diameter", () => withTemporaryState(() => {
+    loadPresetIntoState("manual");
+    state.mtfApertureFieldChartKey = "f4";
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const spectralSystems = getSpectralSystems(lenses);
+    const apertureContext = resolveSystemResultApertureContext(lenses, system);
+    const chromatic = calculateApertureDependentChromaticFocus(lenses, spectralSystems.d || system, spectralSystems, apertureContext);
+    return chromatic.apertureKey === "f4"
+      && Math.abs(chromatic.apertureDiameter - apertureContext.apertureDiameter) < 1e-9
+      && chromatic.byLine?.C?.wavelengthNm !== chromatic.byLine?.F?.wavelengthNm;
+  }));
+
+  test("Chromatic focus search receives different physical stop diameters at wide open and f/11", () => withTemporaryState(() => {
+    loadPresetIntoState("manual");
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const spectralSystems = getSpectralSystems(lenses);
+    state.mtfApertureFieldChartKey = "wideOpen";
+    const wideOpenContext = resolveSystemResultApertureContext(lenses, system);
+    const wideOpenChromatic = calculateApertureDependentChromaticFocus(
+      lenses,
+      spectralSystems.d || system,
+      spectralSystems,
+      wideOpenContext
+    );
+    state.mtfApertureFieldChartKey = "f11";
+    const stoppedDownContext = resolveSystemResultApertureContext(lenses, system);
+    const stoppedDownChromatic = calculateApertureDependentChromaticFocus(
+      lenses,
+      spectralSystems.d || system,
+      spectralSystems,
+      stoppedDownContext
+    );
+    return wideOpenChromatic.apertureKey === "wideOpen"
+      && stoppedDownChromatic.apertureKey === "f11"
+      && Math.abs(wideOpenChromatic.apertureDiameter - wideOpenContext.rayTraceOptions.apertureDiameter) < 1e-9
+      && Math.abs(stoppedDownChromatic.apertureDiameter - stoppedDownContext.rayTraceOptions.apertureDiameter) < 1e-9
+      && Math.abs(wideOpenContext.rayTraceOptions.apertureDiameter - stoppedDownContext.rayTraceOptions.apertureDiameter) > 0.1;
+  }));
+
+  test("Chromatic dispersion main values are real-ray focus offsets, not paraxial BFL labels", () => withTemporaryState(() => {
+    loadPresetIntoState("manual");
+    state.mtfApertureFieldChartKey = "f5_6";
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const spectralSystems = getSpectralSystems(lenses);
+    const apertureContext = resolveSystemResultApertureContext(lenses, system);
+    const chromatic = calculateApertureDependentChromaticFocus(lenses, spectralSystems.d || system, spectralSystems, apertureContext);
+    const markup = renderChromaticReadout(chromatic);
+    return markup.includes("C best-focus offset")
+      && markup.includes("F - C longitudinal shift")
+      && markup.includes("Paraxial C / d / F BFL reference")
+      && !markup.includes("Red BFD")
+      && !markup.includes("Blue BFD");
+  }));
+
+  test("Paraxial chromatic BFL reference remains unchanged between aperture settings", () => withTemporaryState(() => {
+    loadPresetIntoState("manual");
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const spectralSystems = getSpectralSystems(lenses);
+    state.mtfApertureFieldChartKey = "wideOpen";
+    const wideOpen = calculateApertureDependentChromaticFocus(
+      lenses,
+      spectralSystems.d || system,
+      spectralSystems,
+      resolveSystemResultApertureContext(lenses, system)
+    );
+    state.mtfApertureFieldChartKey = "f11";
+    const stoppedDown = calculateApertureDependentChromaticFocus(
+      lenses,
+      spectralSystems.d || system,
+      spectralSystems,
+      resolveSystemResultApertureContext(lenses, system)
+    );
+    return ["C", "d", "F"].every((lineKey) => (
+      Math.abs(wideOpen.paraxialBfl[lineKey] - stoppedDown.paraxialBfl[lineKey]) < 1e-12
+    ));
+  }));
+
+  test("System Result places Chromatic / Dispersion after the Simplified MTF graphic table", () => withTemporaryState(() => {
+    loadPresetIntoState("manual");
+    const lenses = clonePresetLenses("manual");
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const spectralSystems = getSpectralSystems(lenses);
+    const markup = renderSystemSummary(system, spectralSystems, []);
+    const mtfIndex = markup.indexOf("Simplified MTF graphic table");
+    const chromaticIndex = markup.indexOf("Chromatic / Dispersion");
+    const magnificationIndex = markup.indexOf("Image Magnification");
+    return mtfIndex >= 0
+      && chromaticIndex > mtfIndex
+      && magnificationIndex > chromaticIndex;
+  }));
+
+  test("Chromatic dispersion invalid focus renders a readable warning instead of fake numbers", () => {
+    const markup = renderChromaticReadout({
+      apertureLabel: "Test aperture",
+      apertureDiameter: 1,
+      fNumber: 8,
+      byLine: {
+        C: { status: "insufficient-rays", sensorRefocusMm: NaN, validRayCount: 1, totalRayCount: 9, warning: "Insufficient valid rays for focus search." },
+        d: { status: "insufficient-rays", sensorRefocusMm: NaN, validRayCount: 1, totalRayCount: 9, warning: "Insufficient valid rays for focus search." },
+        F: { status: "insufficient-rays", sensorRefocusMm: NaN, validRayCount: 1, totalRayCount: 9, warning: "Insufficient valid rays for focus search." }
+      },
+      longitudinalShiftMm: NaN,
+      paraxialBfl: { C: 10, d: 10, F: 10 }
+    });
+    return markup.includes("Insufficient valid rays")
+      && markup.includes("--")
+      && !markup.includes("NaN");
+  });
 
   test("MTF aperture field sweep uses one centre-refocused plane per aperture", () => withTemporaryState(() => {
     loadPresetIntoState("manual");

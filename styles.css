@@ -1902,32 +1902,27 @@ select {
 
 .system-result-panel {
   gap: 10px;
-  padding: 12px;
+  padding: 8px;
   background:
     linear-gradient(135deg, rgba(121, 187, 217, 0.14), transparent 62%),
     rgba(10, 53, 86, 0.92);
 }
 
-.system-status-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  color: rgba(215, 229, 238, 0.72);
-  font-size: 0.72rem;
-  font-weight: 700;
-}
-
 .system-result-main-layout {
   display: grid;
-  grid-template-columns: minmax(260px, 0.92fr) minmax(0, 1.35fr);
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
   align-items: start;
 }
 
 .system-result-mtf-column,
 .system-result-info-column {
   min-width: 0;
+}
+
+.system-result-mtf-column {
+  display: grid;
+  gap: 8px;
 }
 
 .system-result-info-column {
@@ -1937,7 +1932,7 @@ select {
 
 .system-kpi-grid {
   display: grid;
-  grid-template-columns: minmax(120px, 1.1fr) repeat(2, minmax(92px, 0.9fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
 }
 
@@ -1951,7 +1946,7 @@ select {
 .system-kpi {
   display: grid;
   gap: 2px;
-  padding: 8px;
+  padding: 7px;
 }
 
 .system-kpi.is-primary {
@@ -1960,19 +1955,37 @@ select {
 }
 
 .system-kpi .metric-name {
-  font-size: 0.58rem;
+  font-size: 0.54rem;
   letter-spacing: 0.03em;
+  line-height: 1.14;
+  text-transform: uppercase;
+}
+
+.system-result-panel .system-detail-grid .metric-name {
+  color: rgba(215, 229, 238, 0.86);
+  font-size: 0.58rem;
+  font-weight: 850;
+  letter-spacing: 0.03em;
+  line-height: 1.15;
   text-transform: uppercase;
 }
 
 .system-kpi .metric-value {
   color: #f8f6f2;
-  font-size: 0.94rem;
+  font-size: 0.84rem;
   line-height: 1;
 }
 
+.system-result-panel .metric-inline-unit {
+  color: rgba(215, 229, 238, 0.82);
+  font-size: 0.66em;
+  font-weight: 750;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
 .system-kpi.is-primary .metric-value {
-  font-size: 1.24rem;
+  font-size: 1.05rem;
 }
 
 .system-detail-grid {
@@ -1990,6 +2003,10 @@ select {
   font-size: 0.72rem;
 }
 
+.system-detail-grid .system-inline-metric .metric-value {
+  line-height: 1.1;
+}
+
 .image-magnification-section {
   border: 1px solid rgba(215, 229, 238, 0.16);
   border-radius: 10px;
@@ -2002,26 +2019,26 @@ select {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 8px 10px;
+  padding: 6px 8px;
   color: #f8f6f2;
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   font-weight: 800;
   cursor: pointer;
 }
 
 .image-magnification-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
-  padding: 0 8px 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 0 6px 6px;
 }
 
 .image-magnification-controls {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   align-items: end;
-  gap: 8px;
-  padding: 0 8px 8px;
+  gap: 5px;
+  padding: 0 6px 6px;
 }
 
 .image-magnification-controls label {
@@ -2033,30 +2050,48 @@ select {
 }
 
 .image-magnification-controls select {
-  min-height: 34px;
+  min-height: 30px;
   border-radius: 8px;
   border: 1px solid rgba(215, 229, 238, 0.28);
   background: rgba(10, 53, 86, 0.72);
   color: #f8f6f2;
-  font-size: 0.76rem;
+  font-size: 0.7rem;
   font-weight: 800;
-  padding: 6px 10px;
+  padding: 4px 8px;
 }
 
 .macro-focus-current {
   color: rgba(215, 229, 238, 0.82);
-  font-size: 0.7rem;
+  font-size: 0.62rem;
   font-weight: 800;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .image-magnification-grid .metric {
   min-height: auto;
-  padding: 6px;
+  padding: 5px;
+  border-radius: 7px;
 }
 
 .image-magnification-grid .metric-value {
-  font-size: 0.78rem;
+  font-size: 0.72rem;
+  mix-blend-mode: normal;
+}
+
+.image-magnification-more {
+  margin: 0 6px 6px;
+  border-top: 1px solid rgba(215, 229, 238, 0.12);
+}
+
+.image-magnification-more summary {
+  padding: 5px 0;
+  color: rgba(215, 229, 238, 0.82);
+  font-size: 0.62rem;
+  font-weight: 800;
+}
+
+.image-magnification-more .image-magnification-grid {
+  padding: 0 0 5px;
 }
 
 .macro-analysis-note {
@@ -2069,10 +2104,6 @@ select {
   .image-magnification-controls {
     grid-template-columns: 1fr;
     align-items: start;
-  }
-
-  .image-magnification-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -2216,8 +2247,83 @@ select {
   text-shadow: 0 1px 2px rgba(0, 1, 2, 0.55);
 }
 
+.system-result-mtf-column .chromatic-readout {
+  margin: 0;
+  padding: 6px;
+  border: 1px solid rgba(121, 187, 217, 0.2);
+  border-radius: 9px;
+  background: rgba(248, 246, 242, 0.055);
+}
+
+.system-result-mtf-column .chromatic-readout .panel-heading {
+  margin-bottom: 5px;
+}
+
+.system-result-mtf-column .chromatic-readout .panel-heading h3 {
+  font-size: 0.78rem;
+}
+
+.system-result-mtf-column .chromatic-readout .badge {
+  padding: 3px 7px;
+  font-size: 0.58rem;
+}
+
 .system-result-panel .chromatic-readout {
+  border-top: 0;
+}
+
+.system-result-panel .chromatic-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.system-result-panel .chromatic-readout .metric {
+  gap: 1px;
+  min-height: 0;
+  padding: 5px;
+  border-radius: 7px;
+}
+
+.system-result-panel .chromatic-readout .metric-name {
+  font-size: 0.58rem;
+}
+
+.system-result-panel .chromatic-readout .metric-value {
+  font-size: 0.88rem;
+}
+
+.system-result-panel .chromatic-readout .metric-unit {
+  font-size: 0.58rem;
+  line-height: 1.15;
+}
+
+.chromatic-focus-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  color: rgba(215, 229, 238, 0.78);
+  font-size: 0.58rem;
+  font-weight: 750;
+  line-height: 1.2;
+}
+
+.chromatic-paraxial-reference {
   margin-top: 0;
+  color: rgba(215, 229, 238, 0.82);
+  font-size: 0.58rem;
+}
+
+.chromatic-paraxial-reference summary {
+  cursor: pointer;
+  color: rgba(248, 246, 242, 0.9);
+  font-weight: 850;
+}
+
+.chromatic-note {
+  margin: 0;
+  color: rgba(215, 229, 238, 0.78);
+  font-size: 0.58rem;
+  line-height: 1.2;
 }
 
 .panel-heading {
@@ -7140,8 +7246,7 @@ textarea,
 
 .system-result-panel,
 .system-result-panel .metric-name,
-.system-result-panel .metric-unit,
-.system-result-panel .system-status-row {
+.system-result-panel .metric-unit {
   color: rgba(215, 229, 238, 0.86);
 }
 

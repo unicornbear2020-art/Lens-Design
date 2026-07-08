@@ -1,10 +1,10 @@
 /* eslint-env worker */
 
-const GEOMETRIC_MTF_WORKER_VERSION = "20260708-fix-us4792219-s6-spacing-1";
+const GEOMETRIC_MTF_WORKER_VERSION = "20260708-nikon-noct-wo2019229849-1";
 const GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION = "geometric-lsf-contract-20260630-1";
 
 try {
-  importScripts("geometric-mtf-core.js?v=20260708-fix-us4792219-s6-spacing-1");
+  importScripts("geometric-mtf-core.js?v=20260708-nikon-noct-wo2019229849-1");
 } catch (error) {
   self.geometricMtfCoreLoadError = error;
 }

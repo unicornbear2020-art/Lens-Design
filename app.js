@@ -10,7 +10,7 @@ const DIAGRAM_SIZE = {
   height: 480
 };
 
-const ANALYSIS_WORKER_VERSION = "20260708-fix-us4792219-s6-spacing-1";
+const ANALYSIS_WORKER_VERSION = "20260708-nikon-noct-wo2019229849-1";
 const GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION = "geometric-lsf-contract-20260630-1";
 const DEFAULT_PRESET_KEY = "zeissBiotar50F14Us1786916Ex2";
 const OLD_MISLEADING_ZEISS_PRESET_KEYS = [
@@ -231,7 +231,7 @@ const LENS_DISPLAY_ONLY_FIELDS = new Set([
 
 const isLensDisplayOnlyField = (field) => LENS_DISPLAY_ONLY_FIELDS.has(field);
 
-const ASPHERE_TERMS = ["A4", "A6", "A8", "A10"];
+const ASPHERE_TERMS = ["A4", "A6", "A8", "A10", "A12", "A14"];
 const ASPHERE_NUMERIC_FIELDS = [
   "frontConicK",
   "rearConicK",
@@ -242,7 +242,11 @@ const ASPHERE_NUMERIC_FIELDS = [
   "frontA8",
   "rearA8",
   "frontA10",
-  "rearA10"
+  "rearA10",
+  "frontA12",
+  "rearA12",
+  "frontA14",
+  "rearA14"
 ];
 const PATENT_DEFAULT_MISSING_AIR_GAP_MM = 0.1;
 const PATENT_APERTURE_MARGIN_RATIO = 0.08;
@@ -891,8 +895,51 @@ const PRESETS = {
     prescriptionStatus: "reference-only",
     sourceNotes: "Modern product reference only until an authoritative prescription is found.",
     lenses: []
+  },
+  sony_planar_t_fe_50mm_f14_za_sel50f14z: {
+    name: "Sony Planar T* FE 50mm F1.4 ZA (SEL50F14Z)",
+    note: "Reference only — verified optical prescription unavailable. Manufacturer product specifications are stored as metadata only and are not used for ray tracing.",
+    sourceType: "reference-only",
+    prescriptionType: "referenceOnly",
+    brand: "Sony",
+    manufacturer: "Sony",
+    designType: "Normal",
+    presetGroup: "Commercial product references",
+    dataStatus: "manufacturer-specification-only",
+    prescriptionStatus: "unverified",
+    sourceLabel: "Sony official product specifications",
+    referenceOnlyMessage: "Sony Planar T* FE 50mm F1.4 ZA (SEL50F14Z) is a manufacturer-specification reference only. A verified optical prescription is unavailable, so no simulated surfaces or ray-trace design will be loaded.",
+    productMetadata: {
+      mount: "Sony E",
+      format: "35mm full frame",
+      nominalFocalLengthMm: 50,
+      maxFNumber: 1.4,
+      minFNumber: 16,
+      elements: 12,
+      groups: 9,
+      opticalFeatures: [
+        "2 aspherical elements",
+        "1 AA / Advanced Aspherical element",
+        "1 ED element"
+      ],
+      diaphragmBlades: 11,
+      minFocusDistanceM: 0.45,
+      maxMagnification: 0.15,
+      angleOfViewFullFrameDeg: 47,
+      filterThreadMm: 72,
+      dimensionsMm: { diameter: 83.5, length: 108 },
+      weightG: 778
+    },
+    sourceNotes: "Sony official product specifications only. No fake surfaces, glass entries, curvatures, aspheres, stop position, or ray-trace result is created.",
+    lenses: []
   }
 };
+
+const isReferenceOnlyPreset = (preset = {}) => (
+  preset.sourceType === "reference-only"
+  || preset.prescriptionType === "referenceOnly"
+  || preset.loadDisabled === true
+);
 
 const normalizePatentSurfaceValue = (value) => {
   if (value === Infinity || value === "Infinity" || value === "infinity" || value === "∞") return Infinity;
@@ -968,7 +1015,9 @@ const normalizePatentAsphere = (asphere = null) => {
     A4: normalizePatentSurfaceValue(asphere.A4) ?? 0,
     A6: normalizePatentSurfaceValue(asphere.A6) ?? 0,
     A8: normalizePatentSurfaceValue(asphere.A8) ?? 0,
-    A10: normalizePatentSurfaceValue(asphere.A10) ?? 0
+    A10: normalizePatentSurfaceValue(asphere.A10) ?? 0,
+    A12: normalizePatentSurfaceValue(asphere.A12) ?? 0,
+    A14: normalizePatentSurfaceValue(asphere.A14) ?? 0
   };
 };
 
@@ -978,6 +1027,7 @@ const normalizePatentSurface = (surface = {}, index = 0) => ({
   distanceToNext: normalizePatentSurfaceValue(surface.distanceToNext),
   nAfter: normalizePatentSurfaceValue(surface.nAfter),
   vdAfter: normalizePatentSurfaceValue(surface.vdAfter),
+  thetaGFAfter: normalizePatentSurfaceValue(surface.thetaGFAfter ?? surface.thetaGF),
   mediumLabel: surface.mediumLabel || surface.glassLabel || surface.label || null,
   spaceLabel: surface.spaceLabel || null,
   interfaceType: surface.interfaceType || null,
@@ -1498,6 +1548,117 @@ const PATENT_SURFACE_PRESCRIPTION_DATA = {
       { no: 16, radius: Infinity, distanceToNext: null, role: "imagePlane" }
     ]
   },
+  nikon_z_58mm_f095_s_noct_wo2019229849_example1: {
+    patentDataStatus: "verifiedPatentNumericalTable",
+    sourceType: "patent",
+    sourcePatent: "WO2019229849A1",
+    sourceUrl: "https://patentscope.wipo.int/search/en/detail.jsf?docId=WO2019229849",
+    example: "Example 1",
+    sourceExample: "Example 1",
+    brand: "Nikon",
+    manufacturer: "Nikon",
+    designType: "Ultra-fast standard",
+    subtitle: "Patent prescription / infinity focus / production match not asserted",
+    prescriptionStatus: "verified-patent",
+    sourceConfidence: "high",
+    assignee: "Nikon Corp",
+    sourcePatentType: "primary patent",
+    focalLength: 59.62,
+    focalLengthMm: 59.62,
+    apertureRatio: "1:0.98",
+    targetFNumber: 0.98,
+    fieldAngleDeg: 19.98,
+    fullFieldDeg: 39.96,
+    halfFieldDeg: 19.98,
+    maxImageHeightMm: 21.70,
+    totalLengthMm: 160.74,
+    backFocalLength: 17.10,
+    backFocusMm: 17.10,
+    airEquivalentBackFocusMm: 16.55,
+    imagePlaneAfterSurface: 30,
+    explicitImagePlaneSurfaceNumber: 31,
+    imagePlaneSource: "Patent image plane after surface 30",
+    finalSurfaceRole: "imagePlane",
+    presetGroup: "Nikon patent-based prescriptions",
+    normalizationBasis: "Native WO2019/229849 Example 1 millimetre prescription at infinity focus. No focal-length scaling applied.",
+    radiusConvention: "standard patent sign convention; positive radius centre of curvature toward image side",
+    rayDirection: "object-to-image",
+    units: "mm",
+    tags: ["mirrorless", "Nikon Z", "ultra-fast standard", "F0.98 patent design", "17 elements", "10 groups", "3 aspheres", "4 ED-type high-Abbe glasses"],
+    commercialReference: {
+      model: "NIKKOR Z 58mm f/0.95 S Noct",
+      relation: "strong configuration match; do not claim the patent prescription is identical to production optics"
+    },
+    opticalCounts: {
+      glassElements: 17,
+      opticalGroups: 10,
+      asphericSurfaces: 3,
+      highAbbeEdTypeGlasses: 4
+    },
+    focusImplementation: {
+      mode: "front-group axial translation",
+      variableGap: "D22",
+      infinityGapMm: 2.68,
+      nearGapMm: 21.29,
+      nearMagnification: -0.194,
+      defaultState: "infinity",
+      note: "Do not infer a near object distance because the patent table does not provide one explicitly."
+    },
+    lensGroups: [
+      { id: "G1", surfaces: [1, 6], focalLengthMm: -289.87 },
+      { id: "G2", surfaces: [7, 22], focalLengthMm: 69.07 },
+      { id: "GF", label: "front group", surfaces: [1, 22], focalLengthMm: 75.60 },
+      { id: "GR", label: "rear group", surfaces: [23, 28], focalLengthMm: 294.37 }
+    ],
+    sourceNotes: [
+      "Primary patent Example 1 entered as a native millimetre surface prescription at infinity focus.",
+      "Commercial Noct relation is a strong configuration match only; this app does not assert production optical identity.",
+      "Patent glass data preserves nd, Vd and thetaGF where supplied. C/F/g-line values are estimated unless full dispersion data is later supplied.",
+      "Surface 14 is the aperture stop, not a lens surface. Surfaces 29-30 are a 1.60 mm plane-parallel filter plate."
+    ].join(" "),
+    note: "WO2019/229849 Example 1 native patent prescription. Infinity focus, F/0.98, 59.62 mm, 39.96 degree full field, 21.70 mm image height. Production match to the Nikon NIKKOR Z 58mm f/0.95 S Noct is not asserted.",
+    numericalAudit: {
+      expectedEflMm: 59.62,
+      eflToleranceMm: 1.0,
+      expectedBflMm: 17.10,
+      bflToleranceMm: 1.0,
+      expectedFNumber: 0.98,
+      status: "pendingRuntimeValidation"
+    },
+    surfaces: [
+      { no: 1, radius: 108.488, distanceToNext: 7.65, nAfter: 1.902650, vdAfter: 35.77, asphere: { enabled: true, k: 0, A4: -3.82177e-7, A6: -6.06486e-11, A8: -3.80172e-15, A10: -1.32266e-18 } },
+      { no: 2, radius: -848.550, distanceToNext: 2.80, nAfter: 1.552981, vdAfter: 55.07, thetaGFAfter: 0.54467 },
+      { no: 3, radius: 50.252, distanceToNext: 18.12, nAfter: 1.0 },
+      { no: 4, radius: -60.720, distanceToNext: 2.80, nAfter: 1.612660, vdAfter: 44.46, thetaGFAfter: 0.56396 },
+      { no: 5, radius: 2497.500, distanceToNext: 9.15, nAfter: 1.593190, vdAfter: 67.90 },
+      { no: 6, radius: -77.239, distanceToNext: 0.40, nAfter: 1.0 },
+      { no: 7, radius: 113.763, distanceToNext: 10.95, nAfter: 1.848500, vdAfter: 43.79 },
+      { no: 8, radius: -178.060, distanceToNext: 0.40, nAfter: 1.0 },
+      { no: 9, radius: 70.659, distanceToNext: 9.74, nAfter: 1.593190, vdAfter: 67.90 },
+      { no: 10, radius: -1968.500, distanceToNext: 0.20, nAfter: 1.0 },
+      { no: 11, radius: 289.687, distanceToNext: 8.00, nAfter: 1.593190, vdAfter: 67.90 },
+      { no: 12, radius: -97.087, distanceToNext: 2.80, nAfter: 1.738000, vdAfter: 32.33, thetaGFAfter: 0.58997 },
+      { no: 13, radius: 47.074, distanceToNext: 8.70, nAfter: 1.0 },
+      { no: 14, radius: Infinity, distanceToNext: 5.29, nAfter: 1.0, isStop: true, role: "apertureStop" },
+      { no: 15, radius: -95.230, distanceToNext: 2.20, nAfter: 1.612660, vdAfter: 44.46, thetaGFAfter: 0.56396 },
+      { no: 16, radius: 41.204, distanceToNext: 11.55, nAfter: 1.497820, vdAfter: 82.57 },
+      { no: 17, radius: -273.092, distanceToNext: 0.20, nAfter: 1.0 },
+      { no: 18, radius: 76.173, distanceToNext: 9.50, nAfter: 1.883000, vdAfter: 40.69 },
+      { no: 19, radius: -101.575, distanceToNext: 0.20, nAfter: 1.0 },
+      { no: 20, radius: 176.128, distanceToNext: 7.45, nAfter: 1.953750, vdAfter: 32.33, asphere: { enabled: true, k: 0, A4: -1.15028e-6, A6: -4.51771e-10, A8: 2.72670e-13, A10: -7.66812e-17 } },
+      { no: 21, radius: -67.221, distanceToNext: 1.80, nAfter: 1.738000, vdAfter: 32.33, thetaGFAfter: 0.58997 },
+      { no: 22, radius: 55.510, distanceToNext: 2.68, nAfter: 1.0, variableGap: "D22", sourceDistanceLabel: "D22 infinity" },
+      { no: 23, radius: 71.413, distanceToNext: 6.35, nAfter: 1.883000, vdAfter: 40.69 },
+      { no: 24, radius: -115.025, distanceToNext: 1.81, nAfter: 1.698950, vdAfter: 30.13 },
+      { no: 25, radius: 46.943, distanceToNext: 0.80, nAfter: 1.0 },
+      { no: 26, radius: 55.281, distanceToNext: 9.11, nAfter: 1.883000, vdAfter: 40.69 },
+      { no: 27, radius: -144.041, distanceToNext: 3.00, nAfter: 1.765538, vdAfter: 46.76 },
+      { no: 28, radius: 52.858, distanceToNext: 14.50, nAfter: 1.0, asphere: { enabled: true, k: 0, A4: 3.18645e-6, A6: -1.14718e-8, A8: 7.74567e-11, A10: -2.24225e-13, A12: 3.34790e-16, A14: -1.70470e-19 } },
+      { no: 29, radius: Infinity, distanceToNext: 1.60, nAfter: 1.516800, vdAfter: 64.14, role: "filterPlateFront", opticalAccessory: true, countAsMainImagingElement: false },
+      { no: 30, radius: Infinity, distanceToNext: 1.00, nAfter: 1.0, role: "filterPlateRear", opticalAccessory: true, countAsMainImagingElement: false },
+      { no: 31, radius: Infinity, distanceToNext: null, role: "imagePlane", type: "imagePlane", isImagePlane: true }
+    ]
+  },
   voigtlanderNokton50F15Us2646721: {
     patentDataStatus: "needsManualVerification",
     sourcePatent: "US2646721A",
@@ -1716,6 +1877,7 @@ const PATENT_SURFACE_PRESCRIPTION_DATA = {
     targetFNumber: 2.8,
     fieldAngleDeg: 63,
     telephotoRatio: 0.9797,
+    imageFormat: "compact camera patent format / not full-frame",
     imageFormatStatus: "notSpecifiedByPatent",
     presetGroup: "Olympus patent-based prescriptions",
     normalizationBasis: "Native US4568151 Embodiment 1 patent prescription, f = 10.0. No focal-length scaling applied.",
@@ -1730,7 +1892,7 @@ const PATENT_SURFACE_PRESCRIPTION_DATA = {
       "Do not evaluate this preset as full-frame coverage by default.",
       "Surface 6 is an explicitly defined plane stop."
     ].join(" "),
-    note: "Verified patent numerical prescription from US4568151 Embodiment 1. Native f = 10.0, F/2.8, 63 degree field. 5 elements / 4 components with one cemented doublet. S6 is a verified plane stop. No production lens match or image format is confirmed; do not assume full-frame coverage.",
+    note: "Verified patent numerical prescription from US4568151 Embodiment 1. Native f = 10.0, F/2.8, 63 degree field. 5 elements / 4 components with one cemented doublet. S6 is a verified plane stop. This is a small-format compact-camera patent example, not a full-frame 35mm lens; the diagram scale is intentionally much smaller than 50-100mm full-frame presets.",
     numericalAudit: {
       expectedEflMm: 10.0,
       eflToleranceMm: 0.08,
@@ -1759,7 +1921,9 @@ const PATENT_SURFACE_PRESCRIPTION_DATA = {
     sourceExample: "Embodiment 1",
     brand: "Olympus",
     designType: "Large-aperture Gauss-type normal lens",
-    prescriptionStatus: "verifiedPatentNumericalTable",
+    prescriptionStatus: "needs-primary-source-retranscription",
+    loadDisabled: true,
+    referenceOnlyMessage: "Olympus Gauss-Type 100mm f/1.8 — US4106854 Embodiment 1 is temporarily audit-blocked. The current transcription produces negative EFL/BFL under the app ray-trace convention, so no simulated optical design is loaded until the primary patent table is rechecked.",
     productionStatus: "noProductionMatchConfirmed",
     focalLength: 100,
     focalLengthMm: 100,
@@ -1778,9 +1942,9 @@ const PATENT_SURFACE_PRESCRIPTION_DATA = {
       "The patent identifies d6 as the airspace between the third and fourth components, within which the aperture stop is located.",
       "The patent confirms the stop gap but does not state the exact axial stop fraction inside d6.",
       "The loaded midpoint stop is an editable analysis default, not an exact patent diaphragm coordinate.",
-      "The supplied local transcription is preserved exactly; its paraxial audit does not yet validate to +100 mm under the app radius convention, so this entry should be checked against the primary patent scan before production-style claims."
+      "The supplied local transcription is preserved exactly; its paraxial audit does not yet validate to +100 mm under the app radius convention, so this entry is audit-blocked until checked against the primary patent scan."
     ].join(" "),
-    note: "Verified patent numerical prescription from US4106854 Embodiment 1 as locally supplied. Native f = 100, F/1.8, 44 degree full field. 6 elements / 5 components with one cemented doublet. Patent-confirmed stop gap; midpoint position estimated and editable. No production lens match is confirmed. Paraxial EFL requires primary-source sign/transcription audit before production-style claims.",
+    note: "Audit-blocked local transcription from US4106854 Embodiment 1. Native f = 100, F/1.8, 44 degree full field is the intended patent target, but the current entered signs/values produce negative EFL/BFL under the app convention. The table is preserved for source audit only and is not loaded as a ray-traceable design.",
     numericalAudit: {
       expectedEflMm: 100,
       eflToleranceMm: 1.0,
@@ -2099,6 +2263,15 @@ const PATENT_APERTURE_STOP_SPECS = {
     sourceUrl: "https://patents.google.com/patent/US4123144A/en",
     note: "Stop plane is explicitly represented as surface 6 in the entered patent table."
   },
+  nikon_z_58mm_f095_s_noct_wo2019229849_example1: {
+    kind: "surface",
+    surfaceNumber: 14,
+    sourceLevel: "patent",
+    confidence: "verified",
+    sourceLabel: "WO2019/229849 Example 1 table marks surface 14 as the aperture stop.",
+    sourceUrl: "https://patentscope.wipo.int/search/en/detail.jsf?docId=WO2019229849",
+    note: "Surface 14 is an aperture stop plane only and is not drawn or counted as a glass element."
+  },
   canonDreamLens50F095JpSho39_10178: {
     kind: "airGap",
     afterSurfaceNumber: 7,
@@ -2303,6 +2476,8 @@ const applyPatentSurfaceAsphereToLens = (lens, side, asphere) => {
   lens[`${prefix}A6`] = normalizedAsphere.A6;
   lens[`${prefix}A8`] = normalizedAsphere.A8;
   lens[`${prefix}A10`] = normalizedAsphere.A10;
+  lens[`${prefix}A12`] = normalizedAsphere.A12;
+  lens[`${prefix}A14`] = normalizedAsphere.A14;
 };
 
 const patentSurfaceToLensType = (r1, r2) => {
@@ -2667,6 +2842,19 @@ const PATENT_PRESET_DEFINITIONS = [
     designType: "Normal"
   }),
   makePatentPreset({
+    key: "nikon_z_58mm_f095_s_noct_wo2019229849_example1",
+    name: "Nikon NIKKOR Z 58mm f/0.95 S Noct — WO2019/229849 Example 1",
+    sourcePatent: "WO2019229849A1",
+    example: "Example 1",
+    brand: "Nikon",
+    designType: "Ultra-fast standard",
+    presetGroup: "Nikon patent-based prescriptions",
+    analysisDefaults: {
+      ...TELEPHOTO_ANALYSIS_DEFAULTS,
+      matchPatentFNumber: true
+    }
+  }),
+  makePatentPreset({
     key: "voigtlanderNokton50F15Us2646721",
     name: "Voigtländer Nokton 50mm f/1.5 — US2646721A",
     sourcePatent: "US2646721A",
@@ -2769,7 +2957,7 @@ const PATENT_PRESET_DEFINITIONS = [
   }),
   makePatentPreset({
     key: "olympusCompactF28Us4568151Ex1",
-    name: "Olympus Compact Camera F/2.8 — US4568151 Embodiment 1",
+    name: "Olympus Compact Camera 10mm f/2.8 — US4568151 Embodiment 1",
     sourcePatent: "US4568151A",
     example: "Embodiment 1",
     brand: "Olympus",
@@ -2782,7 +2970,7 @@ const PATENT_PRESET_DEFINITIONS = [
   }),
   makePatentPreset({
     key: "olympusGauss100F18Us4106854Ex1",
-    name: "Olympus Gauss-Type 100mm f/1.8 — US4106854 Embodiment 1",
+    name: "Olympus Gauss-Type 100mm f/1.8 — US4106854 Embodiment 1 (audit blocked)",
     sourcePatent: "US4106854A",
     example: "Embodiment 1",
     brand: "Olympus",
@@ -2829,6 +3017,28 @@ OLD_MISLEADING_ZEISS_PRESET_KEYS.forEach((key) => {
 const PATENT_PRESET_KEYS = PATENT_PRESET_DEFINITIONS.map((preset) => preset.key);
 
 const normalizePrescription = (prescription = {}) => {
+  if (prescription.prescriptionType === "referenceOnly") {
+    return {
+      prescriptionType: "referenceOnly",
+      sourceType: prescription.sourceType || "reference-only",
+      name: prescription.name || "Reference-only record",
+      note: prescription.note || "",
+      sourceNotes: prescription.sourceNotes || null,
+      sourcePatent: prescription.sourcePatent || null,
+      sourceUrl: prescription.sourceUrl || null,
+      sourceLabel: prescription.sourceLabel || null,
+      brand: prescription.brand || null,
+      manufacturer: prescription.manufacturer || null,
+      designType: prescription.designType || null,
+      presetGroup: prescription.presetGroup || null,
+      dataStatus: prescription.dataStatus || null,
+      prescriptionStatus: prescription.prescriptionStatus || null,
+      referenceOnlyMessage: prescription.referenceOnlyMessage || null,
+      productMetadata: prescription.productMetadata || null,
+      opticalCounts: prescription.opticalCounts || null
+    };
+  }
+
   if (prescription.prescriptionType === "surface") {
     return {
       prescriptionType: "surface",
@@ -2967,12 +3177,26 @@ const clonePresetPrescription = (presetKey) => {
       normalizationBasis: preset.normalizationBasis || null,
       prescriptionStatus: preset.prescriptionStatus || null,
       sourceNotes: preset.sourceNotes || null,
+      subtitle: preset.subtitle || null,
+      sourceConfidence: preset.sourceConfidence || null,
+      assignee: preset.assignee || null,
       source: preset.source || null,
       productCandidate: preset.productCandidate || null,
+      commercialReference: preset.commercialReference || null,
       productionStatus: preset.productionStatus || null,
       patentNormalization: preset.patentNormalization || null,
       opticalCounts: preset.opticalCounts || null,
       rawPatentPrescription: preset.rawPatentPrescription || null,
+      tags: preset.tags || null,
+      focusImplementation: preset.focusImplementation || null,
+      lensGroups: preset.lensGroups || null,
+      fullFieldDeg: preset.fullFieldDeg ?? null,
+      halfFieldDeg: preset.halfFieldDeg ?? null,
+      maxImageHeightMm: preset.maxImageHeightMm ?? null,
+      totalLengthMm: preset.totalLengthMm ?? null,
+      backFocusMm: preset.backFocusMm ?? null,
+      airEquivalentBackFocusMm: preset.airEquivalentBackFocusMm ?? null,
+      imagePlaneAfterSurface: preset.imagePlaneAfterSurface ?? null,
       activePatentFocusKey: preset.activePatentFocusKey || null,
       anomalousPartialDispersion: preset.anomalousPartialDispersion || null,
       focusConfigurations: preset.focusConfigurations || null,
@@ -3004,6 +3228,28 @@ const clonePresetPrescription = (presetKey) => {
     });
   }
 
+  if (isReferenceOnlyPreset(preset)) {
+    return normalizePrescription({
+      prescriptionType: "referenceOnly",
+      sourceType: preset.sourceType || "reference-only",
+      name: preset.name,
+      note: preset.note || "",
+      sourceNotes: preset.sourceNotes || null,
+      sourcePatent: preset.sourcePatent || null,
+      sourceUrl: preset.sourceUrl || null,
+      sourceLabel: preset.sourceLabel || null,
+      brand: preset.brand || null,
+      manufacturer: preset.manufacturer || null,
+      designType: preset.designType || null,
+      presetGroup: preset.presetGroup || null,
+      dataStatus: preset.dataStatus || null,
+      prescriptionStatus: preset.prescriptionStatus || null,
+      referenceOnlyMessage: preset.referenceOnlyMessage || null,
+      productMetadata: preset.productMetadata || null,
+      opticalCounts: preset.opticalCounts || null
+    });
+  }
+
   return normalizePrescription({
     prescriptionType: "element",
     lenses: preset.lenses || []
@@ -3019,6 +3265,8 @@ const prescriptionToLenses = (prescription) => (
     ? prescription.lenses.map((lens) => normalizeLens({ ...lens, id: lens.id || crypto.randomUUID() }))
     : prescription?.prescriptionType === "visualOnly"
       ? visualLayoutToLenses(prescription)
+      : prescription?.prescriptionType === "referenceOnly"
+        ? []
       : surfacePrescriptionToDerivedLenses(prescription)
 );
 
@@ -3774,10 +4022,22 @@ const setCurrentPrescription = (prescription) => {
 
 const loadPresetIntoState = (presetKey) => {
   const safePresetKey = PRESETS[presetKey] ? presetKey : DEFAULT_PRESET_KEY;
+  const preset = PRESETS[safePresetKey];
+  if (isReferenceOnlyPreset(preset)) {
+    state.preset = safePresetKey;
+    state.prescription = clonePresetPrescription(safePresetKey);
+    state.lenses = [];
+    state.visualLayout = null;
+    resetGeneratedAnalysisState();
+    state.lensEditStatus = preset.referenceOnlyMessage
+      || `${preset.name} is reference only. Verified optical prescription unavailable.`;
+    return false;
+  }
   state.preset = safePresetKey;
   applyAnalysisDefaults(safePresetKey);
   setCurrentPrescription(clonePresetPrescription(safePresetKey));
   resetGeneratedAnalysisState();
+  return true;
 };
 
 const snapshotState = () => ({
@@ -6492,7 +6752,9 @@ const createAsphereDescriptor = (lens, side, radius) => {
     A4: toNumber(normalized[asphereFieldName(side, "A4")]) || 0,
     A6: toNumber(normalized[asphereFieldName(side, "A6")]) || 0,
     A8: toNumber(normalized[asphereFieldName(side, "A8")]) || 0,
-    A10: toNumber(normalized[asphereFieldName(side, "A10")]) || 0
+    A10: toNumber(normalized[asphereFieldName(side, "A10")]) || 0,
+    A12: toNumber(normalized[asphereFieldName(side, "A12")]) || 0,
+    A14: toNumber(normalized[asphereFieldName(side, "A14")]) || 0
   };
 
   const radiusValue = toNumber(radius);
@@ -6519,7 +6781,9 @@ const isSurfaceAsphereActive = (surface) => {
       A4: surface.asphere.A4,
       A6: surface.asphere.A6,
       A8: surface.asphere.A8,
-      A10: surface.asphere.A10
+      A10: surface.asphere.A10,
+      A12: surface.asphere.A12,
+      A14: surface.asphere.A14
     });
 };
 
@@ -6542,7 +6806,9 @@ const evaluateAsphereSag = (radius, asphere, radialHeight) => {
     A4: toNumber(asphere?.A4) || 0,
     A6: toNumber(asphere?.A6) || 0,
     A8: toNumber(asphere?.A8) || 0,
-    A10: toNumber(asphere?.A10) || 0
+    A10: toNumber(asphere?.A10) || 0,
+    A12: toNumber(asphere?.A12) || 0,
+    A14: toNumber(asphere?.A14) || 0
   };
   const r2 = r * r;
   const r3 = r2 * r;
@@ -6553,12 +6819,19 @@ const evaluateAsphereSag = (radius, asphere, radialHeight) => {
   const r8 = r4 * r4;
   const r9 = r8 * r;
   const r10 = r8 * r2;
-  const polynomialSag = terms.A4 * r4 + terms.A6 * r6 + terms.A8 * r8 + terms.A10 * r10;
+  const r11 = r10 * r;
+  const r12 = r10 * r2;
+  const r13 = r12 * r;
+  const r14 = r12 * r2;
+  const polynomialSag = terms.A4 * r4 + terms.A6 * r6 + terms.A8 * r8 + terms.A10 * r10
+    + terms.A12 * r12 + terms.A14 * r14;
   const baseDerivative = sqrtTerm > 1e-12 ? (c * r) / sqrtTerm : (c * r) / 1e-12;
   const polynomialDerivative = 4 * terms.A4 * r3
     + 6 * terms.A6 * r5
     + 8 * terms.A8 * r7
-    + 10 * terms.A10 * r9;
+    + 10 * terms.A10 * r9
+    + 12 * terms.A12 * r11
+    + 14 * terms.A14 * r13;
 
   return {
     valid: Number.isFinite(baseSag + polynomialSag) && Number.isFinite(baseDerivative + polynomialDerivative),
@@ -15754,11 +16027,14 @@ const presetMetaBadges = (preset) => {
   const badges = [];
   if (preset.sourceType === "patent") {
     badges.push("Patent-based", "Surface prescription");
+    if (preset.loadDisabled) badges.push("Audit blocked");
     if (preset.sourcePatent) badges.push(`Source: ${preset.sourcePatent}`);
     if (preset.example) badges.push(`Example: ${preset.example}`);
     if ((preset.surfaces || []).some((surface) => surface.apertureEstimated !== false)) badges.push("Estimated aperture");
   } else if (preset.sourceType === "visualReference") {
     badges.push("Visual reference", "Production layout only");
+  } else if (preset.sourceType === "reference-only" || preset.prescriptionType === "referenceOnly") {
+    badges.push("Reference only", "Verified optical prescription unavailable");
   } else if (preset.sourceType === "educational") {
     badges.push("Educational", "Approximate layout");
   }
@@ -15791,13 +16067,14 @@ const presetSelectEntries = () => (
   Object.entries(PRESETS).filter(([key, preset]) => (
     key !== "custom"
     && !OLD_MISLEADING_ZEISS_PRESET_KEYS.includes(key)
-    && ["patent", "visualReference"].includes(preset.sourceType)
+    && ["patent", "visualReference", "reference-only"].includes(preset.sourceType)
     && presetHasDrawablePrescription(preset)
   ))
 );
 
 const presetMenuGroupLabel = (preset) => (
   preset?.presetGroup
+  || (preset?.sourceType === "reference-only" ? "Reference-only product records" : null)
   || (preset?.sourceType === "visualReference" ? "Visual references" : "Patent-based prescriptions")
 );
 
@@ -15813,7 +16090,7 @@ const renderPresetSelect = () => {
   const presetEntries = Object.entries(PRESETS).filter(([key, preset]) => (
     key !== "custom"
     && !OLD_MISLEADING_ZEISS_PRESET_KEYS.includes(key)
-    && ["patent", "visualReference"].includes(preset.sourceType)
+    && ["patent", "visualReference", "reference-only"].includes(preset.sourceType)
     && presetHasDrawablePrescription(preset)
   ));
   const groupedEntries = groupPresetSelectEntries(presetEntries);
@@ -15944,10 +16221,14 @@ const lensAnalysisSignature = () => state.lenses.map((lens) => [
   lens.frontA6,
   lens.frontA8,
   lens.frontA10,
+  lens.frontA12,
+  lens.frontA14,
   lens.rearA4,
   lens.rearA6,
   lens.rearA8,
-  lens.rearA10
+  lens.rearA10,
+  lens.rearA12,
+  lens.rearA14
 ].join(":")).join("|");
 
 const cachedAnalysis = (id, settings, calculate) => {
@@ -20345,7 +20626,9 @@ const normalizeAsphereForGeometricMtfWorker = (asphere) => {
     A4: toNumber(asphere.A4) || 0,
     A6: toNumber(asphere.A6) || 0,
     A8: toNumber(asphere.A8) || 0,
-    A10: toNumber(asphere.A10) || 0
+    A10: toNumber(asphere.A10) || 0,
+    A12: toNumber(asphere.A12) || 0,
+    A14: toNumber(asphere.A14) || 0
   };
   normalized.active = normalized.enabled && asphereHasTerms(normalized);
   return normalized.active ? normalized : null;
@@ -20388,7 +20671,9 @@ const geometricMtfSurfaceSignature = (surfaceModel = []) => JSON.stringify(surfa
     A4: Number((toNumber(surface.asphere.A4) || 0).toPrecision(12)),
     A6: Number((toNumber(surface.asphere.A6) || 0).toPrecision(12)),
     A8: Number((toNumber(surface.asphere.A8) || 0).toPrecision(12)),
-    A10: Number((toNumber(surface.asphere.A10) || 0).toPrecision(12))
+    A10: Number((toNumber(surface.asphere.A10) || 0).toPrecision(12)),
+    A12: Number((toNumber(surface.asphere.A12) || 0).toPrecision(12)),
+    A14: Number((toNumber(surface.asphere.A14) || 0).toPrecision(12))
   } : null
 })));
 
@@ -22959,6 +23244,8 @@ const renderPatentSurfaceRows = (patentSurfaces) => patentSurfaces.map((surface)
     <td>${formatNumber(surface.asphere?.A6, 11)}</td>
     <td>${formatNumber(surface.asphere?.A8, 14)}</td>
     <td>${formatNumber(surface.asphere?.A10, 17)}</td>
+    <td>${formatNumber(surface.asphere?.A12, 20)}</td>
+    <td>${formatNumber(surface.asphere?.A14, 23)}</td>
     <td>${surface.isStop ? "Yes" : "No"}</td>
     <td>${formatNumber(aperture.diameter)}</td>
     <td>${aperture.source}</td>
@@ -23027,13 +23314,15 @@ const renderPatentPrescriptionTable = (preset) => {
               <th>A6</th>
               <th>A8</th>
               <th>A10</th>
+              <th>A12</th>
+              <th>A14</th>
               <th>Stop</th>
               <th>Clear aperture</th>
               <th>Aperture source</th>
             </tr>
           </thead>
           <tbody>
-            ${patentSurfaces.length ? renderPatentSurfaceRows(patentSurfaces) : `<tr><td colspan="14">No patent surfaces entered.</td></tr>`}
+            ${patentSurfaces.length ? renderPatentSurfaceRows(patentSurfaces) : `<tr><td colspan="16">No patent surfaces entered.</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -24277,6 +24566,70 @@ const renderVisualOnlyReferenceApp = () => {
   `;
 };
 
+const renderReferenceOnlyPresetApp = () => {
+  const preset = PRESETS[state.preset] ?? {};
+  const metadata = preset.productMetadata || state.prescription?.productMetadata || {};
+  const metadataRows = [
+    ["Manufacturer", preset.manufacturer || preset.brand],
+    ["Mount", metadata.mount],
+    ["Format", metadata.format],
+    ["Focal length", Number.isFinite(toNumber(metadata.nominalFocalLengthMm)) ? `${formatNumber(metadata.nominalFocalLengthMm, 1)} mm` : null],
+    ["Aperture", metadata.maxFNumber && metadata.minFNumber ? `f/${metadata.maxFNumber} – f/${metadata.minFNumber}` : null],
+    ["Construction", metadata.elements && metadata.groups ? `${metadata.elements} elements / ${metadata.groups} groups` : null],
+    ["Minimum focus", Number.isFinite(toNumber(metadata.minFocusDistanceM)) ? `${formatNumber(metadata.minFocusDistanceM, 2)} m` : null],
+    ["Max magnification", metadata.maxMagnification ? `${metadata.maxMagnification}×` : null],
+    ["Filter", metadata.filterThreadMm ? `${metadata.filterThreadMm} mm` : null],
+    ["Weight", metadata.weightG ? `${metadata.weightG} g` : null]
+  ].filter(([, value]) => value !== null && value !== undefined && value !== "");
+
+  return `
+    <div class="app-layout">
+      <div class="app-main">
+        <header class="tool-header">
+          <div class="header-title-block">
+            <p class="eyebrow">${tx("eyebrow")}</p>
+            <h1>${tx("title")}</h1>
+          </div>
+          <div class="header-control-row">
+            ${renderPresetSelect()}
+            ${renderHeaderSaveControls()}
+          </div>
+        </header>
+
+        <div class="work-layout visual-reference-work-layout">
+          <main class="center-workspace visual-reference-workspace" aria-label="Reference-only product record">
+            <section class="top-diagram reference-only-panel">
+              <div class="reference-only-card">
+                <span class="reference-only-badge">Reference only</span>
+                <h2>${escapeHtml(preset.name || "Reference-only record")}</h2>
+                <p>${escapeHtml(preset.referenceOnlyMessage || preset.note || "Verified optical prescription unavailable. No simulated ray-trace design is loaded.")}</p>
+                <p class="reference-only-warning">No fake surfaces, curvatures, glass data, aperture stop, MTF, BFD or ray-trace result is generated for this record.</p>
+              </div>
+            </section>
+          </main>
+          <aside class="analysis-sidebar visual-reference-sidebar" aria-label="Reference-only product metadata">
+            ${renderStackedPanel("referenceOnly", "Product Reference", `
+              <div class="reference-only-metadata-grid">
+                ${metadataRows.map(([label, value]) => `
+                  <div class="reference-only-metadata-row">
+                    <span>${escapeHtml(label)}</span>
+                    <strong>${escapeHtml(String(value))}</strong>
+                  </div>
+                `).join("")}
+              </div>
+              ${(metadata.opticalFeatures || []).length ? `
+                <div class="reference-only-feature-list">
+                  ${(metadata.opticalFeatures || []).map((feature) => `<span>${escapeHtml(feature)}</span>`).join("")}
+                </div>
+              ` : ""}
+            `, { defaultCollapsed: false })}
+          </aside>
+        </div>
+      </div>
+    </div>
+  `;
+};
+
 const currentPatentGeometrySignature = () => JSON.stringify({
   preset: state.preset,
   prescriptionType: state.prescription?.prescriptionType,
@@ -24439,6 +24792,10 @@ const ensurePatentOpticalGeometry = () => {
 };
 
 const render = () => {
+  if (state.prescription?.prescriptionType === "referenceOnly") {
+    return renderReferenceOnlyPresetApp();
+  }
+
   if (state.prescription?.prescriptionType === "visualOnly") {
     state.diagramViewMode = "productionCutaway";
     return renderVisualOnlyReferenceApp();
@@ -27479,7 +27836,75 @@ const runOpticsSelfCheck = (options = {}) => {
       && PRESETS.olympusGauss100F18Us4106854Ex1.surfaces.length === 11
       && PRESETS.olympusZuikoAutoMacro90F2Us4792219Ex3.patentDataStatus === "verifiedPatentNumericalTable"
       && PRESETS.olympusZuikoAutoMacro90F2Us4792219Ex3.surfaces.length === 19
+      && PRESETS.nikon_z_58mm_f095_s_noct_wo2019229849_example1.patentDataStatus === "verifiedPatentNumericalTable"
+      && PRESETS.nikon_z_58mm_f095_s_noct_wo2019229849_example1.surfaces.length === 31
   ));
+
+  test("Sony SEL50F14Z product reference is metadata-only and non-loadable", () => withTemporaryState(() => {
+    loadPresetIntoState(DEFAULT_PRESET_KEY);
+    const before = state.preset;
+    const loaded = loadPresetIntoState("sony_planar_t_fe_50mm_f14_za_sel50f14z");
+    const preset = PRESETS.sony_planar_t_fe_50mm_f14_za_sel50f14z;
+    const selectMarkup = renderPresetSelect();
+    return preset.sourceType === "reference-only"
+      && preset.prescriptionType === "referenceOnly"
+      && preset.dataStatus === "manufacturer-specification-only"
+      && preset.prescriptionStatus === "unverified"
+      && Array.isArray(preset.lenses)
+      && preset.lenses.length === 0
+      && loaded === false
+      && state.preset === before
+      && state.lensEditStatus.includes("verified optical prescription is unavailable")
+      && selectMarkup.includes("SEL50F14Z")
+      && !preset.surfaces;
+  }));
+
+  test("Nikon Noct WO2019/229849 Example 1 preserves patent table and provenance", () => {
+    const preset = PRESETS.nikon_z_58mm_f095_s_noct_wo2019229849_example1;
+    const lenses = prescriptionToLenses(clonePresetPrescription("nikon_z_58mm_f095_s_noct_wo2019229849_example1"));
+    const mainLenses = lenses.filter((lens) => lens.countAsMainImagingElement !== false);
+    const mainGroups = mainLenses.reduce((count, lens, index) => (
+      count + (index === 0 || Number(mainLenses[index - 1]?.gapAfter || 0) > 0 ? 1 : 0)
+    ), 0);
+    const aspheres = preset.surfaces
+      .filter((surface) => surface.asphere?.enabled)
+      .map((surface) => surface.no);
+    return preset.brand === "Nikon"
+      && preset.sourcePatent === "WO2019229849A1"
+      && preset.prescriptionStatus === "verified-patent"
+      && preset.sourceConfidence === "high"
+      && preset.commercialReference?.model === "NIKKOR Z 58mm f/0.95 S Noct"
+      && preset.commercialReference?.relation.includes("do not claim")
+      && !preset.name.includes("Sony")
+      && preset.surfaces.length === 31
+      && preset.surfaces.filter((surface) => surface.role !== "imagePlane").length === 30
+      && JSON.stringify(aspheres) === JSON.stringify([1, 20, 28])
+      && preset.surfaces.find((surface) => surface.no === 14)?.isStop === true
+      && Math.abs(preset.surfaces.find((surface) => surface.no === 22)?.distanceToNext - 2.68) < 1e-9
+      && preset.surfaces.find((surface) => surface.no === 22)?.variableGap === "D22"
+      && preset.surfaces.find((surface) => surface.no === 29)?.role === "filterPlateFront"
+      && preset.surfaces.find((surface) => surface.no === 30)?.role === "filterPlateRear"
+      && preset.surfaces.find((surface) => surface.role === "imagePlane")?.no === 31
+      && Math.abs((preset.surfaces.find((surface) => surface.no === 28)?.asphere?.A14 || 0) + 1.70470e-19) < 1e-25
+      && mainLenses.length === 17
+      && mainGroups === 10
+      && lenses.some((lens) => lens.patentOpticalAccessory === true && lens.countAsMainImagingElement === false)
+      && preset.focalLength === 59.62
+      && preset.targetFNumber === 0.98
+      && preset.fullFieldDeg === 39.96
+      && preset.maxImageHeightMm === 21.70
+      && preset.backFocusMm === 17.10;
+  });
+
+  test("Nikon Noct patent preset loads separately from the Sony reference record", () => withTemporaryState(() => {
+    loadPresetIntoState("nikon_z_58mm_f095_s_noct_wo2019229849_example1");
+    ensurePatentOpticalGeometry();
+    const system = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
+    return state.preset === "nikon_z_58mm_f095_s_noct_wo2019229849_example1"
+      && state.lenses.filter((lens) => lens.countAsMainImagingElement !== false).length === 17
+      && Math.abs(system.effectiveFocalLength - 59.62) < 0.2
+      && !PRESETS[state.preset].name.includes("Sony Planar");
+  }));
 
   test("Historical Voigtlander patent presets preserve source metadata and reference boundaries", () => {
     const verifiedKeys = [

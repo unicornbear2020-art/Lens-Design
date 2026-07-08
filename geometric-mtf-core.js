@@ -1,7 +1,7 @@
 /* eslint-env worker */
 
 (() => {
-  const GEOMETRIC_MTF_CORE_VERSION = "20260708-fix-us4792219-s6-spacing-1";
+  const GEOMETRIC_MTF_CORE_VERSION = "20260708-nikon-noct-wo2019229849-1";
   const GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION = "geometric-lsf-contract-20260630-1";
   const QUALITY_PROFILES = {
     interactive: { baseGrid: 16, label: "Interactive" },

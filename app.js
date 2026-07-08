@@ -10,7 +10,7 @@ const DIAGRAM_SIZE = {
   height: 480
 };
 
-const ANALYSIS_WORKER_VERSION = "20260707-ipad-system-result-1";
+const ANALYSIS_WORKER_VERSION = "20260708-fix-us4792219-s6-spacing-1";
 const GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION = "geometric-lsf-contract-20260630-1";
 const DEFAULT_PRESET_KEY = "zeissBiotar50F14Us1786916Ex2";
 const OLD_MISLEADING_ZEISS_PRESET_KEYS = [
@@ -345,7 +345,6 @@ const DEFAULT_ANALYSIS_SETTINGS = {
   diagramPhysicalGrid: false,
   diagramShowScaleBar: false,
   productionSilhouetteSource: "generated",
-  showSvgReferenceOverlay: false,
   patentDiameterSource: "auto",
   cementedGroupDisplayMode: "individualManufacturing",
   cementedInterfaceBevelMode: "estimated",
@@ -1700,6 +1699,108 @@ const PATENT_SURFACE_PRESCRIPTION_DATA = {
       { no: 13, radius: -910.494, distanceToNext: null }
     ]
   },
+  olympusCompactF28Us4568151Ex1: {
+    patentDataStatus: "verifiedPatentNumericalTable",
+    sourceType: "patent",
+    sourcePatent: "US4568151A",
+    sourceUrl: "https://patents.google.com/patent/US4568151A/en",
+    example: "Embodiment 1",
+    sourceExample: "Embodiment 1",
+    brand: "Olympus",
+    designType: "Compact camera telephoto-type wide-angle",
+    prescriptionStatus: "verifiedPatentNumericalTable",
+    productionStatus: "noProductionMatchConfirmed",
+    focalLength: 10.0,
+    focalLengthMm: 10.0,
+    apertureRatio: "1:2.8",
+    targetFNumber: 2.8,
+    fieldAngleDeg: 63,
+    telephotoRatio: 0.9797,
+    imageFormatStatus: "notSpecifiedByPatent",
+    presetGroup: "Olympus patent-based prescriptions",
+    normalizationBasis: "Native US4568151 Embodiment 1 patent prescription, f = 10.0. No focal-length scaling applied.",
+    opticalCounts: {
+      glassElements: 5,
+      opticalComponents: 4,
+      cementedDoublets: 1
+    },
+    sourceNotes: [
+      "Native patent prescription; no focal-length scaling applied.",
+      "The stated 63 degree field with f = 10.0 implies a maximum paraxial image height of about 6.13 mm at the stated field, but the patent does not explicitly identify a camera format.",
+      "Do not evaluate this preset as full-frame coverage by default.",
+      "Surface 6 is an explicitly defined plane stop."
+    ].join(" "),
+    note: "Verified patent numerical prescription from US4568151 Embodiment 1. Native f = 10.0, F/2.8, 63 degree field. 5 elements / 4 components with one cemented doublet. S6 is a verified plane stop. No production lens match or image format is confirmed; do not assume full-frame coverage.",
+    numericalAudit: {
+      expectedEflMm: 10.0,
+      eflToleranceMm: 0.08,
+      expectedFNumber: 2.8,
+      status: "pendingRuntimeValidation"
+    },
+    surfaces: [
+      { no: 1, radius: 3.0633, distanceToNext: 0.7537, nAfter: 1.83481, vdAfter: 42.7, role: "lens1" },
+      { no: 2, radius: 7.2612, distanceToNext: 0.3624, nAfter: 1.0 },
+      { no: 3, radius: -12.7939, distanceToNext: 0.2899, nAfter: 1.78472, vdAfter: 25.7, role: "cementedDoubletNegative" },
+      { no: 4, radius: 2.3634, distanceToNext: 0.8117, nAfter: 1.59270, vdAfter: 35.3, role: "cementedDoubletPositive", cementedInterface: true, interfaceType: "cemented" },
+      { no: 5, radius: 9.6117, distanceToNext: 0.3104, nAfter: 1.0 },
+      { no: 6, radius: Infinity, distanceToNext: 0.1839, nAfter: 1.0, isStop: true, role: "patentStop", sourceLabel: "US4568151 Embodiment 1: r6 = infinity (stop)" },
+      { no: 7, radius: 5.7283, distanceToNext: 0.7247, nAfter: 1.62588, vdAfter: 35.7, role: "lens4" },
+      { no: 8, radius: -5.9487, distanceToNext: 1.8223, nAfter: 1.0 },
+      { no: 9, radius: -2.3029, distanceToNext: 0.2899, nAfter: 1.77250, vdAfter: 49.6, role: "lens5" },
+      { no: 10, radius: -4.3465, distanceToNext: null, nAfter: 1.0 }
+    ]
+  },
+  olympusGauss100F18Us4106854Ex1: {
+    patentDataStatus: "verifiedPatentNumericalTable",
+    sourceType: "patent",
+    sourcePatent: "US4106854A",
+    sourceUrl: "https://patents.google.com/patent/US4106854A/en",
+    example: "Embodiment 1",
+    sourceExample: "Embodiment 1",
+    brand: "Olympus",
+    designType: "Large-aperture Gauss-type normal lens",
+    prescriptionStatus: "verifiedPatentNumericalTable",
+    productionStatus: "noProductionMatchConfirmed",
+    focalLength: 100,
+    focalLengthMm: 100,
+    apertureRatio: "1:1.8",
+    targetFNumber: 1.8,
+    fieldAngleDeg: 44,
+    presetGroup: "Olympus patent-based prescriptions",
+    normalizationBasis: "Native US4106854 Embodiment 1 patent prescription, f = 100. No focal-length scaling applied.",
+    opticalCounts: {
+      glassElements: 6,
+      opticalComponents: 5,
+      cementedDoublets: 1
+    },
+    sourceNotes: [
+      "Native f = 100 patent numerical prescription; no scaling applied.",
+      "The patent identifies d6 as the airspace between the third and fourth components, within which the aperture stop is located.",
+      "The patent confirms the stop gap but does not state the exact axial stop fraction inside d6.",
+      "The loaded midpoint stop is an editable analysis default, not an exact patent diaphragm coordinate.",
+      "The supplied local transcription is preserved exactly; its paraxial audit does not yet validate to +100 mm under the app radius convention, so this entry should be checked against the primary patent scan before production-style claims."
+    ].join(" "),
+    note: "Verified patent numerical prescription from US4106854 Embodiment 1 as locally supplied. Native f = 100, F/1.8, 44 degree full field. 6 elements / 5 components with one cemented doublet. Patent-confirmed stop gap; midpoint position estimated and editable. No production lens match is confirmed. Paraxial EFL requires primary-source sign/transcription audit before production-style claims.",
+    numericalAudit: {
+      expectedEflMm: 100,
+      eflToleranceMm: 1.0,
+      expectedFNumber: 1.8,
+      status: "needsPrimarySourceSignAudit"
+    },
+    surfaces: [
+      { no: 1, radius: 85.439, distanceToNext: 7.203, nAfter: 1.72342, vdAfter: 37.95, role: "lens1" },
+      { no: 2, radius: 489.676, distanceToNext: 0.231, nAfter: 1.0 },
+      { no: 3, radius: 42.989, distanceToNext: 7.704, nAfter: 1.72000, vdAfter: 42.08, role: "lens2" },
+      { no: 4, radius: 98.883, distanceToNext: 3.659, nAfter: 1.0 },
+      { no: 5, radius: 134.033, distanceToNext: 6.163, nAfter: 1.80518, vdAfter: 25.43, role: "lens3" },
+      { no: 6, radius: 30.952, distanceToNext: 26.136, nAfter: 1.0, role: "patentConfirmedStopGapAfterThisSurface" },
+      { no: 7, radius: -28.505, distanceToNext: 2.176, nAfter: 1.76180, vdAfter: 27.11, role: "lens4NegativeMeniscus" },
+      { no: 8, radius: -469.068, distanceToNext: 9.033, nAfter: 1.0 },
+      { no: 9, radius: -37.307, distanceToNext: 0.250, nAfter: 1.80610, vdAfter: 40.92, role: "cementedDoubletNegative" },
+      { no: 10, radius: 463.613, distanceToNext: 6.356, nAfter: 1.80610, vdAfter: 40.92, role: "cementedDoubletPositive", cementedInterface: true, interfaceType: "cemented" },
+      { no: 11, radius: -80.874, distanceToNext: null, nAfter: 1.0 }
+    ]
+  },
   olympusZuikoAutoT250F2Us4534626Ex1: {
     patentDataStatus: "verifiedPatentNumericalTable",
     sourceType: "patent",
@@ -1845,7 +1946,7 @@ const PATENT_SURFACE_PRESCRIPTION_DATA = {
       { no: 3, radius: 42.7287, distanceToNext: 14.0103, nAfter: 1.71300, vdAfter: 53.84 },
       { no: 4, radius: 76.1347, distanceToNext: 1.2110, nAfter: 1.0 },
       { no: 5, radius: 156.5924, distanceToNext: 3.8220, nAfter: 1.74000, vdAfter: 28.29 },
-      { no: 6, radius: 27.1363, distanceToNext: 1.8882, nAfter: 1.0 },
+      { no: 6, radius: 27.1363, distanceToNext: 11.8882, nAfter: 1.0 },
       {
         no: 7,
         radius: Infinity,
@@ -2094,6 +2195,25 @@ const PATENT_APERTURE_STOP_SPECS = {
     sourceLabel: "US4792219 Embodiment 3 explicitly specifies r7 = infinity (stop).",
     sourceUrl: "https://patents.google.com/patent/US4792219A/en",
     note: "The aperture stop is a true plane at surface 7, between S6 and S8. It is not an estimated midpoint."
+  },
+  olympusCompactF28Us4568151Ex1: {
+    kind: "surface",
+    surfaceNumber: 6,
+    sourceLevel: "patent",
+    confidence: "verified",
+    sourceLabel: "US4568151 Embodiment 1 explicitly gives r6 = infinity (stop).",
+    sourceUrl: "https://patents.google.com/patent/US4568151A/en",
+    note: "True plane stop at Surface 6. Do not substitute a central-gap estimate."
+  },
+  olympusGauss100F18Us4106854Ex1: {
+    kind: "airGap",
+    afterSurfaceNumber: 6,
+    fraction: 0.5,
+    sourceLevel: "patent",
+    confidence: "probable",
+    sourceLabel: "US4106854 confirms that the aperture stop is located within d6 between the third and fourth components, but does not provide an axial split distance.",
+    sourceUrl: "https://patents.google.com/patent/US4106854A/en",
+    note: "Patent-confirmed stop gap; midpoint position estimated — editable. Midpoint of d6 is an editable analysis default. Stop-containing gap is patent-confirmed; midpoint fraction is not."
   },
   olympusZuikoAutoT250F2Us4534626Ex1: {
     kind: "airGap",
@@ -2646,6 +2766,32 @@ const PATENT_PRESET_DEFINITIONS = [
     brand: "Olympus",
     designType: "Ultra-fast",
     analysisDefaults: TELEPHOTO_ANALYSIS_DEFAULTS
+  }),
+  makePatentPreset({
+    key: "olympusCompactF28Us4568151Ex1",
+    name: "Olympus Compact Camera F/2.8 — US4568151 Embodiment 1",
+    sourcePatent: "US4568151A",
+    example: "Embodiment 1",
+    brand: "Olympus",
+    designType: "Compact camera telephoto-type wide-angle",
+    analysisDefaults: {
+      ...NORMAL_ANALYSIS_DEFAULTS,
+      matchPatentFNumber: true
+    },
+    presetGroup: "Olympus patent-based prescriptions"
+  }),
+  makePatentPreset({
+    key: "olympusGauss100F18Us4106854Ex1",
+    name: "Olympus Gauss-Type 100mm f/1.8 — US4106854 Embodiment 1",
+    sourcePatent: "US4106854A",
+    example: "Embodiment 1",
+    brand: "Olympus",
+    designType: "Large-aperture Gauss-type normal lens",
+    analysisDefaults: {
+      ...TELEPHOTO_ANALYSIS_DEFAULTS,
+      matchPatentFNumber: true
+    },
+    presetGroup: "Olympus patent-based prescriptions"
   }),
   makePatentPreset({
     key: "olympusZuikoAutoT250F2Us4534626Ex1",
@@ -3809,7 +3955,6 @@ const saveCurrentDesign = ({ preferExisting = false } = {}) => {
     analysisSettings: {
       diagramViewMode: state.diagramViewMode,
       productionSilhouetteSource: state.productionSilhouetteSource,
-      showSvgReferenceOverlay: state.showSvgReferenceOverlay,
       patentDiameterSource: state.patentDiameterSource,
       cementedGroupDisplayMode: state.cementedGroupDisplayMode,
       cementedInterfaceBevelMode: state.cementedInterfaceBevelMode,
@@ -3895,7 +4040,6 @@ const loadDesign = (design) => {
     state.productionSilhouetteSource = ["generated", "svgReference"].includes(design.analysisSettings.productionSilhouetteSource)
       ? design.analysisSettings.productionSilhouetteSource
       : DEFAULT_ANALYSIS_SETTINGS.productionSilhouetteSource;
-    state.showSvgReferenceOverlay = design.analysisSettings.showSvgReferenceOverlay === true;
     state.patentDiameterSource = normalizePatentDiameterSource(
       design.analysisSettings.patentDiameterSource,
       state.prescription
@@ -14853,20 +14997,6 @@ const renderSvgProductionReferenceCutaway = ({
   `;
 };
 
-const renderSvgReferenceOpticalOverlay = (preset, mapper, system) => {
-  const svgReference = getProductionSvgReferenceForPreset(preset);
-  if (!svgReference?.href || !state.showSvgReferenceOverlay) return "";
-  const fit = svgReferenceFitToOpticalGroup(svgReference, mapper, system);
-  if (!fit) return "";
-  return `
-    <g class="svg-optical-overlay" data-visual-flip-x="${fit.normalizedReference.visualFlipX ? "true" : "false"}"${fit.transform ? ` transform="${fit.transform}"` : ""} data-target-start="${fit.targetStart}" data-target-end="${fit.targetEnd}">
-      <image href="${escapeHtml(fit.normalizedReference.href)}" x="${fit.imageX}" y="${fit.imageY}" width="${fit.imageWidth}" height="${fit.imageHeight}" preserveAspectRatio="xMidYMid meet">
-        <title>${escapeHtml("Semi-transparent SVG production silhouette overlay; visual reference only.")}</title>
-      </image>
-    </g>
-  `;
-};
-
 const renderVisualReferenceCutaway = (layout = state.visualLayout, preset = PRESETS[state.preset]) => {
   const normalizedLayout = normalizePrescription({
     prescriptionType: "visualOnly",
@@ -15342,15 +15472,6 @@ const renderOpticalDiagram = (system, spectralSystems, rayTraceResult, diagramAp
               </select>
             </label>
           ` : ""}
-          ${isOpticalRayView && getProductionSvgReferenceForPreset(selectedPreset)?.href ? `
-            <button
-              class="diagram-icon-toggle ${state.showSvgReferenceOverlay ? "is-active" : ""}"
-              type="button"
-              data-action="toggle-svg-reference-overlay"
-              aria-pressed="${state.showSvgReferenceOverlay ? "true" : "false"}"
-              title="Toggle semi-transparent SVG reference overlay"
-            >SVG</button>
-          ` : ""}
           ${isOpticalRayView ? `
             <button
               class="diagram-icon-toggle ${state.diagramOptionsOpen ? "is-active" : ""}"
@@ -15466,12 +15587,6 @@ const renderOpticalDiagram = (system, spectralSystems, rayTraceResult, diagramAp
                       title="${state.cementedGroupDisplayMode === "individualManufacturing" ? "Switch to Optical layout" : "Switch to Individual manufacturing"}"
                     >◧</button>
                   ` : ""}
-                  ${getProductionSvgReferenceForPreset(selectedPreset)?.href ? `
-                    <label class="diagram-view-mode-control compact-diagram-control diagram-fill-toggle">
-                      <input type="checkbox" data-action="toggle-svg-reference-overlay-input" ${state.showSvgReferenceOverlay ? "checked" : ""}>
-                      <span>SVG overlay</span>
-                    </label>
-                  ` : ""}
                 </div>
                 <button class="diagram-reset-button" type="button" data-action="reset-diagram-appearance">Reset diagram appearance</button>
               </div>
@@ -15505,7 +15620,7 @@ const renderOpticalDiagram = (system, spectralSystems, rayTraceResult, diagramAp
             ? renderProductionCutawayStackSvg(system, mapper, rayTraceResult, layoutResolution, annotationLanes, "glass")
             : isPatentLineView
               ? ""
-              : `${renderLensStackSvg(system, mapper, rayTraceResult, layoutResolution, annotationLanes, "glass")}${renderSvgReferenceOpticalOverlay(selectedPreset, mapper, system)}`
+              : renderLensStackSvg(system, mapper, rayTraceResult, layoutResolution, annotationLanes, "glass")
         }</g>
         <g class="layer-rays">
           ${isProductionCutawayView || isPatentLineView
@@ -25494,12 +25609,6 @@ mount.addEventListener("change", (event) => {
     return;
   }
 
-  if (event.target.dataset.action === "toggle-svg-reference-overlay-input") {
-    state.showSvgReferenceOverlay = event.target.checked;
-    update();
-    return;
-  }
-
   if (event.target.dataset.action === "update-diagram-ray-display") {
     state.diagramRayDisplayMode = normalizeDiagramRayDisplayMode(event.target.value);
     update();
@@ -26822,10 +26931,6 @@ mount.addEventListener("click", (event) => {
     idbDelete(INDEXED_DB_STORES.designs, deleteId);
   }
 
-  if (action === "toggle-svg-reference-overlay") {
-    state.showSvgReferenceOverlay = !state.showSvgReferenceOverlay;
-  }
-
   if (action === "toggle-diagram-options") {
     state.diagramOptionsOpen = !state.diagramOptionsOpen;
   }
@@ -27368,6 +27473,10 @@ const runOpticsSelfCheck = (options = {}) => {
       && PRESETS.nikonF12Us3738736.surfaces.length === 13
       && PRESETS.olympusF12Us4099843.patentDataStatus === "needsTranscriptionAudit"
       && PRESETS.olympusF12Us4099843.surfaces.length === 13
+      && PRESETS.olympusCompactF28Us4568151Ex1.patentDataStatus === "verifiedPatentNumericalTable"
+      && PRESETS.olympusCompactF28Us4568151Ex1.surfaces.length === 10
+      && PRESETS.olympusGauss100F18Us4106854Ex1.patentDataStatus === "verifiedPatentNumericalTable"
+      && PRESETS.olympusGauss100F18Us4106854Ex1.surfaces.length === 11
       && PRESETS.olympusZuikoAutoMacro90F2Us4792219Ex3.patentDataStatus === "verifiedPatentNumericalTable"
       && PRESETS.olympusZuikoAutoMacro90F2Us4792219Ex3.surfaces.length === 19
   ));
@@ -27561,6 +27670,76 @@ const runOpticsSelfCheck = (options = {}) => {
       && audit.bflPass === false;
   });
 
+  test("US4568151 compact F/2.8 native patent preset preserves surface table and verified stop", () => withTemporaryState(() => {
+    const preset = PRESETS.olympusCompactF28Us4568151Ex1;
+    const lenses = prescriptionToLenses(clonePresetPrescription("olympusCompactF28Us4568151Ex1"));
+    const audit = calculateDirectPatentSequentialParaxialAudit(preset);
+    loadPresetIntoState("olympusCompactF28Us4568151Ex1");
+    ensurePatentOpticalGeometry();
+    const system = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const fNumber = calculateFNumber(system, state.apertureDiameter, state.lenses, {
+      ...rayTraceApertureOptions(state),
+      apertureDiameter: state.apertureDiameter
+    });
+    const eligibility = canUseGeometricMtfMainWorker(state.lenses, system);
+    return preset.name === "Olympus Compact Camera F/2.8 — US4568151 Embodiment 1"
+      && preset.productionStatus === "noProductionMatchConfirmed"
+      && preset.imageFormatStatus === "notSpecifiedByPatent"
+      && preset.note.includes("No production lens match")
+      && preset.note.includes("do not assume full-frame coverage")
+      && preset.surfaces.length === 10
+      && preset.surfaces[5].isStop === true
+      && preset.apertureStopSpec?.kind === "surface"
+      && preset.apertureStopSpec.surfaceNumber === 6
+      && preset.apertureStopSpec.sourceLevel === "patent"
+      && preset.apertureStopSpec.confidence === "verified"
+      && lenses.length === 5
+      && lenses.filter((lens) => lens.countAsMainImagingElement !== false).length === 5
+      && lenses[1].patentRearCementedToNextGlass === true
+      && lenses[2].patentFrontSharedCementedSurface === true
+      && lenses[1].gapAfter === 0
+      && Math.abs(audit.effectiveFocalLength - 10.0) <= 0.08
+      && Math.abs(fNumber - 2.8) <= 0.03
+      && eligibility.supported === true;
+  }));
+
+  test("US4106854 Gauss F/1.8 native patent preset preserves stop gap and cemented group", () => withTemporaryState(() => {
+    const preset = PRESETS.olympusGauss100F18Us4106854Ex1;
+    const lenses = prescriptionToLenses(clonePresetPrescription("olympusGauss100F18Us4106854Ex1"));
+    const audit = calculateDirectPatentSequentialParaxialAudit(preset);
+    loadPresetIntoState("olympusGauss100F18Us4106854Ex1");
+    ensurePatentOpticalGeometry();
+    const system = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const fNumber = calculateFNumber(system, state.apertureDiameter, state.lenses, {
+      ...rayTraceApertureOptions(state),
+      apertureDiameter: state.apertureDiameter
+    });
+    const eligibility = canUseGeometricMtfMainWorker(state.lenses, system);
+    const stopLabel = stopLabelFromSpec(preset.apertureStopSpec);
+    return preset.name === "Olympus Gauss-Type 100mm f/1.8 — US4106854 Embodiment 1"
+      && preset.productionStatus === "noProductionMatchConfirmed"
+      && preset.note.includes("No production lens match")
+      && preset.note.includes("Patent-confirmed stop gap; midpoint position estimated")
+      && preset.note.includes("primary-source sign/transcription audit")
+      && preset.surfaces.length === 11
+      && preset.surfaces.every((surface) => surface.isStop !== true)
+      && preset.apertureStopSpec?.kind === "airGap"
+      && preset.apertureStopSpec.afterSurfaceNumber === 6
+      && Math.abs(preset.apertureStopSpec.fraction - 0.5) < 1e-12
+      && preset.apertureStopSpec.sourceLevel === "patent"
+      && preset.apertureStopSpec.confidence === "probable"
+      && stopLabel === "Patent-confirmed stop gap: S6–S7"
+      && lenses.length === 6
+      && lenses.filter((lens) => lens.countAsMainImagingElement !== false).length === 6
+      && lenses[4].patentRearCementedToNextGlass === true
+      && lenses[5].patentFrontSharedCementedSurface === true
+      && lenses[4].gapAfter === 0
+      && Number.isFinite(audit.effectiveFocalLength)
+      && audit.status === "fail"
+      && Math.abs(fNumber - 1.8) <= 0.03
+      && eligibility.supported === true;
+  }));
+
   test("US4534626 raw source and 2.5x scaled infinity surfaces are preserved", () => {
     const preset = PRESETS.olympusZuikoAutoT250F2Us4534626Ex1;
     const prescription = clonePresetPrescription("olympusZuikoAutoT250F2Us4534626Ex1");
@@ -27647,8 +27826,10 @@ const runOpticsSelfCheck = (options = {}) => {
     const preset = PRESETS.olympusZuikoAutoMacro90F2Us4792219Ex3;
     const lenses = prescriptionToLenses(clonePresetPrescription("olympusZuikoAutoMacro90F2Us4792219Ex3"));
     const audit = calculateDirectPatentSequentialParaxialAudit(preset);
+    const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
     const stopSpec = preset.apertureStopSpec;
     const macro = preset.macroFocusModel;
+    const stopSurface = preset.surfaces.find((surface) => surface.no === 7);
     return preset.name === "Olympus Zuiko Auto-Macro 90mm f/2 — US4792219 Embodiment 3"
       && preset.sourceUrl === "https://patents.google.com/patent/US4792219A/en"
       && preset.patentDataStatus === "verifiedPatentNumericalTable"
@@ -27657,10 +27838,14 @@ const runOpticsSelfCheck = (options = {}) => {
       && preset.note.includes("production numerical identity is not confirmed")
       && preset.surfaces.length === 19
       && lenses.length === 9
-      && Math.abs(preset.surfaces[5].distanceToNext - 1.8882) < 1e-9
+      && Math.abs(preset.surfaces[5].distanceToNext - 11.8882) < 1e-9
+      && stopSurface?.radius === Infinity
+      && stopSurface?.isStop === true
       && Math.abs(preset.surfaces[10].distanceToNext - 0.1667) < 1e-9
       && Math.abs(preset.surfaces[12].distanceToNext - 0.8888) < 1e-9
       && Math.abs(audit.effectiveFocalLength - 100) <= 1.0
+      && Math.abs(system.effectiveFocalLength - 100) <= 1.0
+      && audit.eflPass === true
       && stopSpec?.kind === "surface"
       && stopSpec.surfaceNumber === 7
       && stopSpec.sourceLevel === "patent"
@@ -27683,7 +27868,7 @@ const runOpticsSelfCheck = (options = {}) => {
       && derived.every((lens) => lens.gapAfter >= 0)
       && derived.every((lens) => lens.patentRearCementedToNextGlass !== true)
       && derived[2]?.gapAfter > 0
-      && Math.abs(derived[2]?.gapAfter - 1.8882) < 1e-9;
+      && Math.abs(derived[2]?.gapAfter - (11.8882 + 4.7775)) < 1e-9;
   });
 
   test("US4792219 macro focus auto resolves to documented 1:2 spacing", () => withTemporaryState(() => {
@@ -29033,33 +29218,31 @@ const runOpticsSelfCheck = (options = {}) => {
       && !markup.includes("data-action=\"update-production-silhouette-source\"");
   }));
 
-  test("Biotar SVG overlay can be shown in Optical Ray View without changing rays", () => withTemporaryState(() => {
+  test("Biotar Optical Ray View no longer exposes the SVG overlay button or overlay markup", () => withTemporaryState(() => {
     loadPresetIntoState(DEFAULT_PRESET_KEY);
     ensurePatentOpticalGeometry();
     state.diagramViewMode = "optical";
+    state.diagramOptionsOpen = true;
     const system = calculateSystem(state.lenses);
     const spectralSystems = getSpectralSystems();
     const trace = traceSystemRealRays(state.lenses, spectralSystems.d || system, {
       ...rayTraceApertureOptions(state),
       rayCount: 9
     });
-    state.showSvgReferenceOverlay = false;
-    const hiddenMarkup = renderOpticalDiagram(system, spectralSystems, trace);
-    state.showSvgReferenceOverlay = true;
-    const overlayMarkup = renderOpticalDiagram(system, spectralSystems, trace);
-    return !hiddenMarkup.includes("svg-optical-overlay")
-      && overlayMarkup.includes("svg-optical-overlay")
-      && overlayMarkup.includes("assets/biotar-5cm-f14-production.svg")
-      && overlayMarkup.includes("real-ray")
-      && !overlayMarkup.includes("Back focal distance")
-      && !overlayMarkup.includes("STOP");
+    const markup = renderOpticalDiagram(system, spectralSystems, trace);
+    return !markup.includes('data-action="toggle-svg-reference-overlay"')
+      && !markup.includes('data-action="toggle-svg-reference-overlay-input"')
+      && !markup.includes(">SVG</button>")
+      && !markup.includes("SVG overlay")
+      && !markup.includes("svg-optical-overlay")
+      && markup.includes("real-ray");
   }));
 
   test("Biotar SVG reference width aligns to the optical lens group length", () => withTemporaryState(() => {
     loadPresetIntoState(DEFAULT_PRESET_KEY);
     ensurePatentOpticalGeometry();
-    state.diagramViewMode = "optical";
-    state.showSvgReferenceOverlay = true;
+    state.diagramViewMode = "productionCutaway";
+    state.productionSilhouetteSource = "svgReference";
     const system = calculateSystem(state.lenses);
     const spectralSystems = getSpectralSystems();
     const mapper = createSvgPointMapper(system, spectralSystems);
@@ -29112,7 +29295,6 @@ const runOpticsSelfCheck = (options = {}) => {
   test("Biotar SVG no longer flips and still preserves optical order", () => withTemporaryState(() => {
     loadPresetIntoState(DEFAULT_PRESET_KEY);
     ensurePatentOpticalGeometry();
-    state.showSvgReferenceOverlay = true;
     const svgReference = getProductionSvgReferenceForPreset(PRESETS[DEFAULT_PRESET_KEY]);
     const system = calculateSystem(state.lenses);
     const mapper = createSvgPointMapper(system, getSpectralSystems());

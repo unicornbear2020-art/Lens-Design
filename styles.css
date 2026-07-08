@@ -6654,12 +6654,6 @@ h1 {
   image-rendering: auto;
 }
 
-.svg-optical-overlay {
-  opacity: 0.26;
-  pointer-events: none;
-  mix-blend-mode: multiply;
-}
-
 .svg-reference-label {
   fill: #171717;
   font-size: 8px;

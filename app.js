@@ -3158,6 +3158,28 @@ const normalizePrescription = (prescription = {}) => {
 
 const clonePresetPrescription = (presetKey) => {
   const preset = PRESETS[presetKey] || PRESETS[DEFAULT_PRESET_KEY];
+  if (isReferenceOnlyPreset(preset)) {
+    return normalizePrescription({
+      prescriptionType: "referenceOnly",
+      sourceType: preset.sourceType || "reference-only",
+      name: preset.name,
+      note: preset.note || "",
+      sourceNotes: preset.sourceNotes || null,
+      sourcePatent: preset.sourcePatent || null,
+      sourceUrl: preset.sourceUrl || null,
+      sourceLabel: preset.sourceLabel || null,
+      brand: preset.brand || null,
+      manufacturer: preset.manufacturer || null,
+      designType: preset.designType || null,
+      presetGroup: preset.presetGroup || null,
+      dataStatus: preset.dataStatus || null,
+      prescriptionStatus: preset.prescriptionStatus || null,
+      referenceOnlyMessage: preset.referenceOnlyMessage || null,
+      productMetadata: preset.productMetadata || null,
+      opticalCounts: preset.opticalCounts || null
+    });
+  }
+
   if (preset.prescriptionType === "surface") {
     return normalizePrescription({
       prescriptionType: "surface",
@@ -3225,28 +3247,6 @@ const clonePresetPrescription = (presetKey) => {
       note: preset.note || "",
       svgReference: preset.svgReference || preset.visualLayout?.svgReference || null,
       visualLayout: preset.visualLayout || { elements: [] }
-    });
-  }
-
-  if (isReferenceOnlyPreset(preset)) {
-    return normalizePrescription({
-      prescriptionType: "referenceOnly",
-      sourceType: preset.sourceType || "reference-only",
-      name: preset.name,
-      note: preset.note || "",
-      sourceNotes: preset.sourceNotes || null,
-      sourcePatent: preset.sourcePatent || null,
-      sourceUrl: preset.sourceUrl || null,
-      sourceLabel: preset.sourceLabel || null,
-      brand: preset.brand || null,
-      manufacturer: preset.manufacturer || null,
-      designType: preset.designType || null,
-      presetGroup: preset.presetGroup || null,
-      dataStatus: preset.dataStatus || null,
-      prescriptionStatus: preset.prescriptionStatus || null,
-      referenceOnlyMessage: preset.referenceOnlyMessage || null,
-      productMetadata: preset.productMetadata || null,
-      opticalCounts: preset.opticalCounts || null
     });
   }
 
@@ -28107,11 +28107,12 @@ const runOpticsSelfCheck = (options = {}) => {
       apertureDiameter: state.apertureDiameter
     });
     const eligibility = canUseGeometricMtfMainWorker(state.lenses, system);
-    return preset.name === "Olympus Compact Camera F/2.8 — US4568151 Embodiment 1"
+    return preset.name === "Olympus Compact Camera 10mm f/2.8 — US4568151 Embodiment 1"
       && preset.productionStatus === "noProductionMatchConfirmed"
+      && preset.imageFormat === "compact camera patent format / not full-frame"
       && preset.imageFormatStatus === "notSpecifiedByPatent"
-      && preset.note.includes("No production lens match")
-      && preset.note.includes("do not assume full-frame coverage")
+      && preset.note.includes("small-format compact-camera patent example")
+      && preset.note.includes("not a full-frame 35mm lens")
       && preset.surfaces.length === 10
       && preset.surfaces[5].isStop === true
       && preset.apertureStopSpec?.kind === "surface"
@@ -28128,24 +28129,19 @@ const runOpticsSelfCheck = (options = {}) => {
       && eligibility.supported === true;
   }));
 
-  test("US4106854 Gauss F/1.8 native patent preset preserves stop gap and cemented group", () => withTemporaryState(() => {
+  test("US4106854 Gauss F/1.8 entry is audit-blocked until primary transcription is corrected", () => withTemporaryState(() => {
     const preset = PRESETS.olympusGauss100F18Us4106854Ex1;
     const lenses = prescriptionToLenses(clonePresetPrescription("olympusGauss100F18Us4106854Ex1"));
     const audit = calculateDirectPatentSequentialParaxialAudit(preset);
-    loadPresetIntoState("olympusGauss100F18Us4106854Ex1");
-    ensurePatentOpticalGeometry();
-    const system = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
-    const fNumber = calculateFNumber(system, state.apertureDiameter, state.lenses, {
-      ...rayTraceApertureOptions(state),
-      apertureDiameter: state.apertureDiameter
-    });
-    const eligibility = canUseGeometricMtfMainWorker(state.lenses, system);
+    const loaded = loadPresetIntoState("olympusGauss100F18Us4106854Ex1");
+    const referenceMarkup = render();
     const stopLabel = stopLabelFromSpec(preset.apertureStopSpec);
-    return preset.name === "Olympus Gauss-Type 100mm f/1.8 — US4106854 Embodiment 1"
+    return preset.name === "Olympus Gauss-Type 100mm f/1.8 — US4106854 Embodiment 1 (audit blocked)"
       && preset.productionStatus === "noProductionMatchConfirmed"
-      && preset.note.includes("No production lens match")
-      && preset.note.includes("Patent-confirmed stop gap; midpoint position estimated")
-      && preset.note.includes("primary-source sign/transcription audit")
+      && preset.loadDisabled === true
+      && preset.prescriptionStatus === "needs-primary-source-retranscription"
+      && preset.referenceOnlyMessage.includes("negative EFL/BFL")
+      && preset.note.includes("Audit-blocked local transcription")
       && preset.surfaces.length === 11
       && preset.surfaces.every((surface) => surface.isStop !== true)
       && preset.apertureStopSpec?.kind === "airGap"
@@ -28160,9 +28156,14 @@ const runOpticsSelfCheck = (options = {}) => {
       && lenses[5].patentFrontSharedCementedSurface === true
       && lenses[4].gapAfter === 0
       && Number.isFinite(audit.effectiveFocalLength)
+      && audit.effectiveFocalLength < 0
       && audit.status === "fail"
-      && Math.abs(fNumber - 1.8) <= 0.03
-      && eligibility.supported === true;
+      && loaded === false
+      && state.preset === "olympusGauss100F18Us4106854Ex1"
+      && state.prescription.prescriptionType === "referenceOnly"
+      && state.lenses.length === 0
+      && referenceMarkup.includes("Reference only")
+      && referenceMarkup.includes("negative EFL/BFL");
   }));
 
   test("US4534626 raw source and 2.5x scaled infinity surfaces are preserved", () => {

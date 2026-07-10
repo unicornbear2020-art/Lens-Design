@@ -3116,6 +3116,142 @@ select {
   background: #eef4ff;
 }
 
+.through-focus-spot-panel {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(215, 229, 238, 0.18);
+  border-radius: 12px;
+  background: rgba(248, 246, 242, 0.96);
+  color: #2c3336;
+}
+
+.through-focus-spot-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: start;
+  border: 1px solid #9aa4a8;
+  background: #f8f6f2;
+}
+
+.through-focus-spot-header > div:first-child {
+  padding: 8px 10px;
+  border-right: 1px solid #9aa4a8;
+}
+
+.through-focus-spot-header h4 {
+  margin: 0;
+  color: #2c3336;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1rem;
+  line-height: 1.1;
+}
+
+.through-focus-spot-header span {
+  display: block;
+  margin-top: 3px;
+  color: #626d72;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+}
+
+.through-focus-scale-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  color: #626d72;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.through-focus-scale-bar span {
+  display: inline-block;
+  width: 58px;
+  height: 10px;
+  border-top: 1.5px solid #626d72;
+  border-left: 1.5px solid #626d72;
+  border-right: 1.5px solid #626d72;
+}
+
+.through-focus-spot-grid {
+  display: grid;
+  grid-template-columns: minmax(64px, 0.45fr) repeat(var(--spot-focus-columns), minmax(64px, 1fr));
+  gap: 8px 10px;
+  align-items: center;
+  overflow-x: auto;
+  padding: 4px 0 2px;
+}
+
+.through-focus-corner-label,
+.through-focus-column-label,
+.through-focus-row-label {
+  color: #626d72;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.7rem;
+  font-weight: 850;
+}
+
+.through-focus-column-label {
+  text-align: center;
+}
+
+.through-focus-row-label {
+  display: grid;
+  gap: 2px;
+  justify-items: end;
+  padding-right: 4px;
+}
+
+.through-focus-row-label strong {
+  color: #626d72;
+}
+
+.through-focus-cell-wrap {
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+}
+
+.through-focus-spot-cell {
+  width: min(74px, 100%);
+  max-width: 78px;
+  aspect-ratio: 1;
+  background: #fbfdfd;
+}
+
+.through-focus-spot-frame {
+  fill: #fbfdfd;
+  stroke: #949da1;
+  stroke-width: 1.1;
+}
+
+.through-focus-spot-axis {
+  stroke: rgba(148, 157, 161, 0.28);
+  stroke-width: 0.65;
+}
+
+.through-focus-spot-point {
+  opacity: 0.68;
+}
+
+.through-focus-cell-meta {
+  color: #77858a;
+  font-size: 0.54rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.through-focus-note {
+  margin: 0;
+  color: #626d72;
+  font-size: 0.66rem;
+  line-height: 1.35;
+}
+
 .mtf-panel {
   display: grid;
   grid-column: span 6;
@@ -6720,6 +6856,33 @@ h1 {
   font-weight: 750;
 }
 
+.reference-only-status {
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 183, 3, 0.28);
+  border-radius: 10px;
+  background: rgba(255, 183, 3, 0.1);
+  color: rgba(248, 246, 242, 0.9) !important;
+  font-size: 0.86rem;
+}
+
+.reference-only-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.danger-action-button {
+  border-color: rgba(255, 183, 3, 0.54) !important;
+  background: rgba(255, 183, 3, 0.14) !important;
+  color: #ffcf58 !important;
+}
+
+.danger-action-button:hover,
+.danger-action-button:focus-visible {
+  background: rgba(255, 183, 3, 0.22) !important;
+}
+
 .reference-only-metadata-grid {
   display: grid;
   gap: 8px;
@@ -6756,6 +6919,27 @@ h1 {
   color: #d7e5ee;
   font-size: 0.76rem;
   font-weight: 750;
+}
+
+.reference-only-candidate-patents {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(215, 229, 238, 0.18);
+}
+
+.reference-only-candidate-patents h4 {
+  margin: 0 0 8px;
+  color: #f8f6f2;
+  font-size: 0.86rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.reference-only-candidate-patents p {
+  margin: 8px 2px 0;
+  color: rgba(248, 246, 242, 0.72);
+  font-size: 0.82rem;
+  line-height: 1.35;
 }
 
 .top-diagram .real-ray {

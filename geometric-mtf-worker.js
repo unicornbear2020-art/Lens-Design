@@ -1,10 +1,10 @@
 /* eslint-env worker */
 
-const GEOMETRIC_MTF_WORKER_VERSION = "20260708-nikon-noct-wo2019229849-1";
+const GEOMETRIC_MTF_WORKER_VERSION = "20260710-multifield-defocus-spot3d-rays-1";
 const GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION = "geometric-lsf-contract-20260630-1";
 
 try {
-  importScripts("geometric-mtf-core.js?v=20260708-nikon-noct-wo2019229849-1");
+  importScripts("geometric-mtf-core.js?v=20260710-multifield-defocus-spot3d-rays-1");
 } catch (error) {
   self.geometricMtfCoreLoadError = error;
 }
@@ -13,7 +13,7 @@ self.onmessage = (event) => {
   const payload = event.data || {};
   const { requestId, task } = payload;
 
-  if (!["geometric-lsf-convergence", "geometric-lsf-main-panel"].includes(task)) {
+  if (!["geometric-lsf-convergence", "geometric-lsf-main-panel", "geometric-lsf-through-focus"].includes(task)) {
     self.postMessage({
       requestId,
       status: "error",
@@ -27,7 +27,9 @@ self.onmessage = (event) => {
 
   const coreFunction = task === "geometric-lsf-main-panel"
     ? self.geometricMtfCore?.calculateGeometricLsfMainPanel
-    : self.geometricMtfCore?.calculateGeometricLsfConvergence;
+    : task === "geometric-lsf-through-focus"
+      ? self.geometricMtfCore?.calculateGeometricLsfThroughFocus
+      : self.geometricMtfCore?.calculateGeometricLsfConvergence;
 
   if (!coreFunction) {
     self.postMessage({

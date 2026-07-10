@@ -1,7 +1,7 @@
 /* eslint-env worker */
 
 (() => {
-  const GEOMETRIC_MTF_CORE_VERSION = "20260708-nikon-noct-wo2019229849-1";
+  const GEOMETRIC_MTF_CORE_VERSION = "20260710-multifield-defocus-spot3d-rays-1";
   const GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION = "geometric-lsf-contract-20260630-1";
   const QUALITY_PROFILES = {
     interactive: { baseGrid: 16, label: "Interactive" },
@@ -1342,6 +1342,158 @@
     });
   };
 
+  const throughFocusPeak = (samples, axis) => {
+    const valid = samples.filter((sample) => Number.isFinite(sample[axis]));
+    if (!valid.length) return { focusMm: NaN, mtf: NaN, atBoundary: false };
+    const peak = valid.reduce((best, sample) => sample[axis] > best[axis] ? sample : best, valid[0]);
+    const index = samples.indexOf(peak);
+    return {
+      focusMm: peak.focusChangeMm,
+      mtf: peak[axis],
+      atBoundary: index === 0 || index === samples.length - 1
+    };
+  };
+
+  const calculateGeometricLsfThroughFocus = (payload = {}) => {
+    const started = Date.now();
+    const normalized = normalizeMainPanelPayload(payload);
+    if (normalized.error) {
+      return {
+        status: normalized.error.status,
+        fields: [],
+        warnings: [normalized.error.reason],
+        surfaceSignature: normalized.surfaceSignature || "",
+        solverContractVersion: GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION,
+        coreVersion: GEOMETRIC_MTF_CORE_VERSION
+      };
+    }
+    const { surfaces, surfaceSignature: modelSignature, features } = normalized;
+    const setup = setupFromSurfaces(surfaces, payload);
+    const sensorWidthMm = Math.max(0.1, toNumber(payload.sensorDimensions?.width) || 36);
+    const sensorHeightMm = Math.max(0.1, toNumber(payload.sensorDimensions?.height) || 24);
+    const halfDiagonalMm = Math.hypot(sensorWidthMm, sensorHeightMm) / 2;
+    const focalLengthMm = Math.abs(toNumber(payload.effectiveFocalLengthMm));
+    const fractions = (payload.imageHeightFractions || [0, 0.28, 0.55, 0.83, 1])
+      .map((value) => clamp(toNumber(value) || 0, 0, 1));
+    const quality = mainPanelQuality(payload.quality);
+    const minimumSamples = { interactive: 41, high: 61, reference: 81 }[quality];
+    const sampleCount = Math.max(minimumSamples, Math.round(toNumber(payload.sampleCount) || minimumSamples));
+    const rangeMm = Math.max(0.0001, Math.abs(toNumber(payload.focusRangeMm) || 0.1));
+    const scanCentreMm = Number.isFinite(toNumber(payload.currentImagePlaneOffsetMm))
+      ? toNumber(payload.currentImagePlaneOffsetMm)
+      : setup.imagePlaneX;
+    const frequencyLpMm = Math.max(1, toNumber(payload.frequencyLpMm) || 20);
+    const focusChanges = Array.from({ length: sampleCount }, (_, index) => (
+      -rangeMm + (2 * rangeMm * index) / (sampleCount - 1)
+    ));
+    const warnings = new Set();
+    const fields = fractions.map((normalizedField, fieldIndex) => {
+      const imageHeightMm = halfDiagonalMm * normalizedField;
+      const fieldAngleDegrees = focalLengthMm > 0
+        ? Math.atan(imageHeightMm / focalLengthMm) * 180 / Math.PI
+        : NaN;
+      const traced = traceWeightedPupilForMainMtf(surfaces, { ...setup, imagePlaneX: scanCentreMm }, fieldAngleDegrees, quality);
+      const finalRays = traced.rays.filter((ray) => ray.status === "valid" && ray.finalRay);
+      const axes = rayTrace3DAxes(setup.orientation || "tangential");
+      const samples = focusChanges.map((focusChangeMm) => {
+        const imagePlaneX = scanCentreMm + focusChangeMm;
+        const hits = finalRays.map((ray) => ({
+          ray,
+          point: imagePlaneIntersection3D(ray.finalRay, imagePlaneX)
+        })).filter((item) => item.point);
+        const chief = hits.reduce((closest, item) => {
+          const distance = Math.hypot(item.ray.inputRay?.pupilU || 0, item.ray.inputRay?.pupilV || 0);
+          const closestDistance = closest
+            ? Math.hypot(closest.ray.inputRay?.pupilU || 0, closest.ray.inputRay?.pupilV || 0)
+            : Infinity;
+          return distance < closestDistance ? item : closest;
+        }, null);
+        if (!chief || hits.length < 4) {
+          return { focusChangeMm, imagePlaneX, sagittal: NaN, tangential: NaN, status: "too-few-rays", validRayCount: hits.length };
+        }
+        const weighted = hits.map((item) => {
+          const deviation = { y: item.point.y - chief.point.y, z: item.point.z - chief.point.z };
+          return {
+            sagittal: project(deviation, axes.sagittal),
+            tangential: project(deviation, axes.tangential),
+            weight: Number.isFinite(item.ray.weight) ? item.ray.weight : 1
+          };
+        });
+        const sagittalCurve = axisMtfResultFromWeightedLsf("sagittal", weighted.map((sample) => ({ coordinate: sample.sagittal, weight: sample.weight })), {
+          maxFrequencyLpMm: frequencyLpMm,
+          frequencyStepLpMm: 1
+        });
+        const tangentialCurve = axisMtfResultFromWeightedLsf("tangential", weighted.map((sample) => ({ coordinate: sample.tangential, weight: sample.weight })), {
+          maxFrequencyLpMm: frequencyLpMm,
+          frequencyStepLpMm: 1
+        });
+        const sagittal = mtfValueAtFrequency(sagittalCurve, frequencyLpMm);
+        const tangential = mtfValueAtFrequency(tangentialCurve, frequencyLpMm);
+        return {
+          focusChangeMm,
+          imagePlaneX,
+          sagittal,
+          tangential,
+          status: Number.isFinite(sagittal) && Number.isFinite(tangential) ? "valid" : "invalid",
+          validRayCount: hits.length
+        };
+      });
+      const sagittalPeak = throughFocusPeak(samples, "sagittal");
+      const tangentialPeak = throughFocusPeak(samples, "tangential");
+      const fieldWarnings = [];
+      if (sagittalPeak.atBoundary || tangentialPeak.atBoundary) {
+        fieldWarnings.push("Peak may be outside the selected focus range.");
+        warnings.add(`${imageHeightMm.toFixed(3)} mm: Peak may be outside the selected focus range.`);
+      }
+      if (traced.validEnergyRayCount < 12) {
+        fieldWarnings.push("Too few valid weighted pupil rays.");
+      }
+      return {
+        fieldKey: ["center", "field28", "mid", "field83", "corner"][fieldIndex] || `field-${fieldIndex}`,
+        imageHeightMm,
+        normalizedField,
+        fieldAngleDegrees,
+        samples,
+        sagittalPeak,
+        tangentialPeak,
+        stFocusSeparationMm: Number.isFinite(sagittalPeak.focusMm) && Number.isFinite(tangentialPeak.focusMm)
+          ? tangentialPeak.focusMm - sagittalPeak.focusMm
+          : NaN,
+        status: samples.some((sample) => sample.status === "valid") ? "valid" : "invalid",
+        validRayCount: traced.validRays.length,
+        validEnergyRayCount: traced.validEnergyRayCount,
+        totalRayCount: traced.totalRayCount,
+        clippedRayCount: traced.clippedRayCount,
+        failedRayCount: traced.totalRayCount - traced.validRays.length - traced.clippedRayCount,
+        warnings: fieldWarnings
+      };
+    });
+    return {
+      status: fields.some((field) => field.status === "valid") ? "valid" : "invalid",
+      task: "geometric-lsf-through-focus",
+      fields,
+      sensorDimensions: { width: sensorWidthMm, height: sensorHeightMm, halfDiagonalMm },
+      effectiveFocalLengthMm: focalLengthMm,
+      frequencyLpMm,
+      apertureDiameterMm: toNumber(payload.apertureDiameter),
+      wavelengthNm: toNumber(payload.wavelength?.wavelengthNm) || 587.6,
+      spectralLineKey: payload.wavelength?.spectralLineKey || "d",
+      scanCentreMm,
+      focusRangeMm: rangeMm,
+      sampleCount,
+      quality,
+      warnings: [...warnings],
+      source: "worker",
+      workerVersion: payload.workerVersion || "",
+      solverVersion: GEOMETRIC_MTF_CORE_VERSION,
+      coreVersion: GEOMETRIC_MTF_CORE_VERSION,
+      solverContractVersion: GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION,
+      surfaceFeatureFlags: features,
+      surfaceSignature: modelSignature,
+      elapsedMs: Date.now() - started
+    };
+  };
+
   const calculateGeometricLsfMainPanel = (payload = {}) => {
     const started = Date.now();
     const normalized = normalizeMainPanelPayload(payload);
@@ -1406,6 +1558,7 @@
     GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION,
     surfaceFeatureFlags,
     surfaceSignature,
+    calculateGeometricLsfThroughFocus,
     calculateGeometricLsfMainPanel,
     calculateGeometricLsfConvergence,
     QUALITY_PROFILES

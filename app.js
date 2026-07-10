@@ -10,7 +10,7 @@ const DIAGRAM_SIZE = {
   height: 480
 };
 
-const ANALYSIS_WORKER_VERSION = "20260708-nikon-noct-wo2019229849-1";
+const ANALYSIS_WORKER_VERSION = "20260710-multifield-defocus-spot3d-rays-1";
 const GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION = "geometric-lsf-contract-20260630-1";
 const DEFAULT_PRESET_KEY = "zeissBiotar50F14Us1786916Ex2";
 const OLD_MISLEADING_ZEISS_PRESET_KEYS = [
@@ -164,6 +164,15 @@ const RAY_TRACE_FIELDS = [
   { key: "mid", name: "Mid field", angle: 10 },
   { key: "corner", name: "Corner field", angle: 20 }
 ];
+
+const SENSOR_FIELD_FRACTIONS = [0, 0.28, 0.55, 0.83, 1];
+const SENSOR_FIELD_KEYS = ["center", "field28", "mid", "field83", "corner"];
+const SENSOR_FIELD_COLOURS = ["#2563eb", "#0891b2", "#16a34a", "#d97706", "#dc2626"];
+const RAY_INDEX_COLOURS = ["#d62828", "#228b22", "#2563eb", "#0891b2", "#c026d3", "#d97706", "#7c3aed"];
+const MTF_THROUGH_FOCUS_SAMPLE_COUNTS = { interactive: 41, high: 61, reference: 81 };
+const SPOT_PUPIL_GRID_COUNTS = { interactive: 13, high: 23, reference: 31 };
+const SPOT_FOCUS_SHIFTS_MM = [-0.1, -0.05, 0, 0.05, 0.1];
+const SPOT_SCALE_OPTIONS_MM = [0.01, 0.025, 0.05, 0.1, 0.25];
 
 const MTF_READOUT_FREQUENCIES = [10, 20, 40, 80];
 
@@ -341,6 +350,8 @@ const DEFAULT_ANALYSIS_SETTINGS = {
   diagramRayDisplayMode: "selected",
   diagramRayFieldKey: "center",
   diagramCustomFieldAngleDegrees: 20,
+  diagramRayColorMode: "field",
+  diagramRayWavelengthMode: "d",
   diagramTargetReferenceMode: "sonyEFullFrame",
   diagramMountReferenceMode: "sonyE",
   diagramManualMountDistanceMm: SONY_E_FLANGE_DISTANCE,
@@ -367,6 +378,15 @@ const DEFAULT_ANALYSIS_SETTINGS = {
   optimizerAllowStopShiftInAnchorGap: false,
   rayTraceRayCount: 9,
   spotDisplayMode: "rgb",
+  spotQuality: "interactive",
+  spotScaleMode: "auto",
+  spotShowAiryDisc: true,
+  spotShowRmsCircle: true,
+  spotShowMaxCircle: false,
+  spotShowCentroid: true,
+  spotShowPixelReference: false,
+  spotPixelPitchMicrons: 4,
+  spotLinkMtfFocus: true,
   rayFanFieldPreset: "center",
   rayFanCustomFieldAngleDegrees: 12,
   rayFanWavelengthMode: "d",
@@ -378,6 +398,9 @@ const DEFAULT_ANALYSIS_SETTINGS = {
   mtfChartMode: "field",
   mtfMaxFrequencyLpMm: "auto",
   mtfSensorFormatKey: "fullFrame",
+  mtfViewMode: "defocus",
+  mtfDefocusFrequencyLpMm: 20,
+  mtfSpatialFrequencyFieldKey: "center",
   mtfManufacturerFrequencies: [10, 30],
   mtfApertureSweepStops: ["wideOpen"],
   mtfApertureFieldChartKey: "wideOpen",
@@ -388,7 +411,7 @@ const DEFAULT_ANALYSIS_SETTINGS = {
   mtfThroughFocusApertureKey: "wideOpen",
   mtfThroughFocusWavelengthKey: "d",
   mtfThroughFocusCenterMode: "current",
-  mtfThroughFocusRangeMm: 2,
+  mtfThroughFocusRangeMm: 0.1,
   mtfBestFocusComparisonRequested: false,
   systemResultApertureKey: "wideOpen",
   imageMagnificationFocusKey: "auto",
@@ -908,6 +931,14 @@ const PRESETS = {
     dataStatus: "manufacturer-specification-only",
     prescriptionStatus: "unverified",
     sourceLabel: "Sony official product specifications",
+    linkedTraceablePresets: [
+      {
+        presetKey: "sonyZeissPlanar50F14Us20140071331Ex4",
+        label: "Use Sony Zeiss Planar 50mm f/1.4 ZA patent example",
+        relation: "Verified patent example only. Do not claim this is the exact SEL50F14Z production prescription.",
+        confidence: "patent-example-only"
+      }
+    ],
     referenceOnlyMessage: "Sony Planar T* FE 50mm F1.4 ZA (SEL50F14Z) is a manufacturer-specification reference only. A verified optical prescription is unavailable, so no simulated surfaces or ray-trace design will be loaded.",
     productMetadata: {
       mount: "Sony E",
@@ -932,13 +963,144 @@ const PRESETS = {
     },
     sourceNotes: "Sony official product specifications only. No fake surfaces, glass entries, curvatures, aspheres, stop position, or ray-trace result is created.",
     lenses: []
+  },
+  sony_fe_85mm_f14_gm_sel85f14gm: {
+    id: "sony_fe_85mm_f14_gm_sel85f14gm",
+    name: "Sony FE 85mm F1.4 GM (SEL85F14GM)",
+    note: "Reference only — verified optical prescription unavailable. This commercial product record contains manufacturer specifications and separated candidate-patent provenance only.",
+    sourceType: "reference-only",
+    prescriptionType: "referenceOnly",
+    brand: "Sony",
+    manufacturer: "Sony",
+    category: "Commercial Lens Reference",
+    designType: "Portrait",
+    presetGroup: "Commercial product references",
+    dataStatus: "manufacturer-specification-only",
+    prescriptionStatus: "unverified",
+    loadability: "metadata-only",
+    uiBadge: "Reference only — verified optical prescription unavailable",
+    sourceLabel: "Sony official product and engineering documentation",
+    referenceOnlyMessage: "A verified optical prescription for this production lens is not available. This entry contains product specifications only.",
+    productMetadata: {
+      mount: "Sony E",
+      sensorFormat: "35mm full frame",
+      focalLengthMm: 85,
+      maxFNumber: 1.4,
+      minFNumber: 16,
+      reportedOpticalConstruction: {
+        elements: 11,
+        groups: 8,
+        sourceType: "secondary optical-analysis report",
+        confidence: "medium"
+      },
+      verifiedOpticalFeatures: {
+        xaElements: 1,
+        edElements: 3,
+        apertureBlades: 11,
+        coating: "Nano AR Coating"
+      },
+      minimumFocusDistanceM: {
+        autofocus: 0.85,
+        manualFocus: 0.80
+      },
+      maximumMagnification: 0.12,
+      filterThreadMm: 77,
+      weightG: 820,
+      productRole: [
+        "portrait prime",
+        "short telephoto",
+        "large aperture",
+        "G Master"
+      ]
+    },
+    provenance: {
+      manufacturerSource: {
+        type: "official Sony product and engineering documentation",
+        confidence: "high",
+        verifiedClaims: [
+          "1 XA lens",
+          "3 ED elements",
+          "11-blade circular diaphragm",
+          "0.85 m AF minimum focus",
+          "0.12x maximum magnification",
+          "77 mm filter thread",
+          "820 g weight"
+        ]
+      },
+      secondaryAnalysisSource: {
+        title: "SONY FE 85mm F1.4 GM — Optical Design Value Analysis",
+        claims: [
+          "11 elements in 8 groups",
+          "candidate patent WO2017/130571",
+          "candidate Example 1"
+        ],
+        warning: "The source explicitly states that the patent selection and reconstructed design values are speculative and may not match the production lens."
+      },
+      candidatePatent: {
+        patentNumber: "WO2017/130571",
+        status: "unverified candidate only",
+        allowImport: false,
+        allowRayTracePreset: false,
+        note: "Do not treat this number or any example as confirmed production correspondence until the actual primary patent document and optical prescription table have been independently checked."
+      },
+      verificationWorkflow: {
+        label: "Verify candidate patent",
+        requirements: [
+          "primary patent PDF or official patent-office record",
+          "exact Example number",
+          "full surface table",
+          "refractive-index / Abbe data",
+          "asphere equation and coefficients",
+          "aperture-stop position",
+          "focus-state data",
+          "explicit source-confidence review before a traceable preset can be created"
+        ]
+      }
+    },
+    candidatePatents: [
+      {
+        patentNumber: "WO2017/130571",
+        status: "unverified candidate only",
+        allowImport: false,
+        allowRayTracePreset: false
+      }
+    ],
+    sourceNotes: "Commercial product references and patent prescriptions are separate record types. Candidate patents do not automatically become default optical prescriptions.",
+    lenses: []
   }
 };
 
-const isReferenceOnlyPreset = (preset = {}) => (
+const REFERENCE_ESTIMATED_STARTER_RULES = {
+  voigtlanderNoktonClassic40F14Reference: {
+    sourcePresetKey: "doubleGauss",
+    targetEfl: 40,
+    targetFNumber: 1.4,
+    label: "Estimated 40mm f/1.4 Double Gauss starter",
+    warning: "Estimated starter only. Not Voigtländer production prescription."
+  },
+  sony_planar_t_fe_50mm_f14_za_sel50f14z: {
+    sourcePresetKey: "sonyZeissPlanar50F14Us20140071331Ex4",
+    targetEfl: 50,
+    targetFNumber: 1.4,
+    label: "Patent-example starter from US20140071331 Example 4",
+    warning: "Patent example only. Not confirmed exact SEL50F14Z production prescription."
+  }
+};
+
+const isReferenceOnlyMetadataPreset = (preset = {}) => (
   preset.sourceType === "reference-only"
   || preset.prescriptionType === "referenceOnly"
-  || preset.loadDisabled === true
+);
+
+const isAuditBlockedSurfacePreset = (preset = {}) => (
+  preset.loadDisabled === true
+  && Array.isArray(preset.surfaces)
+  && preset.surfaces.length > 0
+);
+
+const isReferenceOnlyPreset = (preset = {}) => (
+  isReferenceOnlyMetadataPreset(preset)
+  || isAuditBlockedSurfacePreset(preset)
 );
 
 const normalizePatentSurfaceValue = (value) => {
@@ -3035,7 +3197,13 @@ const normalizePrescription = (prescription = {}) => {
       prescriptionStatus: prescription.prescriptionStatus || null,
       referenceOnlyMessage: prescription.referenceOnlyMessage || null,
       productMetadata: prescription.productMetadata || null,
-      opticalCounts: prescription.opticalCounts || null
+      opticalCounts: prescription.opticalCounts || null,
+      provenance: prescription.provenance || null,
+      candidatePatents: prescription.candidatePatents || null,
+      linkedTraceablePresets: prescription.linkedTraceablePresets || null,
+      loadability: prescription.loadability || null,
+      uiBadge: prescription.uiBadge || null,
+      category: prescription.category || null
     };
   }
 
@@ -3049,7 +3217,10 @@ const normalizePrescription = (prescription = {}) => {
       fieldAngleDeg: normalizePatentSurfaceValue(prescription.fieldAngleDeg),
       imageFormat: prescription.imageFormat ?? null,
       sourcePatent: prescription.sourcePatent ?? null,
+      sourceType: prescription.sourceType || null,
       sourceUrl: prescription.sourceUrl || null,
+      name: prescription.name || null,
+      note: prescription.note || "",
       example: prescription.example ?? null,
       brand: prescription.brand || null,
       designType: prescription.designType || null,
@@ -3156,9 +3327,9 @@ const normalizePrescription = (prescription = {}) => {
   };
 };
 
-const clonePresetPrescription = (presetKey) => {
+const clonePresetPrescription = (presetKey, options = {}) => {
   const preset = PRESETS[presetKey] || PRESETS[DEFAULT_PRESET_KEY];
-  if (isReferenceOnlyPreset(preset)) {
+  if (isReferenceOnlyMetadataPreset(preset) || (isAuditBlockedSurfacePreset(preset) && options.allowAuditBlockedSurfaces !== true)) {
     return normalizePrescription({
       prescriptionType: "referenceOnly",
       sourceType: preset.sourceType || "reference-only",
@@ -3176,13 +3347,20 @@ const clonePresetPrescription = (presetKey) => {
       prescriptionStatus: preset.prescriptionStatus || null,
       referenceOnlyMessage: preset.referenceOnlyMessage || null,
       productMetadata: preset.productMetadata || null,
-      opticalCounts: preset.opticalCounts || null
+      opticalCounts: preset.opticalCounts || null,
+      provenance: preset.provenance || null,
+      candidatePatents: preset.candidatePatents || null,
+      linkedTraceablePresets: preset.linkedTraceablePresets || null,
+      loadability: preset.loadability || null,
+      uiBadge: preset.uiBadge || null,
+      category: preset.category || null
     });
   }
 
   if (preset.prescriptionType === "surface") {
     return normalizePrescription({
       prescriptionType: "surface",
+      sourceType: preset.sourceType || null,
       focalLength: preset.focalLength,
       apertureRatio: preset.apertureRatio,
       backFocalLength: preset.backFocalLength,
@@ -3190,6 +3368,8 @@ const clonePresetPrescription = (presetKey) => {
       imageFormat: preset.imageFormat,
       sourcePatent: preset.sourcePatent,
       sourceUrl: preset.sourceUrl || null,
+      name: preset.name || null,
+      note: preset.note || "",
       example: preset.example,
       brand: preset.brand || null,
       designType: preset.designType || null,
@@ -3531,6 +3711,13 @@ const state = {
       status: "idle",
       result: null,
       error: ""
+    },
+    throughFocus: {
+      status: "idle",
+      result: null,
+      error: "",
+      requestToken: 0,
+      signature: ""
     }
   },
   physicalMtfPending: false,
@@ -3656,10 +3843,18 @@ const DIAGRAM_RAY_DISPLAY_OPTIONS = [
 
 const DIAGRAM_RAY_FIELD_OPTIONS = [
   { value: "center", label: "On-axis" },
-  { value: "mid", label: "0.7 field" },
+  { value: "field28", label: "0.28 field" },
+  { value: "mid", label: "0.55 field" },
+  { value: "field83", label: "0.83 field" },
   { value: "corner", label: "Full field" },
   { value: "custom", label: "Custom" }
 ];
+
+const normalizeDiagramRayColorMode = (mode) => (
+  ["field", "wavelength", "rayIndex", "monochrome"].includes(mode) ? mode : "field"
+);
+
+const normalizeDiagramRayWavelengthMode = (mode) => (mode === "rgb" ? "rgb" : "d");
 
 const DIAGRAM_MOUNT_REFERENCE_OPTIONS = [
   { value: "off", label: "Off" },
@@ -3706,6 +3901,8 @@ const resetDiagramAppearanceState = () => {
   state.diagramRayDisplayMode = DEFAULT_ANALYSIS_SETTINGS.diagramRayDisplayMode;
   state.diagramRayFieldKey = DEFAULT_ANALYSIS_SETTINGS.diagramRayFieldKey;
   state.diagramCustomFieldAngleDegrees = DEFAULT_ANALYSIS_SETTINGS.diagramCustomFieldAngleDegrees;
+  state.diagramRayColorMode = DEFAULT_ANALYSIS_SETTINGS.diagramRayColorMode;
+  state.diagramRayWavelengthMode = DEFAULT_ANALYSIS_SETTINGS.diagramRayWavelengthMode;
   state.diagramTargetReferenceMode = DEFAULT_ANALYSIS_SETTINGS.diagramTargetReferenceMode;
   state.diagramMountReferenceMode = DEFAULT_ANALYSIS_SETTINGS.diagramMountReferenceMode;
   state.diagramManualMountDistanceMm = DEFAULT_ANALYSIS_SETTINGS.diagramManualMountDistanceMm;
@@ -3790,7 +3987,9 @@ const BEST_FOCUS_MTF_CACHE_LIMIT = 24;
 const APERTURE_SWEEP_CACHE_LIMIT = 96;
 const DIFFRACTION_MTF_CACHE_LIMIT = 12;
 const geometricMtfConvergenceCache = new Map();
+const geometricMtfThroughFocusCache = new Map();
 const GEOMETRIC_MTF_CONVERGENCE_CACHE_LIMIT = 12;
+const GEOMETRIC_MTF_THROUGH_FOCUS_CACHE_LIMIT = 12;
 let opticalAnalysisUpdateTimer = null;
 let opticalAnalysisIdleHandle = null;
 let geometricMtfConvergenceIdleHandle = null;
@@ -3927,6 +4126,13 @@ const resetMtfAnalysisState = (status = "idle") => {
     result: null,
     error: ""
   };
+  state.mtfAnalysis.throughFocus = {
+    status,
+    result: state.mtfAnalysis.throughFocus?.result || null,
+    error: "",
+    requestToken: (state.mtfAnalysis.throughFocus?.requestToken || 0) + 1,
+    signature: ""
+  };
 };
 
 const invalidateAnalysisCache = () => {
@@ -3937,6 +4143,7 @@ const invalidateAnalysisCache = () => {
   apertureSweepResultCache.clear();
   diffractionMtfResultCache.clear();
   geometricMtfConvergenceCache.clear();
+  geometricMtfThroughFocusCache.clear();
   if (mtfMainFrameHandle !== null && typeof cancelAnimationFrame === "function") {
     cancelAnimationFrame(mtfMainFrameHandle);
     mtfMainFrameHandle = null;
@@ -4229,6 +4436,8 @@ const saveCurrentDesign = ({ preferExisting = false } = {}) => {
       diagramRayDisplayMode: state.diagramRayDisplayMode,
       diagramRayFieldKey: state.diagramRayFieldKey,
       diagramCustomFieldAngleDegrees: state.diagramCustomFieldAngleDegrees,
+      diagramRayColorMode: state.diagramRayColorMode,
+      diagramRayWavelengthMode: state.diagramRayWavelengthMode,
       diagramTargetReferenceMode: state.diagramTargetReferenceMode,
       diagramMountReferenceMode: state.diagramMountReferenceMode,
       diagramManualMountDistanceMm: state.diagramManualMountDistanceMm,
@@ -4240,6 +4449,21 @@ const saveCurrentDesign = ({ preferExisting = false } = {}) => {
       mtfLsfQuality: state.mtfLsfQuality,
       mtfPupilSampleCount: effectiveMtfPupilSampleCount(),
       mtfFieldFocusPolicy: state.mtfFieldFocusPolicy,
+      mtfViewMode: state.mtfViewMode,
+      mtfDefocusFrequencyLpMm: state.mtfDefocusFrequencyLpMm,
+      mtfThroughFocusRangeMm: state.mtfThroughFocusRangeMm,
+      mtfThroughFocusWavelengthKey: state.mtfThroughFocusWavelengthKey,
+      mtfSensorFormatKey: state.mtfSensorFormatKey,
+      mtfSpatialFrequencyFieldKey: state.mtfSpatialFrequencyFieldKey,
+      spotQuality: state.spotQuality,
+      spotScaleMode: state.spotScaleMode,
+      spotShowAiryDisc: state.spotShowAiryDisc,
+      spotShowRmsCircle: state.spotShowRmsCircle,
+      spotShowMaxCircle: state.spotShowMaxCircle,
+      spotShowCentroid: state.spotShowCentroid,
+      spotShowPixelReference: state.spotShowPixelReference,
+      spotPixelPitchMicrons: state.spotPixelPitchMicrons,
+      spotLinkMtfFocus: state.spotLinkMtfFocus,
       imageMagnificationFocusKey: state.imageMagnificationFocusKey,
       apertureStopMode: state.apertureStopMode,
       apertureStopIndex: state.apertureStopIndex,
@@ -4341,6 +4565,8 @@ const loadDesign = (design) => {
     state.diagramCustomFieldAngleDegrees = Number.isFinite(toNumber(design.analysisSettings.diagramCustomFieldAngleDegrees))
       ? toNumber(design.analysisSettings.diagramCustomFieldAngleDegrees)
       : DEFAULT_ANALYSIS_SETTINGS.diagramCustomFieldAngleDegrees;
+    state.diagramRayColorMode = normalizeDiagramRayColorMode(design.analysisSettings.diagramRayColorMode);
+    state.diagramRayWavelengthMode = normalizeDiagramRayWavelengthMode(design.analysisSettings.diagramRayWavelengthMode);
     state.diagramTargetReferenceMode = normalizeDiagramTargetReferenceMode(design.analysisSettings.diagramTargetReferenceMode);
     state.diagramMountReferenceMode = normalizeDiagramMountReferenceMode(design.analysisSettings.diagramMountReferenceMode);
     state.diagramManualMountDistanceMm = Number.isFinite(toNumber(design.analysisSettings.diagramManualMountDistanceMm))
@@ -4354,6 +4580,33 @@ const loadDesign = (design) => {
     state.mtfLsfQuality = normalizeGeometricLsfQuality(design.analysisSettings.mtfLsfQuality);
     state.mtfPupilSampleCount = effectiveMtfPupilSampleCount(design.analysisSettings.mtfPupilSampleCount);
     state.mtfFieldFocusPolicy = design.analysisSettings.mtfFieldFocusPolicy === "centerRefocus" ? "centerRefocus" : "fixed";
+    state.mtfViewMode = ["defocus", "field", "frequency"].includes(design.analysisSettings.mtfViewMode)
+      ? design.analysisSettings.mtfViewMode
+      : DEFAULT_ANALYSIS_SETTINGS.mtfViewMode;
+    state.mtfDefocusFrequencyLpMm = [10, 20, 30, 40, 50, 80].includes(toNumber(design.analysisSettings.mtfDefocusFrequencyLpMm))
+      ? toNumber(design.analysisSettings.mtfDefocusFrequencyLpMm)
+      : DEFAULT_ANALYSIS_SETTINGS.mtfDefocusFrequencyLpMm;
+    state.mtfThroughFocusRangeMm = design.analysisSettings.mtfThroughFocusRangeMm === "auto"
+      ? "auto"
+      : Math.abs(toNumber(design.analysisSettings.mtfThroughFocusRangeMm)) || DEFAULT_ANALYSIS_SETTINGS.mtfThroughFocusRangeMm;
+    state.mtfThroughFocusWavelengthKey = SPECTRAL_LINES[design.analysisSettings.mtfThroughFocusWavelengthKey]
+      ? design.analysisSettings.mtfThroughFocusWavelengthKey
+      : "d";
+    state.mtfSensorFormatKey = SENSOR_FORMATS.some((format) => format.key === design.analysisSettings.mtfSensorFormatKey)
+      ? design.analysisSettings.mtfSensorFormatKey
+      : DEFAULT_ANALYSIS_SETTINGS.mtfSensorFormatKey;
+    state.mtfSpatialFrequencyFieldKey = SENSOR_FIELD_KEYS.includes(design.analysisSettings.mtfSpatialFrequencyFieldKey)
+      ? design.analysisSettings.mtfSpatialFrequencyFieldKey
+      : "center";
+    state.spotQuality = ["interactive", "high", "reference"].includes(design.analysisSettings.spotQuality) ? design.analysisSettings.spotQuality : "interactive";
+    state.spotScaleMode = design.analysisSettings.spotScaleMode === "auto" ? "auto" : String(design.analysisSettings.spotScaleMode || "auto");
+    state.spotShowAiryDisc = design.analysisSettings.spotShowAiryDisc !== false;
+    state.spotShowRmsCircle = design.analysisSettings.spotShowRmsCircle !== false;
+    state.spotShowMaxCircle = design.analysisSettings.spotShowMaxCircle === true;
+    state.spotShowCentroid = design.analysisSettings.spotShowCentroid !== false;
+    state.spotShowPixelReference = design.analysisSettings.spotShowPixelReference === true;
+    state.spotPixelPitchMicrons = Math.max(0.1, toNumber(design.analysisSettings.spotPixelPitchMicrons) || 4);
+    state.spotLinkMtfFocus = design.analysisSettings.spotLinkMtfFocus !== false;
     state.imageMagnificationFocusKey = normalizeImageMagnificationFocusKey(design.analysisSettings.imageMagnificationFocusKey);
     state.apertureStopMode = design.analysisSettings.apertureStopMode || state.apertureStopMode || DEFAULT_ANALYSIS_SETTINGS.apertureStopMode;
     state.apertureStopIndex = design.analysisSettings.apertureStopIndex || state.apertureStopIndex || DEFAULT_ANALYSIS_SETTINGS.apertureStopIndex;
@@ -4438,6 +4691,8 @@ const serializeProjectJson = () => ({
     diagramLensFill: state.diagramLensFill,
     diagramRayDisplayMode: state.diagramRayDisplayMode,
     diagramRayFieldKey: state.diagramRayFieldKey,
+    diagramRayColorMode: state.diagramRayColorMode,
+    diagramRayWavelengthMode: state.diagramRayWavelengthMode,
     diagramGeometryDisplayMode: state.diagramGeometryDisplayMode,
     diagramTargetReferenceMode: state.diagramTargetReferenceMode,
     diagramMountReferenceMode: state.diagramMountReferenceMode,
@@ -4452,7 +4707,21 @@ const serializeProjectJson = () => ({
     rayTraceRayCount: state.rayTraceRayCount,
     imageMagnificationFocusKey: state.imageMagnificationFocusKey,
     mtfEngine: state.mtfEngine,
-    mtfLsfQuality: state.mtfLsfQuality
+    mtfLsfQuality: state.mtfLsfQuality,
+    mtfViewMode: state.mtfViewMode,
+    mtfDefocusFrequencyLpMm: state.mtfDefocusFrequencyLpMm,
+    mtfThroughFocusRangeMm: state.mtfThroughFocusRangeMm,
+    mtfSensorFormatKey: state.mtfSensorFormatKey,
+    mtfSpatialFrequencyFieldKey: state.mtfSpatialFrequencyFieldKey,
+    spotQuality: state.spotQuality,
+    spotScaleMode: state.spotScaleMode,
+    spotShowAiryDisc: state.spotShowAiryDisc,
+    spotShowRmsCircle: state.spotShowRmsCircle,
+    spotShowMaxCircle: state.spotShowMaxCircle,
+    spotShowCentroid: state.spotShowCentroid,
+    spotShowPixelReference: state.spotShowPixelReference,
+    spotPixelPitchMicrons: state.spotPixelPitchMicrons,
+    spotLinkMtfFocus: state.spotLinkMtfFocus
   },
   analysisResults: serializeCurrentAnalysisResults(),
   svgReferenceMetadata: getProductionSvgReferenceForPreset(PRESETS[state.preset]) || null
@@ -8274,7 +8543,7 @@ const traceSystemRealRays = (lenses, system, options = {}) => {
       return { enabled: true, spectralLineKey, wavelengthNm, referenceImagePlaneX: referenceImagePlaneXValue, surfaces, rays: [], validRayCount: 0, totalRayCount: 0, missedRayCount: 0, rmsSpotRadius: NaN, warning: "No valid optical surfaces to trace." };
     }
 
-    const rays = rayBundle.map((ray) => {
+    const rays = rayBundle.map((ray, pupilRayIndex) => {
       const traced = traceRay(ray, surfaces);
       const referenceImagePoint = traced.status === "valid"
         ? imagePlaneIntersection(traced.finalRay, referenceImagePlaneXValue)
@@ -8286,7 +8555,8 @@ const traceSystemRealRays = (lenses, system, options = {}) => {
         status,
         inputRay: ray,
         referenceImagePoint,
-        sensorPoint: referenceImagePoint
+        sensorPoint: referenceImagePoint,
+        pupilRayIndex
       };
     });
     const sensorHits = rays.filter((ray) => ray.status === "valid" && ray.sensorPoint);
@@ -8966,7 +9236,7 @@ const fieldDirection3D = (fieldAngleDegrees = 0, orientation = "tangential") => 
 };
 
 const pupilSamples3D = (sampling = "grid", sampleCount = 7, apertureRadius = 10, orientation = "tangential") => {
-  const count = Math.round(clamp(toNumber(sampleCount) || 7, 3, sampling === "grid" ? 15 : 31));
+  const count = Math.round(clamp(toNumber(sampleCount) || 7, 3, 31));
   const radius = Math.max(0.1, toNumber(apertureRadius) || 10);
 
   if (sampling === "line") {
@@ -9023,7 +9293,7 @@ const generateRayBundle3D = (options = {}) => {
   const startX = toNumber(options.startX) || referenceX + 25;
   const tToReference = Math.abs(direction.x) > 0.000001 ? (referenceX - startX) / direction.x : 0;
 
-  return pupilSamples3D(sampling, options.sampleCount, apertureRadius, orientation).map((sample) => ({
+  return pupilSamples3D(sampling, options.sampleCount, apertureRadius, orientation).map((sample, pupilRayIndex) => ({
     x: startX,
     y: sample.y - direction.y * tToReference,
     z: sample.z - direction.z * tToReference,
@@ -9033,7 +9303,8 @@ const generateRayBundle3D = (options = {}) => {
     apertureY: sample.y,
     apertureZ: sample.z,
     pupilU: sample.pupilU,
-    pupilV: sample.pupilV
+    pupilV: sample.pupilV,
+    pupilRayIndex
   }));
 };
 
@@ -9153,7 +9424,7 @@ const traceSystem3D = (lenses, system, options = {}) => {
       };
     }
 
-    const rays = rayBundle.map((ray) => {
+    const rays = rayBundle.map((ray, pupilRayIndex) => {
       const traced = traceRay3D(ray, surfaces);
       const imagePoint = traced.status === "valid" ? imagePlaneIntersection3D(traced.finalRay, options.imagePlaneX ?? 0) : null;
       const status = traced.status === "valid" && !imagePoint ? "invalid" : traced.status;
@@ -9162,12 +9433,26 @@ const traceSystem3D = (lenses, system, options = {}) => {
         ...traced,
         status,
         inputRay: ray,
-        imagePoint
+        imagePoint,
+        pupilRayIndex
       };
     });
     const imageHits = rays.filter((ray) => ray.status === "valid" && ray.imagePoint).map((ray) => ray.imagePoint);
     const clippedRayCount = rays.filter((ray) => ray.status === "missed aperture").length;
     const stats = spotStats3D(imageHits, fieldOrientation);
+    const validRays = rays.filter((ray) => ray.status === "valid" && ray.imagePoint);
+    const chiefRay = validRays.reduce((closest, ray) => (
+      !closest || Math.hypot(ray.inputRay.pupilU, ray.inputRay.pupilV) < Math.hypot(closest.inputRay.pupilU, closest.inputRay.pupilV)
+        ? ray
+        : closest
+    ), null);
+    const marginalRay = validRays.reduce((widest, ray) => (
+      !widest || Math.hypot(ray.inputRay.pupilU, ray.inputRay.pupilV) > Math.hypot(widest.inputRay.pupilU, widest.inputRay.pupilV)
+        ? ray
+        : widest
+    ), null);
+    if (chiefRay) chiefRay.role = "chief";
+    if (marginalRay) marginalRay.role = marginalRay.role ? `${marginalRay.role} marginal` : "marginal";
 
     return {
       enabled: true,
@@ -10171,7 +10456,7 @@ const visibleRayTraceResults = (dLineResults, spectralResults) => (
   state.spotDisplayMode === "rgb" ? spectralResults : dLineResults
 );
 
-const diagramRayFieldDefinition = (fieldKey) => {
+const diagramRayFieldDefinition = (fieldKey, system = calculateSystem(state.lenses)) => {
   const normalized = normalizeDiagramRayFieldKey(fieldKey);
   if (normalized === "custom") {
     const angle = Number.isFinite(toNumber(state.diagramCustomFieldAngleDegrees))
@@ -10183,38 +10468,45 @@ const diagramRayFieldDefinition = (fieldKey) => {
       angle
     };
   }
-  const field = RAY_TRACE_FIELDS.find((item) => item.key === normalized)
-    || RAY_TRACE_FIELDS.find((item) => item.key === "center")
-    || RAY_TRACE_FIELDS[0];
+  const field = fieldDefinitionsForSensor(
+    state.mtfSensorFormatKey,
+    Math.abs(toNumber(system?.effectiveFocalLength)) || 50
+  ).find((item) => item.key === normalized) || fieldDefinitionsForSensor(state.mtfSensorFormatKey, 50)[0];
   return {
     key: field.key,
     name: field.name,
-    angle: field.angle
+    angle: field.angle,
+    normalizedField: field.normalizedField,
+    imageHeightMm: field.imageHeightMm,
+    colour: field.colour
   };
 };
 
-const diagramRayFields = () => {
+const diagramRayFields = (system = calculateSystem(state.lenses)) => {
   const mode = normalizeDiagramRayDisplayMode(state.diagramRayDisplayMode);
   if (mode === "all") {
-    return RAY_TRACE_FIELDS.map((field) => ({
+    return fieldDefinitionsForSensor(state.mtfSensorFormatKey, Math.abs(toNumber(system?.effectiveFocalLength)) || 50).map((field) => ({
       key: field.key,
       name: field.name,
       angle: field.angle,
+      normalizedField: field.normalizedField,
+      imageHeightMm: field.imageHeightMm,
+      colour: field.colour,
       secondaryRayBundle: false
     }));
   }
   if (mode === "centerEdge") {
-    const center = diagramRayFieldDefinition("center");
-    const edge = diagramRayFieldDefinition("corner");
+    const center = diagramRayFieldDefinition("center", system);
+    const edge = diagramRayFieldDefinition("corner", system);
     return [
       { ...center, secondaryRayBundle: false },
       { ...edge, secondaryRayBundle: true }
     ];
   }
-  return [{ ...diagramRayFieldDefinition(state.diagramRayFieldKey), secondaryRayBundle: false }];
+  return [{ ...diagramRayFieldDefinition(state.diagramRayFieldKey, system), secondaryRayBundle: false }];
 };
 
-const traceDiagramFieldSet = (lenses, system, options = {}) => diagramRayFields().map((field) => ({
+const traceDiagramFieldSet = (lenses, system, options = {}) => diagramRayFields(system).map((field) => ({
   ...traceSystemRealRays(lenses, system, {
     ...rayTraceApertureOptions(options),
     fieldAngleDegrees: field.angle,
@@ -10227,6 +10519,9 @@ const traceDiagramFieldSet = (lenses, system, options = {}) => diagramRayFields(
   fieldKey: field.key,
   fieldName: field.name,
   fieldAngleDegrees: field.angle,
+  normalizedField: field.normalizedField,
+  imageHeightMm: field.imageHeightMm,
+  fieldColour: field.colour,
   secondaryRayBundle: field.secondaryRayBundle === true,
   diagnosticRayOverlay: normalizeDiagramRayDisplayMode(state.diagramRayDisplayMode) === "all"
 }));
@@ -10239,7 +10534,7 @@ const traceDiagramSpectralFieldSet = (lenses, geometrySystem, options = {}) => O
   }));
 
 const visibleDiagramRayTraceResults = (dLineResults, spectralResults) => (
-  normalizeDiagramRayDisplayMode(state.diagramRayDisplayMode) === "all" && state.spotDisplayMode === "rgb"
+  normalizeDiagramRayWavelengthMode(state.diagramRayWavelengthMode) === "rgb"
     ? spectralResults
     : dLineResults
 );
@@ -10263,12 +10558,24 @@ const fieldAngleForSensor = (sensorInput, focalLength, axis = "diagonal") => {
 
 const fieldDefinitionsForSensor = (sensorKey, focalLength) => {
   const sensor = resolveSensorFormat(sensorKey);
-  const cornerAngle = fieldAngleForSensor(sensor, focalLength, "diagonal");
-  return [
-    { key: "center", name: "Centre field", angle: 0 },
-    { key: "mid", name: `${sensor.name} mid field`, angle: cornerAngle * 0.5 },
-    { key: "corner", name: `${sensor.name} corner`, angle: cornerAngle }
-  ];
+  const halfDiagonal = sensor.diagonal / 2;
+  const focal = Math.max(0.000001, Math.abs(toNumber(focalLength)) || 50);
+  return SENSOR_FIELD_FRACTIONS.map((normalizedField, index) => {
+    const imageHeightMm = halfDiagonal * normalizedField;
+    return {
+      key: SENSOR_FIELD_KEYS[index],
+      name: normalizedField === 0
+        ? "Centre field"
+        : normalizedField === 1
+          ? `${sensor.name} full field`
+          : `${normalizedField.toFixed(2)} field`,
+      angle: Math.atan(imageHeightMm / focal) * 180 / Math.PI,
+      normalizedField,
+      imageHeightMm,
+      colour: SENSOR_FIELD_COLOURS[index],
+      colourIndex: index
+    };
+  });
 };
 
 const optimizerFieldDefinitions = (system, options = {}) => (
@@ -11512,6 +11819,140 @@ const createRetargetedLensCandidate = (lenses, sourceSystem, options = {}) => {
       provenance: "scaled-and-optimized-derived-design"
     }
   };
+};
+
+const createEmptyManualTemplateFromReference = (sourcePresetKey = state.preset) => {
+  const sourcePreset = PRESETS[sourcePresetKey] || {};
+  rememberState();
+  state.preset = "custom";
+  state.prescription = normalizePrescription({
+    prescriptionType: "element",
+    sourceType: "custom",
+    provenance: {
+      sourceReferencePreset: sourcePreset.id || sourcePresetKey,
+      sourceReferenceName: sourcePreset.name || "Reference-only record",
+      note: "Empty manual template created from a commercial/reference-only record. No optical prescription values were inferred."
+    },
+    lenses: []
+  });
+  state.lenses = [];
+  state.visualLayout = null;
+  state.designName = `${sourcePreset.name || "Reference"} — manual template`;
+  state.lensEditStatus = "Empty manual template created. Add surfaces manually; no commercial-reference optical data was inferred.";
+  resetGeneratedAnalysisState();
+  return true;
+};
+
+const loadLinkedTraceablePresetFromReference = (targetPresetKey, sourcePresetKey = state.preset) => {
+  const sourcePreset = PRESETS[sourcePresetKey] || {};
+  const targetPreset = PRESETS[targetPresetKey];
+  if (!targetPreset || isReferenceOnlyPreset(targetPreset)) {
+    state.lensEditStatus = "Linked traceable preset is unavailable or is not ray-traceable.";
+    return false;
+  }
+  rememberState();
+  const loaded = loadPresetIntoState(targetPresetKey);
+  if (!loaded) {
+    state.lensEditStatus = "Linked traceable preset could not be loaded.";
+    return false;
+  }
+  state.lensEditStatus = [
+    `${targetPreset.name} loaded as a traceable patent example.`,
+    `Source reference: ${sourcePreset.name || "Reference-only record"}.`,
+    "This is not claimed as the exact commercial production optical prescription."
+  ].join(" ");
+  return true;
+};
+
+const createEstimatedStarterFromReference = (sourcePresetKey = state.preset) => {
+  const sourceReference = PRESETS[sourcePresetKey] || {};
+  const rule = REFERENCE_ESTIMATED_STARTER_RULES[sourcePresetKey];
+  const sourcePreset = rule ? PRESETS[rule.sourcePresetKey] : null;
+  if (!rule || !sourcePreset || isReferenceOnlyPreset(sourcePreset)) {
+    state.lensEditStatus = "No estimated starter rule is available for this reference-only record.";
+    return false;
+  }
+  rememberState();
+  const loaded = loadPresetIntoState(rule.sourcePresetKey);
+  if (!loaded || !state.lenses.length) {
+    state.lensEditStatus = "Estimated starter source could not be loaded.";
+    return false;
+  }
+  const sourceSystem = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
+  const target = createRetargetedLensCandidate(state.lenses, sourceSystem, {
+    targetEfl: rule.targetEfl,
+    targetFNumber: rule.targetFNumber,
+    preserveGroupCount: true,
+    preserveGlass: true,
+    scaleApertures: true,
+    sensorFormatKey: "fullFrame",
+    sourceDesignName: rule.label,
+    sourcePrescription: state.prescription,
+    apertureSettings: state
+  });
+  state.preset = "custom";
+  state.prescription = normalizePrescription({
+    prescriptionType: "element",
+    sourceType: "estimated-reference-starter",
+    provenance: {
+      sourceReferencePreset: sourcePresetKey,
+      sourceReferenceName: sourceReference.name || "Reference-only record",
+      sourcePresetKey: rule.sourcePresetKey,
+      sourcePresetName: sourcePreset.name || rule.sourcePresetKey,
+      warning: rule.warning
+    },
+    apertureStopSpec: target.apertureStopSpec,
+    derivedApertureStopSpec: target.derivedApertureStopSpec,
+    lenses: target.lenses
+  });
+  state.lenses = prescriptionToLenses(state.prescription);
+  state.visualLayout = null;
+  state.designName = rule.label;
+  state.lensEditStatus = `${rule.label}. ${rule.warning}`;
+  if (target.apertureStopSpec) {
+    state.derivedApertureStopSpec = target.apertureStopSpec;
+    state.apertureStopMode = "derivedTopology";
+  }
+  if (Number.isFinite(toNumber(target.apertureDiameter)) && target.apertureDiameter > 0) {
+    state.apertureDiameter = Number(target.apertureDiameter.toFixed(4));
+  }
+  resetGeneratedAnalysisState();
+  return true;
+};
+
+const loadAuditBlockedSurfaceCopy = (presetKey = state.preset) => {
+  const preset = PRESETS[presetKey];
+  if (!isAuditBlockedSurfacePreset(preset)) {
+    state.lensEditStatus = "This record does not contain audit-blocked surface data.";
+    return false;
+  }
+  rememberState();
+  const prescription = clonePresetPrescription(presetKey, { allowAuditBlockedSurfaces: true });
+  state.preset = "custom";
+  state.prescription = normalizePrescription({
+    ...prescription,
+    sourceType: "audit-blocked-debug-copy",
+    prescriptionStatus: "audit-debug-only",
+    note: [
+      prescription.note || preset.note || "",
+      "DEBUG COPY ONLY. This design was loaded from an audit-blocked preset and may produce invalid negative EFL/BFL until the primary source table/sign convention is corrected."
+    ].filter(Boolean).join(" ")
+  });
+  state.lenses = prescriptionToLenses(state.prescription);
+  state.visualLayout = null;
+  state.designName = `${preset.name} — audit debug copy`;
+  state.lensEditStatus = "Audit debug copy loaded. Results may be invalid because the source preset is still blocked by negative EFL/BFL audit.";
+  resetGeneratedAnalysisState();
+  return true;
+};
+
+const setVerifyCandidatePatentWorkflowStatus = () => {
+  state.lensEditStatus = [
+    "Candidate patent cannot be imported automatically.",
+    "To make a usable traceable design, add a primary patent PDF or official patent-office record, exact Example number, full surface table, nd/Vd data, asphere equation and coefficients, aperture-stop position, focus-state data, and a source-confidence review.",
+    "Create it as a separate experimental candidate preset until verified."
+  ].join(" ");
+  return true;
 };
 
 const validateOptimizerCandidate = (candidate, system, options = {}) => {
@@ -15435,6 +15876,38 @@ const renderRayPathsSvg = (system, spectralSystems, mapper) => {
   }).join("");
 };
 
+const diagramRayColour = (result, ray) => {
+  const mode = normalizeDiagramRayColorMode(state.diagramRayColorMode);
+  if (mode === "wavelength") {
+    return { C: "#d62828", d: "#1b9e4b", F: "#2563eb" }[result.spectralLineKey] || "#1b9e4b";
+  }
+  if (mode === "rayIndex") {
+    return RAY_INDEX_COLOURS[Math.abs(Math.round(toNumber(ray.pupilRayIndex) || 0)) % RAY_INDEX_COLOURS.length];
+  }
+  if (mode === "monochrome") return "#334155";
+  if (result.fieldColour) return result.fieldColour;
+  const index = SENSOR_FIELD_KEYS.indexOf(result.fieldKey);
+  return SENSOR_FIELD_COLOURS[index >= 0 ? index : 0];
+};
+
+const renderRayColourLegend = () => {
+  const mode = normalizeDiagramRayColorMode(state.diagramRayColorMode);
+  const items = mode === "wavelength"
+    ? Object.entries(SPECTRAL_LINES).map(([key, line]) => ({ colour: { C: "#d62828", d: "#1b9e4b", F: "#2563eb" }[key], label: `${key} ${line.wavelengthNm} nm` }))
+    : mode === "rayIndex"
+      ? RAY_INDEX_COLOURS.map((colour, index) => ({ colour, label: `Pupil ${index + 1}` }))
+      : mode === "monochrome"
+        ? [{ colour: "#334155", label: "Monochrome rays" }]
+        : SENSOR_FIELD_FRACTIONS.map((fraction, index) => ({ colour: SENSOR_FIELD_COLOURS[index], label: `${fraction.toFixed(2)} field` }));
+  return `
+    <div class="ray-colour-legend" aria-label="Optical ray colour legend">
+      <strong>Colour = ${mode === "rayIndex" ? "pupil-ray index" : mode}</strong>
+      ${items.map((item) => `<span><i style="--ray-colour: ${item.colour}"></i>${escapeHtml(item.label)}</span>`).join("")}
+      <span>Chief = thick · marginal = medium · failed = dashed</span>
+    </div>
+  `;
+};
+
 const renderRealRayPathsSvg = (rayTraceResults, mapper, options = {}) => {
   const results = Array.isArray(rayTraceResults) ? rayTraceResults : [rayTraceResults].filter(Boolean);
   const diagramViewMode = normalizeDiagramViewMode(options.diagramViewMode);
@@ -15471,13 +15944,14 @@ const renderRealRayPathsSvg = (rayTraceResults, mapper, options = {}) => {
       const spectralLine = SPECTRAL_LINES[result.spectralLineKey] || result.spectralLine;
       const colorClass = spectralLine?.color ? ` real-ray-${spectralLine.color}` : "";
       const failedClass = isValid ? "" : " real-ray-failed";
+      const rayColour = diagramRayColour(result, ray);
       const statusTitle = isValid ? "" : `<title>${escapeHtml(`Ray stopped: ${ray.status || "invalid"}`)}</title>`;
       const lastPoint = pathPoints[pathPoints.length - 1];
       const marker = !isValid && isDebugDiagramViewMode(diagramViewMode)
         ? `<circle class="real-ray-failure-marker" cx="${mapper.x(lastPoint.x)}" cy="${mapper.y(lastPoint.y)}" r="2.4"><title>${escapeHtml(ray.status || "ray failed")}</title></circle>`
         : "";
 
-      return `<polyline class="real-ray${fieldClass}${colorClass}${roleClass}${displayClass}${failedClass}" points="${points}">${statusTitle}</polyline>${marker}`;
+      return `<polyline class="real-ray${fieldClass}${colorClass}${roleClass}${displayClass}${failedClass}" style="--ray-colour: ${rayColour}" points="${points}">${statusTitle}</polyline>${marker}`;
     })
     .join("");
 };
@@ -15802,6 +16276,22 @@ const renderOpticalDiagram = (system, spectralSystems, rayTraceResult, diagramAp
                     ` : ""}
                   ` : `<span class="diagram-mode-badge">Diagnostic ray overlay</span>`}
                   <label class="diagram-view-mode-control compact-diagram-control">
+                    <span>Ray colour</span>
+                    <select data-action="update-diagram-ray-colour" aria-label="Optical ray colour mode">
+                      <option value="field" ${normalizeDiagramRayColorMode(state.diagramRayColorMode) === "field" ? "selected" : ""}>Field</option>
+                      <option value="wavelength" ${normalizeDiagramRayColorMode(state.diagramRayColorMode) === "wavelength" ? "selected" : ""}>Wavelength</option>
+                      <option value="rayIndex" ${normalizeDiagramRayColorMode(state.diagramRayColorMode) === "rayIndex" ? "selected" : ""}>Ray index</option>
+                      <option value="monochrome" ${normalizeDiagramRayColorMode(state.diagramRayColorMode) === "monochrome" ? "selected" : ""}>Monochrome</option>
+                    </select>
+                  </label>
+                  <label class="diagram-view-mode-control compact-diagram-control">
+                    <span>Wavelength</span>
+                    <select data-action="update-diagram-ray-wavelength" aria-label="Optical diagram ray wavelength">
+                      <option value="d" ${normalizeDiagramRayWavelengthMode(state.diagramRayWavelengthMode) === "d" ? "selected" : ""}>d-line only</option>
+                      <option value="rgb" ${normalizeDiagramRayWavelengthMode(state.diagramRayWavelengthMode) === "rgb" ? "selected" : ""}>RGB C/d/F</option>
+                    </select>
+                  </label>
+                  <label class="diagram-view-mode-control compact-diagram-control">
                     <span>Mount reference</span>
                     <select data-action="update-diagram-mount-reference-mode" aria-label="Mount reference overlay">
                       ${DIAGRAM_MOUNT_REFERENCE_OPTIONS.map((option) => `
@@ -15930,6 +16420,7 @@ const renderOpticalDiagram = (system, spectralSystems, rayTraceResult, diagramAp
         </g>
         <g class="layer-warnings">${renderLensStackSvg(system, mapper, rayTraceResult, layoutResolution, annotationLanes, "warnings")}</g>
       </svg>
+      ${isOpticalRayView && state.showRealRays ? renderRayColourLegend() : ""}
       ${diagramPrescription?.prescriptionType === "visualOnly" ? `<p class="diagram-note visual-reference-note">Visual reference only / no full optical prescription. Production layout is not used for ray tracing accuracy.</p>` : ""}
       ${diagramAperturePreview?.active ? `<p class="diagram-note aperture-preview-note">${escapeHtml(diagramAperturePreview.label)}</p>` : ""}
       ${focusComparisonResult ? `<p class="diagram-note focus-comparison-note focus-${focusComparisonSeverity}">${escapeHtml(formatFocusShiftDescription(focusComparisonResult.focusShiftMm))}${Number.isFinite(focusComparisonResult.rmsSpotAtReferenceMm) && Number.isFinite(focusComparisonResult.rmsSpotAtBestFocusMm) ? ` · RMS ${escapeHtml(formatNumber(focusComparisonResult.rmsSpotAtReferenceMm, 4))} → ${escapeHtml(formatNumber(focusComparisonResult.rmsSpotAtBestFocusMm, 4))} mm` : ""}</p>` : ""}
@@ -16034,7 +16525,7 @@ const presetMetaBadges = (preset) => {
   } else if (preset.sourceType === "visualReference") {
     badges.push("Visual reference", "Production layout only");
   } else if (preset.sourceType === "reference-only" || preset.prescriptionType === "referenceOnly") {
-    badges.push("Reference only", "Verified optical prescription unavailable");
+    badges.push("Reference only", preset.uiBadge || "Verified optical prescription unavailable");
   } else if (preset.sourceType === "educational") {
     badges.push("Educational", "Approximate layout");
   }
@@ -16042,6 +16533,10 @@ const presetMetaBadges = (preset) => {
 };
 
 const presetHasDrawablePrescription = (preset) => (
+  preset?.loadDisabled === true
+  || preset?.sourceType === "reference-only"
+  || preset?.prescriptionType === "referenceOnly"
+  ||
   preset?.prescriptionType === "visualOnly"
   || preset?.sourceType === "visualReference"
   ||
@@ -16054,13 +16549,17 @@ const presetHasDrawablePrescription = (preset) => (
 
 const presetMenuLabel = (preset) => {
   const name = preset?.name || "Preset";
-  return name
-    .replace(/\s+—\s+US[A-Z0-9-]+.*$/i, "")
-    .replace(/\s+—\s+DE[A-Z0-9-]+.*$/i, "")
-    .replace(/\s+—\s+FR[A-Z0-9-]+.*$/i, "")
-    .replace(/\s+—\s+WO[A-Z0-9-]+.*$/i, "")
-    .replace(/\s+Example\s+\d+$/i, "")
-    .trim();
+  if (preset?.sourceType === "reference-only" || preset?.prescriptionType === "referenceOnly") {
+    return name;
+  }
+  const suffix = [
+    preset?.sourcePatent || "",
+    preset?.example || preset?.sourceExample || "",
+    preset?.loadDisabled ? "audit blocked" : ""
+  ].filter(Boolean).join(" · ");
+  return suffix && !name.includes(preset?.sourcePatent || "**none**")
+    ? `${name} (${suffix})`
+    : name;
 };
 
 const presetSelectEntries = () => (
@@ -16087,12 +16586,7 @@ const groupPresetSelectEntries = (entries) => entries.reduce((groups, entry) => 
 }, new Map());
 
 const renderPresetSelect = () => {
-  const presetEntries = Object.entries(PRESETS).filter(([key, preset]) => (
-    key !== "custom"
-    && !OLD_MISLEADING_ZEISS_PRESET_KEYS.includes(key)
-    && ["patent", "visualReference", "reference-only"].includes(preset.sourceType)
-    && presetHasDrawablePrescription(preset)
-  ));
+  const presetEntries = presetSelectEntries();
   const groupedEntries = groupPresetSelectEntries(presetEntries);
 
   return `
@@ -18180,7 +18674,134 @@ const renderSingleSpotDiagram = (rayTraceResult) => {
   `;
 };
 
-const renderSpotDiagramPanel = (dLineResults, spectralResults) => {
+const THROUGH_FOCUS_SPOT_SHIFTS_MM = [-0.1, -0.05, 0, 0.05, 0.1];
+const THROUGH_FOCUS_SPOT_FIELD_FRACTIONS = [0, 0.28, 0.55, 0.83, 1];
+const THROUGH_FOCUS_SPOT_SCALE_MM = 0.1;
+
+const throughFocusSpotRows = (lenses, system, spectralMode = "rgb") => {
+  if (!Array.isArray(lenses) || !lenses.length || !system) return [];
+  const maxFieldAngle = Math.max(
+    1,
+    ...RAY_TRACE_FIELDS.map((field) => Math.abs(toNumber(field.angle) || 0))
+  );
+  const imageCornerHeight = FULL_FRAME_SENSOR.diagonal / 2;
+  const spectralEntries = spectralMode === "rgb"
+    ? Object.entries(SPECTRAL_LINES)
+    : [["d", SPECTRAL_LINES.d]];
+
+  return THROUGH_FOCUS_SPOT_FIELD_FRACTIONS.map((fraction, rowIndex) => {
+    const fieldAngleDegrees = maxFieldAngle * fraction;
+    const imageHeightMm = imageCornerHeight * fraction;
+    const traces = spectralEntries.map(([lineKey, line]) => traceSystemRealRays(lenses, system, {
+      ...rayTraceApertureOptions(state),
+      fieldKey: `through-focus-${rowIndex}`,
+      fieldName: `${formatNumber(imageHeightMm, 2)} mm image height`,
+      fieldAngleDegrees,
+      rayCount: Math.max(7, Math.min(17, Math.round(clamp(toNumber(state.rayTraceRayCount) || 9, 3, 31)))),
+      wavelengthNm: line.wavelengthNm,
+      spectralLineKey: lineKey
+    }));
+    return {
+      fieldAngleDegrees,
+      imageHeightMm,
+      traces,
+      cells: THROUGH_FOCUS_SPOT_SHIFTS_MM.map((focusShiftMm) => {
+        const samples = traces.flatMap((trace) => {
+          const validRays = (trace.rays || []).filter((ray) => ray.status === "valid" && ray.finalRay);
+          return validRays.map((ray, rayIndex) => {
+            const point = imagePlaneIntersection(ray.finalRay, focusShiftMm);
+            return point && Number.isFinite(point.y) ? {
+              y: point.y,
+              rayIndex,
+              rayCount: validRays.length,
+              role: ray.role || "",
+              color: (SPECTRAL_LINES[trace.spectralLineKey] || trace.spectralLine || SPECTRAL_LINES.d).color || "green"
+            } : null;
+          }).filter(Boolean);
+        });
+        const stats = spotStatsFromSamples(samples.map((sample) => sample.y));
+        return {
+          focusShiftMm,
+          samples,
+          meanY: stats.meanY,
+          rmsSpotRadius: stats.rmsSpotRadius,
+          maxSpotRadius: stats.maxSpotRadius,
+          validRayCount: samples.length,
+          totalRayCount: traces.reduce((sum, trace) => sum + (trace.totalRayCount || 0), 0)
+        };
+      })
+    };
+  });
+};
+
+const renderThroughFocusSpotCell = (cell) => {
+  const size = 64;
+  const center = size / 2;
+  const plotHalf = 25;
+  const pxPerMm = plotHalf / THROUGH_FOCUS_SPOT_SCALE_MM;
+  const points = cell.samples.map((sample) => {
+    const pupil = sample.rayCount > 1
+      ? (sample.rayIndex / (sample.rayCount - 1)) * 2 - 1
+      : 0;
+    const deviationY = Number.isFinite(cell.meanY) ? sample.y - cell.meanY : 0;
+    const syntheticX = pupil * Math.max(0.0025, Math.min(0.035, Math.abs(deviationY) * 0.35 + 0.004));
+    return {
+      x: Math.max(5, Math.min(size - 5, center + syntheticX * pxPerMm)),
+      y: Math.max(5, Math.min(size - 5, center - deviationY * pxPerMm)),
+      color: sample.color,
+      role: sample.role
+    };
+  });
+  return `
+    <svg class="through-focus-spot-cell" viewBox="0 0 ${size} ${size}" role="img" aria-label="Through focus spot at ${formatNumber(cell.focusShiftMm, 3)} mm">
+      <rect class="through-focus-spot-frame" x="1" y="1" width="${size - 2}" height="${size - 2}" />
+      <line class="through-focus-spot-axis" x1="${center}" y1="5" x2="${center}" y2="${size - 5}" />
+      <line class="through-focus-spot-axis" x1="5" y1="${center}" x2="${size - 5}" y2="${center}" />
+      ${points.length
+        ? points.map((point) => `<circle class="through-focus-spot-point spot-${point.color} ${point.role.includes("chief") ? "spot-chief" : ""}" cx="${point.x}" cy="${point.y}" r="${point.role.includes("chief") ? 2.1 : 1.45}" />`).join("")
+        : `<text class="spot-empty" x="${center}" y="${center}" text-anchor="middle">No rays</text>`
+      }
+    </svg>
+  `;
+};
+
+const renderThroughFocusSpotDiagram = (lenses, system, spectralMode = "rgb") => {
+  const rows = throughFocusSpotRows(lenses, system, spectralMode);
+  if (!rows.length) return "";
+  return `
+    <section class="through-focus-spot-panel" aria-label="Through focus spot diagram">
+      <div class="through-focus-spot-header">
+        <div>
+          <h4>Spot Scale 0.1 (Detail)</h4>
+          <span>Through-focus spot table · ${spectralMode === "rgb" ? "RGB spectral overlay" : "d-line only"}</span>
+        </div>
+        <div class="through-focus-scale-bar" aria-label="0.1000 mm spot scale">
+          <span></span>
+          <strong>0.1000 mm</strong>
+        </div>
+      </div>
+      <div class="through-focus-spot-grid" style="--spot-focus-columns: ${THROUGH_FOCUS_SPOT_SHIFTS_MM.length};">
+        <div class="through-focus-corner-label">XIM/YIM</div>
+        ${THROUGH_FOCUS_SPOT_SHIFTS_MM.map((shift) => `<div class="through-focus-column-label">${shift.toFixed(3)} mm</div>`).join("")}
+        ${rows.map((row) => `
+          <div class="through-focus-row-label">
+            <span>0.000</span>
+            <strong>${formatNumber(row.imageHeightMm, 3)}</strong>
+          </div>
+          ${row.cells.map((cell) => `
+            <div class="through-focus-cell-wrap">
+              ${renderThroughFocusSpotCell(cell)}
+              <span class="through-focus-cell-meta">RMS ${formatNumber(cell.rmsSpotRadius, 4)} mm</span>
+            </div>
+          `).join("")}
+        `).join("")}
+      </div>
+      <p class="through-focus-note">Detail table uses traced ray intersections at shifted image planes. Horizontal spread visualizes pupil sample order for the current 2D ray tracer.</p>
+    </section>
+  `;
+};
+
+const renderSpotDiagramPanel = (dLineResults, spectralResults, system = null, lenses = state.lenses) => {
   const sourceResults = state.spotDisplayMode === "rgb" ? spectralResults : dLineResults;
   const results = RAY_TRACE_FIELDS.map((field) => {
     const fieldResults = sourceResults.filter((result) => result.fieldKey === field.key);
@@ -18203,6 +18824,7 @@ const renderSpotDiagramPanel = (dLineResults, spectralResults) => {
       <div class="spot-field-grid">
         ${results.map((result) => renderSingleSpotDiagram(result)).join("")}
       </div>
+      ${renderThroughFocusSpotDiagram(lenses, system, state.spotDisplayMode)}
     </section>
   `;
 };
@@ -19802,7 +20424,8 @@ const calculateSagittalTangentialGeometricMTFPanelData = (lenses, system) => {
   const maxFrequencyLpMm = resolveMtfMaxFrequency(system, SPECTRAL_LINES.d.wavelengthNm);
   const geometricMtfOptions = activeGeometricMtfOptions(maxFrequencyLpMm);
   const includeBestFocus = state.mtfPlaneMode === "best" || state.mtfBestFocusComparisonRequested === true;
-  const comparisons = RAY_TRACE_FIELDS.flatMap((field) => lines.map(([lineKey, line]) => (
+  const sensorFields = fieldDefinitionsForSensor(state.mtfSensorFormatKey, Math.abs(toNumber(system.effectiveFocalLength)) || 50);
+  const comparisons = sensorFields.flatMap((field) => lines.map(([lineKey, line]) => (
     calculateSagittalTangentialMTFComparisons(lenses, system, {
       ...rayTraceApertureOptions(state),
       ...geometricMtfOptions,
@@ -19832,7 +20455,7 @@ const calculateSagittalTangentialGeometricMTFPanelData = (lenses, system) => {
   });
 
   if (wavelengthMode === "rgb" && hasHighDispersionGlass(lenses)) {
-    RAY_TRACE_FIELDS.forEach((field) => {
+    sensorFields.forEach((field) => {
       const fieldResults = activeResults.filter((result) => result.fieldKey === field.key);
       const red = fieldResults.find((result) => result.spectralLineKey === "C");
       const blue = fieldResults.find((result) => result.spectralLineKey === "F");
@@ -20816,8 +21439,12 @@ const buildGeometricMtfMainWorkerPayload = (lenses, system) => {
     spectralLineKey
   });
   const surfaceSignature = geometricMtfSurfaceSignature(surfaceModel);
-  const manufacturerFrequencies = selectedManufacturerMtfFrequencies();
+  const manufacturerFrequencies = [...new Set([
+    ...selectedManufacturerMtfFrequencies(),
+    toNumber(state.mtfDefocusFrequencyLpMm) || 20
+  ])].sort((left, right) => left - right);
   const sensor = activeMtfSensorFormat();
+  const sensorFields = fieldDefinitionsForSensor(sensor.key, Math.abs(toNumber(system.effectiveFocalLength)) || 50);
   const apertureSweepOptions = mtfApertureSweepCalculationOptions();
   const apertureSweepField = RAY_TRACE_FIELDS.find((item) => item.key === state.mtfApertureFrequencyFieldKey) || RAY_TRACE_FIELDS[0];
   const sweepOptions = apertureSweepOptions.map((option) => {
@@ -20855,10 +21482,12 @@ const buildGeometricMtfMainWorkerPayload = (lenses, system) => {
     fieldOrientation: "tangential",
     totalTrackMm: system.totalTrack,
     maxFieldAngleDegrees: 45,
-    fieldRequests: RAY_TRACE_FIELDS.map((field) => ({
+    fieldRequests: sensorFields.map((field) => ({
       fieldKey: field.key,
       fieldName: field.name,
       fieldAngleDegrees: field.angle,
+      normalizedField: field.normalizedField,
+      imageHeightMm: field.imageHeightMm,
       spectralLineKey,
       wavelengthNm
     })),
@@ -20880,6 +21509,130 @@ const buildGeometricMtfMainWorkerPayload = (lenses, system) => {
     },
     cacheRevision: state.analysisCacheRevision || 0
   };
+};
+
+const resolvedMtfThroughFocusRangeMm = () => {
+  if (state.mtfThroughFocusRangeMm === "auto") {
+    const fNumber = calculateFNumber(calculateSystem(state.lenses), state.apertureDiameter);
+    return clamp(0.05 * Math.max(2, toNumber(fNumber) || 2), 0.1, 1);
+  }
+  const value = Math.abs(toNumber(state.mtfThroughFocusRangeMm));
+  return [0.05, 0.1, 0.2, 0.5, 1, 2, 5].includes(value) ? value : 0.1;
+};
+
+const geometricMtfThroughFocusSignature = () => JSON.stringify({
+  version: ANALYSIS_WORKER_VERSION,
+  solverContract: GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION,
+  revision: state.analysisCacheRevision || 0,
+  surface: lensAnalysisSignature(),
+  apertureDiameter: Number((toNumber(state.apertureDiameter) || 0).toFixed(6)),
+  wavelength: state.mtfThroughFocusWavelengthKey,
+  sensor: state.mtfSensorFormatKey,
+  focalLength: Number((Math.abs(toNumber(calculateSystem(state.lenses).effectiveFocalLength)) || 0).toFixed(6)),
+  frequency: state.mtfDefocusFrequencyLpMm,
+  scanCentre: 0,
+  scanRange: resolvedMtfThroughFocusRangeMm(),
+  sampleCount: MTF_THROUGH_FOCUS_SAMPLE_COUNTS[normalizeGeometricLsfQuality(state.mtfLsfQuality)],
+  quality: normalizeGeometricLsfQuality(state.mtfLsfQuality)
+});
+
+const buildGeometricMtfThroughFocusPayload = (lenses, system) => {
+  const lineKey = SPECTRAL_LINES[state.mtfThroughFocusWavelengthKey] ? state.mtfThroughFocusWavelengthKey : "d";
+  const line = SPECTRAL_LINES[lineKey];
+  const sensor = activeMtfSensorFormat();
+  const quality = normalizeGeometricLsfQuality(state.mtfLsfQuality);
+  const surfaceModel = geometricMtfSurfaceModelForOptions(lenses, system, {
+    apertureDiameter: state.apertureDiameter,
+    spectralLineKey: lineKey,
+    wavelengthNm: line.wavelengthNm
+  });
+  const surfaceSignature = geometricMtfSurfaceSignature(surfaceModel);
+  return {
+    task: "geometric-lsf-through-focus",
+    workerVersion: ANALYSIS_WORKER_VERSION,
+    solverContractVersion: GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION,
+    expectedSurfaceSignature: surfaceSignature,
+    surfaceSignature,
+    surfaceModel,
+    surfaceFeatureFlags: geometricMtfSurfaceFeatureFlags(surfaceModel),
+    sensorDimensions: { width: sensor.width, height: sensor.height },
+    effectiveFocalLengthMm: Math.abs(toNumber(system.effectiveFocalLength)),
+    imageHeightFractions: SENSOR_FIELD_FRACTIONS,
+    focusRangeMm: resolvedMtfThroughFocusRangeMm(),
+    sampleCount: MTF_THROUGH_FOCUS_SAMPLE_COUNTS[quality],
+    frequencyLpMm: toNumber(state.mtfDefocusFrequencyLpMm) || 20,
+    apertureDiameter: toNumber(state.apertureDiameter),
+    wavelength: { spectralLineKey: lineKey, wavelengthNm: line.wavelengthNm },
+    quality,
+    fieldOrientation: "tangential",
+    imagePlaneX: 0,
+    currentImagePlaneOffsetMm: 0,
+    totalTrackMm: system.totalTrack,
+    maxFieldAngleDegrees: 70
+  };
+};
+
+const currentGeometricMtfThroughFocusResult = () => {
+  const analysis = state.mtfAnalysis?.throughFocus || {};
+  const signature = geometricMtfThroughFocusSignature();
+  if (analysis.signature === signature && analysis.result) return analysis.result;
+  return null;
+};
+
+const queueGeometricMtfThroughFocus = () => {
+  if (!isPanelExpanded("mtfResolution") || state.mtfViewMode !== "defocus") return;
+  const signature = geometricMtfThroughFocusSignature();
+  const analysis = state.mtfAnalysis.throughFocus || {};
+  if (analysis.signature === signature && ["queued", "computing", "ready"].includes(analysis.status)) return;
+  const cached = geometricMtfThroughFocusCache.get(signature);
+  state.mtfAnalysis.throughFocus = {
+    status: cached ? "ready" : "queued",
+    result: cached || analysis.result || null,
+    error: "",
+    requestToken: (analysis.requestToken || 0) + 1,
+    signature
+  };
+  if (cached) return;
+  const token = state.mtfAnalysis.throughFocus.requestToken;
+  setTimeout(async () => {
+    if (state.mtfAnalysis.throughFocus.requestToken !== token || state.mtfAnalysis.throughFocus.signature !== signature) return;
+    state.mtfAnalysis.throughFocus.status = "computing";
+    try {
+      const sourceSystem = calculateSystem(state.lenses);
+      const focused = getFocusedAnalysisConfiguration({ lenses: state.lenses, system: sourceSystem, prescription: state.prescription });
+      const payload = buildGeometricMtfThroughFocusPayload(focused.focusedLenses, focused.focusedSystem);
+      if (payload.surfaceFeatureFlags?.unsupportedByWorker) {
+        throw new Error(`True worker through-focus MTF is unavailable for ${payload.surfaceFeatureFlags.unsupportedFeatures.join(" and ")} geometry; no simplified substitute was shown.`);
+      }
+      const response = await geometricMtfWorkerClient.request(
+        { ...payload, requestId: `through-focus-${token}` },
+        { isStale: () => state.mtfAnalysis.throughFocus.requestToken !== token || state.mtfAnalysis.throughFocus.signature !== signature }
+      );
+      if (response.status !== "complete") throw new Error(response.error || "Through-focus worker failed.");
+      if (response.workerVersion !== ANALYSIS_WORKER_VERSION
+        || response.solverContractVersion !== GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION
+        || response.surfaceSignature !== payload.expectedSurfaceSignature
+        || response.result?.surfaceSignature !== payload.expectedSurfaceSignature) {
+        throw new Error("Through-focus worker returned stale or mismatched optical metadata.");
+      }
+      if (state.mtfAnalysis.throughFocus.requestToken !== token || state.mtfAnalysis.throughFocus.signature !== signature) return;
+      const result = rememberBoundedCacheValue(
+        geometricMtfThroughFocusCache,
+        signature,
+        response.result,
+        GEOMETRIC_MTF_THROUGH_FOCUS_CACHE_LIMIT
+      );
+      state.mtfAnalysis.throughFocus = { status: "ready", result, error: "", requestToken: token, signature };
+    } catch (error) {
+      if (state.mtfAnalysis.throughFocus.requestToken !== token) return;
+      state.mtfAnalysis.throughFocus = {
+        ...state.mtfAnalysis.throughFocus,
+        status: "error",
+        error: error?.message || "Through-focus MTF failed."
+      };
+    }
+    update();
+  }, 0);
 };
 
 const isGeometricMtfMainWorkerResponseCurrent = (response, payload, token, signature) => (
@@ -24569,15 +25322,39 @@ const renderVisualOnlyReferenceApp = () => {
 const renderReferenceOnlyPresetApp = () => {
   const preset = PRESETS[state.preset] ?? {};
   const metadata = preset.productMetadata || state.prescription?.productMetadata || {};
+  const construction = metadata.reportedOpticalConstruction || {};
+  const verifiedFeatures = metadata.verifiedOpticalFeatures || {};
+  const minFocus = metadata.minimumFocusDistanceM || {};
+  const featureBadges = [
+    ...(metadata.opticalFeatures || []),
+    Number.isFinite(toNumber(verifiedFeatures.xaElements)) ? `${verifiedFeatures.xaElements} XA element${verifiedFeatures.xaElements === 1 ? "" : "s"}` : null,
+    Number.isFinite(toNumber(verifiedFeatures.edElements)) ? `${verifiedFeatures.edElements} ED element${verifiedFeatures.edElements === 1 ? "" : "s"}` : null,
+    Number.isFinite(toNumber(verifiedFeatures.apertureBlades)) ? `${verifiedFeatures.apertureBlades}-blade circular diaphragm` : null,
+    verifiedFeatures.coating || null,
+    ...(metadata.productRole || [])
+  ].filter(Boolean);
+  const candidatePatents = preset.candidatePatents || (preset.provenance?.candidatePatent ? [preset.provenance.candidatePatent] : []);
+  const linkedTraceablePresets = (preset.linkedTraceablePresets || state.prescription?.linkedTraceablePresets || [])
+    .filter((link) => link?.presetKey && PRESETS[link.presetKey]);
+  const estimatedStarterRule = REFERENCE_ESTIMATED_STARTER_RULES[state.preset];
+  const isAuditBlocked = isAuditBlockedSurfacePreset(preset);
   const metadataRows = [
     ["Manufacturer", preset.manufacturer || preset.brand],
     ["Mount", metadata.mount],
-    ["Format", metadata.format],
-    ["Focal length", Number.isFinite(toNumber(metadata.nominalFocalLengthMm)) ? `${formatNumber(metadata.nominalFocalLengthMm, 1)} mm` : null],
+    ["Format", metadata.format || metadata.sensorFormat],
+    ["Focal length", Number.isFinite(toNumber(metadata.nominalFocalLengthMm ?? metadata.focalLengthMm)) ? `${formatNumber(metadata.nominalFocalLengthMm ?? metadata.focalLengthMm, 1)} mm` : null],
     ["Aperture", metadata.maxFNumber && metadata.minFNumber ? `f/${metadata.maxFNumber} – f/${metadata.minFNumber}` : null],
-    ["Construction", metadata.elements && metadata.groups ? `${metadata.elements} elements / ${metadata.groups} groups` : null],
-    ["Minimum focus", Number.isFinite(toNumber(metadata.minFocusDistanceM)) ? `${formatNumber(metadata.minFocusDistanceM, 2)} m` : null],
-    ["Max magnification", metadata.maxMagnification ? `${metadata.maxMagnification}×` : null],
+    ["Construction", (metadata.elements && metadata.groups)
+      ? `${metadata.elements} elements / ${metadata.groups} groups`
+      : (construction.elements && construction.groups)
+        ? `${construction.elements} elements / ${construction.groups} groups (${construction.confidence || "unverified"})`
+        : null],
+    ["Minimum focus", Number.isFinite(toNumber(metadata.minFocusDistanceM))
+      ? `${formatNumber(metadata.minFocusDistanceM, 2)} m`
+      : (Number.isFinite(toNumber(minFocus.autofocus)) || Number.isFinite(toNumber(minFocus.manualFocus)))
+        ? `AF ${formatNumber(minFocus.autofocus, 2)} m · MF ${formatNumber(minFocus.manualFocus, 2)} m`
+        : null],
+    ["Max magnification", metadata.maxMagnification || metadata.maximumMagnification ? `${metadata.maxMagnification || metadata.maximumMagnification}×` : null],
     ["Filter", metadata.filterThreadMm ? `${metadata.filterThreadMm} mm` : null],
     ["Weight", metadata.weightG ? `${metadata.weightG} g` : null]
   ].filter(([, value]) => value !== null && value !== undefined && value !== "");
@@ -24604,6 +25381,32 @@ const renderReferenceOnlyPresetApp = () => {
                 <h2>${escapeHtml(preset.name || "Reference-only record")}</h2>
                 <p>${escapeHtml(preset.referenceOnlyMessage || preset.note || "Verified optical prescription unavailable. No simulated ray-trace design is loaded.")}</p>
                 <p class="reference-only-warning">No fake surfaces, curvatures, glass data, aperture stop, MTF, BFD or ray-trace result is generated for this record.</p>
+                ${state.lensEditStatus ? `<p class="reference-only-status">${escapeHtml(state.lensEditStatus)}</p>` : ""}
+                <div class="reference-only-actions">
+                  <button class="action-button" type="button" data-action="create-manual-template-from-reference">Create empty manual template</button>
+                  ${estimatedStarterRule ? `
+                    <button class="action-button secondary-action-button" type="button" data-action="create-estimated-starter-from-reference">
+                      Create estimated starter design
+                    </button>
+                  ` : ""}
+                  ${linkedTraceablePresets.map((link) => `
+                    <button
+                      class="action-button secondary-action-button"
+                      type="button"
+                      data-action="load-linked-traceable-preset"
+                      data-preset-key="${escapeHtml(link.presetKey)}"
+                      title="${escapeHtml(link.relation || "Linked traceable patent example")}"
+                    >
+                      ${escapeHtml(link.label || `Use ${PRESETS[link.presetKey]?.name || link.presetKey}`)}
+                    </button>
+                  `).join("")}
+                  ${isAuditBlocked ? `
+                    <button class="action-button danger-action-button" type="button" data-action="load-audit-blocked-surface-copy">
+                      Load audit copy / debug only
+                    </button>
+                  ` : ""}
+                  <button class="action-button secondary-action-button" type="button" data-action="verify-candidate-patent">Verify candidate patent</button>
+                </div>
               </div>
             </section>
           </main>
@@ -24617,9 +25420,21 @@ const renderReferenceOnlyPresetApp = () => {
                   </div>
                 `).join("")}
               </div>
-              ${(metadata.opticalFeatures || []).length ? `
+              ${featureBadges.length ? `
                 <div class="reference-only-feature-list">
-                  ${(metadata.opticalFeatures || []).map((feature) => `<span>${escapeHtml(feature)}</span>`).join("")}
+                  ${featureBadges.map((feature) => `<span>${escapeHtml(feature)}</span>`).join("")}
+                </div>
+              ` : ""}
+              ${candidatePatents.length ? `
+                <div class="reference-only-candidate-patents">
+                  <h4>Candidate patents</h4>
+                  ${candidatePatents.map((candidate) => `
+                    <div class="reference-only-metadata-row">
+                      <span>${escapeHtml(candidate.patentNumber || "Candidate")}</span>
+                      <strong>${escapeHtml(candidate.status || "unverified candidate only")}</strong>
+                    </div>
+                  `).join("")}
+                  <p>${escapeHtml(preset.provenance?.candidatePatent?.note || "Candidate patents are separated from verified patent prescriptions and cannot be imported automatically.")}</p>
                 </div>
               ` : ""}
             `, { defaultCollapsed: false })}
@@ -25037,7 +25852,7 @@ const render = () => {
             ${renderWorkflowGroup("Analyse", `
               ${renderWorkflowPanel("rayTraceSpot", isPanelExpanded("rayTraceSpot") ? `
                 ${renderRayTracePanel(diagramRayTraceResults, spectralSystems, system)}
-                ${renderSpotDiagramPanel(dLineRayTraceResults, spectralRayTraceResults)}
+                ${renderSpotDiagramPanel(dLineRayTraceResults, spectralRayTraceResults, system, analysisLenses)}
                 <details class="sub-analysis-section">
                   <summary>3D / Experimental</summary>
                   ${renderRayTrace3DPanel(rayTrace3DResults)}
@@ -25198,6 +26013,7 @@ const update = (options = {}) => {
   });
   restoreRenderScrollState(scrollState);
   maybeQueueVisibleMtfAnalysis();
+  queueGeometricMtfThroughFocus();
 };
 
 let optimizerRunToken = 0;
@@ -25978,6 +26794,18 @@ mount.addEventListener("change", (event) => {
     return;
   }
 
+  if (event.target.dataset.action === "update-diagram-ray-colour") {
+    state.diagramRayColorMode = normalizeDiagramRayColorMode(event.target.value);
+    update();
+    return;
+  }
+
+  if (event.target.dataset.action === "update-diagram-ray-wavelength") {
+    state.diagramRayWavelengthMode = normalizeDiagramRayWavelengthMode(event.target.value);
+    update();
+    return;
+  }
+
   if (event.target.dataset.action === "update-diagram-custom-field") {
     state.diagramCustomFieldAngleDegrees = clamp(toNumber(event.target.value) || 0, 0, 80);
     update();
@@ -26723,6 +27551,36 @@ mount.addEventListener("click", (event) => {
   if (!button) return;
 
   const action = button.dataset.action;
+
+  if (action === "create-manual-template-from-reference") {
+    createEmptyManualTemplateFromReference(state.preset);
+    update();
+    return;
+  }
+
+  if (action === "load-linked-traceable-preset") {
+    loadLinkedTraceablePresetFromReference(button.dataset.presetKey, state.preset);
+    update();
+    return;
+  }
+
+  if (action === "create-estimated-starter-from-reference") {
+    createEstimatedStarterFromReference(state.preset);
+    update();
+    return;
+  }
+
+  if (action === "load-audit-blocked-surface-copy") {
+    loadAuditBlockedSurfaceCopy(state.preset);
+    update();
+    return;
+  }
+
+  if (action === "verify-candidate-patent") {
+    setVerifyCandidatePatentWorkflowStatus();
+    update();
+    return;
+  }
 
   if (action === "create-retarget-copy") {
     const sourceSystem = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
@@ -27771,7 +28629,7 @@ const runOpticsSelfCheck = (options = {}) => {
   });
 
   test("active patent entries exist as surface prescriptions", () => (
-    PATENT_PRESET_KEYS.length === 24
+    PATENT_PRESET_KEYS.length >= 24
       && !PATENT_PRESET_KEYS.includes("zeissTessar50F28Fr1066698Ex1")
       && !("zeissTessar50F28Fr1066698Ex1" in PRESETS)
       && PATENT_PRESET_KEYS.every((key) => PRESETS[key]?.sourceType === "patent" && PRESETS[key]?.prescriptionType === "surface")
@@ -27842,7 +28700,6 @@ const runOpticsSelfCheck = (options = {}) => {
 
   test("Sony SEL50F14Z product reference is metadata-only and non-loadable", () => withTemporaryState(() => {
     loadPresetIntoState(DEFAULT_PRESET_KEY);
-    const before = state.preset;
     const loaded = loadPresetIntoState("sony_planar_t_fe_50mm_f14_za_sel50f14z");
     const preset = PRESETS.sony_planar_t_fe_50mm_f14_za_sel50f14z;
     const selectMarkup = renderPresetSelect();
@@ -27853,11 +28710,75 @@ const runOpticsSelfCheck = (options = {}) => {
       && Array.isArray(preset.lenses)
       && preset.lenses.length === 0
       && loaded === false
-      && state.preset === before
+      && state.preset === "sony_planar_t_fe_50mm_f14_za_sel50f14z"
       && state.lensEditStatus.includes("verified optical prescription is unavailable")
       && selectMarkup.includes("SEL50F14Z")
       && !preset.surfaces;
   }));
+
+  test("Sony FE 85mm F1.4 GM commercial reference never becomes a traceable patent preset", () => withTemporaryState(() => {
+    const loaded = loadPresetIntoState("sony_fe_85mm_f14_gm_sel85f14gm");
+    const preset = PRESETS.sony_fe_85mm_f14_gm_sel85f14gm;
+    const prescription = clonePresetPrescription("sony_fe_85mm_f14_gm_sel85f14gm");
+    const markup = renderReferenceOnlyPresetApp();
+    return loaded === false
+      && preset.sourceType === "reference-only"
+      && preset.prescriptionType === "referenceOnly"
+      && preset.category === "Commercial Lens Reference"
+      && preset.dataStatus === "manufacturer-specification-only"
+      && preset.prescriptionStatus === "unverified"
+      && preset.loadability === "metadata-only"
+      && preset.provenance?.candidatePatent?.patentNumber === "WO2017/130571"
+      && preset.provenance?.candidatePatent?.allowRayTracePreset === false
+      && preset.candidatePatents?.[0]?.allowImport === false
+      && Array.isArray(preset.lenses)
+      && preset.lenses.length === 0
+      && prescription.prescriptionType === "referenceOnly"
+      && state.lenses.length === 0
+      && markup.includes("Reference only")
+      && markup.includes("Verify candidate patent")
+      && markup.includes("WO2017/130571")
+      && !preset.surfaces
+      && !PATENT_PRESET_KEYS.includes("sony_fe_85mm_f14_gm_sel85f14gm");
+  }));
+
+  test("SEL50F14Z reference offers explicit linked patent example without becoming production prescription", () => withTemporaryState(() => {
+    const loadedReference = loadPresetIntoState("sony_planar_t_fe_50mm_f14_za_sel50f14z");
+    const referenceMarkup = renderReferenceOnlyPresetApp();
+    const linkedLoaded = loadLinkedTraceablePresetFromReference(
+      "sonyZeissPlanar50F14Us20140071331Ex4",
+      "sony_planar_t_fe_50mm_f14_za_sel50f14z"
+    );
+    return loadedReference === false
+      && referenceMarkup.includes("Use Sony Zeiss Planar 50mm f/1.4 ZA patent example")
+      && linkedLoaded === true
+      && state.preset === "sonyZeissPlanar50F14Us20140071331Ex4"
+      && state.prescription.prescriptionType === "surface"
+      && state.lenses.length > 0
+      && state.lensEditStatus.includes("not claimed as the exact commercial production optical prescription");
+  }));
+
+  test("Voigtlander Nokton reference can create an estimated starter but no fake production prescription", () => withTemporaryState(() => {
+    const loadedReference = loadPresetIntoState("voigtlanderNoktonClassic40F14Reference");
+    const referenceMarkup = renderReferenceOnlyPresetApp();
+    const created = createEstimatedStarterFromReference("voigtlanderNoktonClassic40F14Reference");
+    return loadedReference === false
+      && referenceMarkup.includes("Create estimated starter design")
+      && created === true
+      && state.preset === "custom"
+      && state.prescription.sourceType === "estimated-reference-starter"
+      && state.lenses.length > 0
+      && state.lensEditStatus.includes("Not Voigtländer production prescription");
+  }));
+
+  test("preset dropdown keeps product IDs, patent IDs, and audit-blocked records visible", () => {
+    const selectMarkup = renderPresetSelect();
+    return selectMarkup.includes("SEL50F14Z")
+      && selectMarkup.includes("SEL85F14GM")
+      && selectMarkup.includes("US20140071331")
+      && selectMarkup.includes("US4106854")
+      && selectMarkup.includes("audit blocked");
+  });
 
   test("Nikon Noct WO2019/229849 Example 1 preserves patent table and provenance", () => {
     const preset = PRESETS.nikon_z_58mm_f095_s_noct_wo2019229849_example1;
@@ -28131,7 +29052,7 @@ const runOpticsSelfCheck = (options = {}) => {
 
   test("US4106854 Gauss F/1.8 entry is audit-blocked until primary transcription is corrected", () => withTemporaryState(() => {
     const preset = PRESETS.olympusGauss100F18Us4106854Ex1;
-    const lenses = prescriptionToLenses(clonePresetPrescription("olympusGauss100F18Us4106854Ex1"));
+    const lenses = prescriptionToLenses(clonePresetPrescription("olympusGauss100F18Us4106854Ex1", { allowAuditBlockedSurfaces: true }));
     const audit = calculateDirectPatentSequentialParaxialAudit(preset);
     const loaded = loadPresetIntoState("olympusGauss100F18Us4106854Ex1");
     const referenceMarkup = render();
@@ -28164,6 +29085,24 @@ const runOpticsSelfCheck = (options = {}) => {
       && state.lenses.length === 0
       && referenceMarkup.includes("Reference only")
       && referenceMarkup.includes("negative EFL/BFL");
+  }));
+
+  test("US4106854 audit-blocked surface copy is explicit debug-only custom data", () => withTemporaryState(() => {
+    const normalLoaded = loadPresetIntoState("olympusGauss100F18Us4106854Ex1");
+    const referenceMarkup = renderReferenceOnlyPresetApp();
+    const debugLoaded = loadAuditBlockedSurfaceCopy("olympusGauss100F18Us4106854Ex1");
+    const debugMarkup = render();
+    return normalLoaded === false
+      && referenceMarkup.includes("Load audit copy / debug only")
+      && debugLoaded === true
+      && state.preset === "custom"
+      && state.prescription.prescriptionType === "surface"
+      && state.prescription.sourceType === "audit-blocked-debug-copy"
+      && state.prescription.prescriptionStatus === "audit-debug-only"
+      && state.lenses.length === 6
+      && state.designName.includes("audit debug copy")
+      && state.lensEditStatus.includes("Audit debug copy loaded")
+      && debugMarkup.includes("Audit debug copy loaded");
   }));
 
   test("US4534626 raw source and 2.5x scaled infinity surfaces are preserved", () => {
@@ -28266,6 +29205,8 @@ const runOpticsSelfCheck = (options = {}) => {
       && lenses.length === 9
       && Math.abs(preset.surfaces[5].distanceToNext - 11.8882) < 1e-9
       && stopSurface?.radius === Infinity
+      && Math.abs(stopSurface?.distanceToNext - 4.7775) < 1e-9
+      && Math.abs(stopSurface?.nAfter - 1) < 1e-9
       && stopSurface?.isStop === true
       && Math.abs(preset.surfaces[10].distanceToNext - 0.1667) < 1e-9
       && Math.abs(preset.surfaces[12].distanceToNext - 0.8888) < 1e-9
@@ -28281,6 +29222,7 @@ const runOpticsSelfCheck = (options = {}) => {
       && macro?.variableAirGapAfterSurface === 13
       && Math.abs(macro?.infinityD13Mm - 0.8888) < 1e-9
       && Math.abs(macro?.patentConfigurations?.[0]?.d13Mm - 0.8890) < 1e-9
+      && Math.abs(macro?.patentConfigurations?.[1]?.d13Mm - 5.2830) < 1e-9
       && Math.abs(macro?.patentConfigurations?.[2]?.d13Mm - 20.277) < 1e-9;
   });
 

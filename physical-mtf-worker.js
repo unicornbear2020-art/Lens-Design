@@ -1,4 +1,9 @@
+/* eslint-env worker */
+
+const PHYSICAL_MTF_WORKER_VERSION = "20260714-default-ray-count-3-1";
+const PHYSICAL_LENS_PUPIL_RADIUS_FRACTION = 0.44;
 const clamp = (value, min, max) => Math.min(max, Math.max(min, Number.isFinite(Number(value)) ? Number(value) : min));
+const isPowerOfTwo = (value) => Number.isInteger(value) && value > 0 && (value & (value - 1)) === 0;
 
 const fftRadix2Complex = (inputReal, inputImag = [], inverse = false) => {
   const n = inputReal.length;
@@ -116,6 +121,63 @@ const samplePupilGridBilinear = (pupil, x, y) => {
   return top * (1 - dy) + bottom * dy;
 };
 
+const sampleComplexPupilGridBilinear = (pupil, x, y) => {
+  const size = pupil.gridSize;
+  if (!Number.isFinite(x) || !Number.isFinite(y) || x < 0 || y < 0 || x >= size - 1 || y >= size - 1) {
+    return { real: 0, imag: 0 };
+  }
+  const x0 = Math.floor(x);
+  const y0 = Math.floor(y);
+  const tx = x - x0;
+  const ty = y - y0;
+  const i00 = y0 * size + x0;
+  const i10 = i00 + 1;
+  const i01 = i00 + size;
+  const i11 = i01 + 1;
+  const interpolate = (values) => {
+    const top = values[i00] * (1 - tx) + values[i10] * tx;
+    const bottom = values[i01] * (1 - tx) + values[i11] * tx;
+    return top * (1 - ty) + bottom * ty;
+  };
+  return { real: interpolate(pupil.real), imag: interpolate(pupil.imag) };
+};
+
+const complexPupilAutocorrelationOtf = (pupil, shiftX, shiftY, pupilEnergy) => {
+  if (!(pupilEnergy > 0)) return { real: NaN, imag: NaN, magnitude: NaN };
+  let correlationReal = 0;
+  let correlationImag = 0;
+  for (let y = 0; y < pupil.gridSize; y += 1) {
+    for (let x = 0; x < pupil.gridSize; x += 1) {
+      const index = y * pupil.gridSize + x;
+      const real = pupil.real[index] || 0;
+      const imag = pupil.imag[index] || 0;
+      if (Math.abs(real) + Math.abs(imag) < 1e-15) continue;
+      const shifted = sampleComplexPupilGridBilinear(pupil, x + shiftX, y + shiftY);
+      correlationReal += real * shifted.real + imag * shifted.imag;
+      correlationImag += imag * shifted.real - real * shifted.imag;
+    }
+  }
+  const real = correlationReal / pupilEnergy;
+  const imag = correlationImag / pupilEnergy;
+  return { real, imag, magnitude: clamp(Math.hypot(real, imag), 0, 1) };
+};
+
+const complexPupilAutocorrelationMtf = (pupil, shiftX, shiftY, pupilEnergy) => (
+  complexPupilAutocorrelationOtf(pupil, shiftX, shiftY, pupilEnergy).magnitude
+);
+
+const sampleComplexPupilOtfAxis = (pupil, offset, dx, dy, pupilEnergy) => {
+  const values = [
+    complexPupilAutocorrelationMtf(pupil, offset * dx, offset * dy, pupilEnergy),
+    complexPupilAutocorrelationMtf(pupil, -offset * dx, -offset * dy, pupilEnergy)
+  ].filter(Number.isFinite);
+  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : NaN;
+};
+
+const sampleComplexPupilComplexOtfAxis = (pupil, offset, dx, dy, pupilEnergy) => (
+  complexPupilAutocorrelationOtf(pupil, offset * dx, offset * dy, pupilEnergy)
+);
+
 const autocorrelationMtf = (pupil, normalizedFrequency) => {
   const nu = clamp(normalizedFrequency, 0, 1);
   if (nu <= 0) return 1;
@@ -166,6 +228,14 @@ const sampleOtfRadialMtf = (otf, pupil, normalizedFrequency) => {
   const radius = nu * 2 * pupil.radiusPx;
   const directions = [[1, 0], [-1, 0], [0, 1], [0, -1], [Math.SQRT1_2, Math.SQRT1_2], [-Math.SQRT1_2, Math.SQRT1_2], [Math.SQRT1_2, -Math.SQRT1_2], [-Math.SQRT1_2, -Math.SQRT1_2]];
   const values = directions.map(([dx, dy]) => sampleOtfMagnitudeUnshifted(otf, radius * dx, radius * dy)).filter(Number.isFinite);
+  return values.length ? clamp(values.reduce((sum, value) => sum + value, 0) / values.length, 0, 1) : NaN;
+};
+
+const sampleOtfAxisMtf = (otf, offset, dx, dy) => {
+  const values = [
+    sampleOtfMagnitudeUnshifted(otf, offset * dx, offset * dy),
+    sampleOtfMagnitudeUnshifted(otf, -offset * dx, -offset * dy)
+  ].filter(Number.isFinite);
   return values.length ? clamp(values.reduce((sum, value) => sum + value, 0) / values.length, 0, 1) : NaN;
 };
 
@@ -234,11 +304,199 @@ const calculateCore = (gridSize) => {
   };
 };
 
+const calculateReferencePupilParity = (pupil, cutoffFrequencyLpMm) => {
+  const amplitude = pupil.real.map((real, index) => Math.hypot(real, pupil.imag[index] || 0));
+  const referencePupil = {
+    gridSize: pupil.gridSize,
+    radiusPx: pupil.radiusPx,
+    real: amplitude,
+    imag: new Array(amplitude.length).fill(0)
+  };
+  const center = (pupil.gridSize - 1) / 2;
+  let circularPixelCount = 0;
+  let transmittedPixelCount = 0;
+  let amplitudeSum = 0;
+  amplitude.forEach((value, index) => {
+    const x = index % pupil.gridSize;
+    const y = Math.floor(index / pupil.gridSize);
+    if (Math.hypot(x - center, y - center) > pupil.radiusPx) return;
+    circularPixelCount += 1;
+    if (value > 0.001) transmittedPixelCount += 1;
+    amplitudeSum += value;
+  });
+  const pupilFillFraction = circularPixelCount > 0 ? transmittedPixelCount / circularPixelCount : 0;
+  const meanAmplitude = circularPixelCount > 0 ? amplitudeSum / circularPixelCount : 0;
+  const applicable = pupilFillFraction >= 0.98 && meanAmplitude >= 0.95 && cutoffFrequencyLpMm > 0;
+  const energy = amplitude.reduce((sum, value) => sum + value ** 2, 0);
+  const comparisons = applicable
+    ? [10, 30, 40, 50].flatMap((frequencyLpMm) => {
+      const normalizedFrequency = clamp(frequencyLpMm / cutoffFrequencyLpMm, 0, 1);
+      const offset = normalizedFrequency * 2 * pupil.radiusPx;
+      const analyticValue = analyticMtf(normalizedFrequency);
+      return [
+        ["sagittal", 0, 1],
+        ["tangential", 1, 0]
+      ].map(([axis, dx, dy]) => {
+        const referenceValue = sampleComplexPupilOtfAxis(referencePupil, offset, dx, dy, energy);
+        return {
+          frequencyLpMm,
+          normalizedFrequency,
+          axis,
+          referenceValue,
+          analyticValue,
+          absoluteDifference: Math.abs(referenceValue - analyticValue)
+        };
+      });
+    })
+    : [];
+  const tolerance = pupil.gridSize >= 256 ? 0.02 : 0.035;
+  const maximumDifference = comparisons.length
+    ? Math.max(...comparisons.map((item) => item.absoluteDifference))
+    : NaN;
+  const passed = applicable
+    && comparisons.length === 8
+    && comparisons.every((item) => Number.isFinite(item.absoluteDifference) && item.absoluteDifference <= tolerance);
+  return {
+    status: !applicable ? "not-applicable" : passed ? "passed" : "failed",
+    method: "zero-phase reference pupil compared with analytic circular-aperture MTF",
+    applicable,
+    passed,
+    tolerance,
+    maximumDifference,
+    pupilFillFraction,
+    meanAmplitude,
+    comparisons
+  };
+};
+
+const calculateLensComplexPupilMtf = (payload = {}) => {
+  const started = performance.now();
+  const gridSize = Number(payload.gridSize);
+  const expectedLength = gridSize * gridSize;
+  const real = payload.realBuffer instanceof ArrayBuffer
+    ? Array.from(new Float64Array(payload.realBuffer))
+    : Array.from(payload.real || []);
+  const imag = payload.imagBuffer instanceof ArrayBuffer
+    ? Array.from(new Float64Array(payload.imagBuffer))
+    : Array.from(payload.imag || []);
+  if (!isPowerOfTwo(gridSize) || real.length !== expectedLength || imag.length !== expectedLength) {
+    return {
+      status: "invalid",
+      reason: "Complex pupil arrays must match a power-of-two square grid."
+    };
+  }
+  const radiusPx = Number(payload.radiusPx) > 0
+    ? Number(payload.radiusPx)
+    : gridSize * PHYSICAL_LENS_PUPIL_RADIUS_FRACTION;
+  const wavelengthNm = Number(payload.wavelengthNm);
+  const workingFNumber = Number(payload.workingFNumber);
+  const wavelengthMm = wavelengthNm / 1000000;
+  const cutoffFrequencyLpMm = wavelengthMm > 0 && workingFNumber > 0
+    ? 1 / (wavelengthMm * workingFNumber)
+    : NaN;
+  const pupil = { gridSize, radiusPx, real, imag };
+  const pupilEnergy = real.reduce((sum, value, index) => sum + value ** 2 + (imag[index] || 0) ** 2, 0);
+  const field = fft2DRadix2Complex(real, imag, gridSize, gridSize, false);
+  if (field.status !== "valid") return field;
+  const psf = field.real.map((value, index) => value ** 2 + field.imag[index] ** 2);
+  const psfEnergy = psf.reduce((sum, value) => sum + value, 0);
+  if (!(psfEnergy > 0)) return { status: "invalid", reason: "Complex pupil has no transmitted energy." };
+  const normalizedPsf = psf.map((value) => value / psfEnergy);
+  const otfResult = fft2DRadix2Complex(normalizedPsf, new Array(expectedLength).fill(0), gridSize, gridSize, false);
+  if (otfResult.status !== "valid") return otfResult;
+  const otfDcReal = otfResult.real[0] || 0;
+  const otfDcImag = otfResult.imag[0] || 0;
+  const otfDc = Math.hypot(otfDcReal, otfDcImag) || 1;
+  const otf = {
+    gridSize,
+    real: otfResult.real.map((value) => value / otfDc),
+    imag: otfResult.imag.map((value) => value / otfDc)
+  };
+  const nativeFrequencyStepLpMm = Number(payload.frequencyStepLpMm);
+  const usesNativePupilFrequencyGrid = nativeFrequencyStepLpMm > 0;
+  const sampleCount = usesNativePupilFrequencyGrid
+    ? Math.max(21, Math.floor(2 * radiusPx + 0.000001) + 1)
+    : Math.max(21, Math.round(Number(payload.sampleCount) || 101));
+  const makeCurve = (dx, dy) => Array.from({ length: sampleCount }, (_, index) => {
+    const pupilOffset = usesNativePupilFrequencyGrid ? index : index / (sampleCount - 1) * 2 * radiusPx;
+    const normalizedFrequency = pupilOffset / (2 * radiusPx);
+    const complexOtf = normalizedFrequency >= 1
+      ? { real: 0, imag: 0, magnitude: 0 }
+      : sampleComplexPupilComplexOtfAxis(pupil, pupilOffset, dx, dy, pupilEnergy);
+    return {
+      normalizedFrequency,
+      lpMm: usesNativePupilFrequencyGrid
+        ? index * nativeFrequencyStepLpMm
+        : Number.isFinite(cutoffFrequencyLpMm) ? normalizedFrequency * cutoffFrequencyLpMm : NaN,
+      value: complexOtf.magnitude,
+      otfReal: complexOtf.real,
+      otfImag: complexOtf.imag,
+      fftGridValue: normalizedFrequency >= 1
+        ? 0
+        : sampleOtfAxisMtf(otf, pupilOffset, dx, dy)
+    };
+  });
+  // Standard fields vary along image-space Y: tangential is the meridional Y cut,
+  // while sagittal is the orthogonal X cut. Keep this identical to app.js fallback.
+  const tangential = makeCurve(0, 1);
+  const sagittal = makeCurve(1, 0);
+  const finiteValues = [...tangential, ...sagittal].map((point) => point.value).filter(Number.isFinite);
+  const zeroSanityPassed = Math.abs((tangential[0]?.value ?? NaN) - 1) < 0.000001
+    && Math.abs((sagittal[0]?.value ?? NaN) - 1) < 0.000001;
+  const rangeSanityPassed = finiteValues.length === sampleCount * 2
+    && finiteValues.every((value) => value >= -1e-9 && value <= 1.000001);
+  const referenceParity = calculateReferencePupilParity(pupil, cutoffFrequencyLpMm);
+  return {
+    status: zeroSanityPassed && rangeSanityPassed ? "opd-connected-worker-prototype" : "prototype-failed",
+    phase: "Phase 2 Step 4",
+    gridSize,
+    radiusPx,
+    wavelengthNm,
+    workingFNumber,
+    cutoffFrequencyLpMm,
+    mtf: { tangential, sagittal },
+    referenceParity,
+    elapsedMs: performance.now() - started,
+    validation: {
+      zeroFrequency: { passed: zeroSanityPassed },
+      range: { passed: rangeSanityPassed },
+      convergence: null
+    },
+    diagnostics: {
+      normalizedPsfEnergy: normalizedPsf.reduce((sum, value) => sum + value, 0),
+      otfDc,
+      otfDcReal,
+      otfDcImag,
+      mtfZeroTangential: tangential[0]?.value,
+      mtfZeroSagittal: sagittal[0]?.value,
+      minimumMtf: finiteValues.length ? Math.min(...finiteValues) : NaN,
+      maximumMtf: finiteValues.length ? Math.max(...finiteValues) : NaN,
+      cutSamplingMethod: "subpixel complex-pupil autocorrelation (FFT-equivalent OTF)"
+    }
+  };
+};
+
 self.onmessage = (event) => {
-  const { requestId, gridSize } = event.data || {};
+  const payload = event.data || {};
+  const { requestId, gridSize, task } = payload;
   try {
-    self.postMessage({ requestId, result: calculateCore(gridSize) });
+    const result = task === "lens-complex-pupil"
+      ? calculateLensComplexPupilMtf(payload)
+      : calculateCore(gridSize);
+    self.postMessage({
+      requestId,
+      status: result.status === "invalid" || result.status === "prototype-failed" ? "error" : "complete",
+      workerVersion: PHYSICAL_MTF_WORKER_VERSION,
+      task: task || "ideal-circular-pupil",
+      result
+    });
   } catch (error) {
-    self.postMessage({ requestId, result: { status: "invalid", warning: error?.message || "Worker calculation failed." } });
+    self.postMessage({
+      requestId,
+      status: "error",
+      workerVersion: PHYSICAL_MTF_WORKER_VERSION,
+      task: task || "ideal-circular-pupil",
+      result: { status: "invalid", warning: error?.message || "Worker calculation failed." }
+    });
   }
 };

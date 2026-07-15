@@ -1,7 +1,7 @@
 /* eslint-env browser, worker */
 
 (() => {
-const PHYSICAL_MTF_CORE_VERSION = "20260715-physical-mtf-focus-response-1";
+const PHYSICAL_MTF_CORE_VERSION = "20260715-physical-mtf-focus-matrix-1";
 const PHYSICAL_LENS_PUPIL_RADIUS_FRACTION = 0.44;
 let canonicalAberrationValidationCache = null;
 const clamp = (value, min, max) => Math.min(max, Math.max(min, Number.isFinite(Number(value)) ? Number(value) : min));

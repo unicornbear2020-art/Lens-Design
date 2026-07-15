@@ -10,8 +10,8 @@ const DIAGRAM_SIZE = {
   height: 480
 };
 
-const ANALYSIS_WORKER_VERSION = "20260715-physical-mtf-focus-response-1";
-const PHYSICAL_MTF_CORE_VERSION = "20260715-physical-mtf-focus-response-1";
+const ANALYSIS_WORKER_VERSION = "20260715-physical-mtf-focus-matrix-1";
+const PHYSICAL_MTF_CORE_VERSION = "20260715-physical-mtf-focus-matrix-1";
 const GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION = "geometric-lsf-contract-20260630-1";
 const DEFAULT_PRESET_KEY = "zeissBiotar50F14Us1786916Ex2";
 const OLD_MISLEADING_ZEISS_PRESET_KEYS = [
@@ -20821,8 +20821,8 @@ const physicalMtf = {
   },
   analyticDiffractionMtf: calculateAnalyticDiffractionMtfValue,
   createStatus: () => ({
-    status: "phase-2-step-7e-focus-response",
-    label: "Physical FFT MTF Phase 2 Step 7E",
+    status: "phase-2-step-7f-focus-matrix",
+    label: "Physical FFT MTF Phase 2 Step 7F",
     coreVersion: globalThis.physicalMtfCore?.PHYSICAL_MTF_CORE_VERSION || "unavailable",
     wavelengthMode: "selectable monochromatic C / d / F and weighted RGB",
     pupilResolutions: PHYSICAL_MTF_ENGINE_SETTINGS.supportedPupilResolutions,
@@ -20831,7 +20831,7 @@ const physicalMtf = {
       "Ideal circular pupil must match analytic diffraction-limited MTF.",
       "Deterministic positive/negative defocus pupils must preserve S/T symmetry, reduce MTF, and match as complex-conjugate cases.",
       "A deterministic astigmatic focus-split pupil must produce the expected sagittal/tangential separation.",
-      "A real Lens Design 3D ray trace must produce an interior best-focus MTF peak and lose contrast on both deliberately defocused sides.",
+      "Real Lens Design 3D ray traces must produce interior best-focus MTF peaks and lose contrast on both deliberately defocused sides across centre, mid and corner fields at C, d and F lines.",
       "Paraxial exit-pupil working f-number must agree with the entrance-pupil nominal f-number; the independent real marginal-ray image-space NA remains visible as a diagnostic.",
       "128 and 256 lens-pupil grids are compared at 10, 30, 40 and 50 lp/mm for both S/T cuts.",
       "Ray-traced OPD must build a finite complex pupil with sampled visibility.",
@@ -20843,7 +20843,7 @@ const physicalMtf = {
     ],
     warnings: [
       "The isolated upper lab still validates an ideal circular pupil.",
-      "Phase 2 Step 7E adds a lens-specific ray trace → OPD → complex pupil → MTF focus-response gate on top of the canonical and two-family external checks; the production geometric preview remains active until the remaining physical-lens validation gates are complete."
+      "Phase 2 Step 7F expands the lens-specific ray trace → OPD → complex pupil → MTF focus-response gate to a 3-field × 3-wavelength matrix; the production geometric preview remains active until the remaining physical-lens validation gates are complete."
     ]
   }),
   sampleExitPupilWavefront,
@@ -21401,9 +21401,10 @@ const physicalMtfFocusResponseScore = (result, normalizedFrequency = 0.2) => {
   return values.length === 2 ? values.reduce((sum, value) => sum + value, 0) / values.length : NaN;
 };
 
-const preparePhysicalMtfFocusResponsePlane = (context, imagePlaneX, gridSize = 128) => {
-  const lineKey = "d";
+const preparePhysicalMtfFocusResponsePlane = (context, imagePlaneX, gridSize = 128, options = {}) => {
+  const lineKey = SPECTRAL_LINES[options.lineKey] ? options.lineKey : "d";
   const line = SPECTRAL_LINES[lineKey];
+  const field = options.field || context.field;
   const system = calculateSystem(context.lenses, line.wavelengthNm);
   const pupilOptions = {
     ...rayTraceApertureOptions(state),
@@ -21419,9 +21420,9 @@ const preparePhysicalMtfFocusResponsePlane = (context, imagePlaneX, gridSize = 1
   const exitPupil = calculateExitPupil(context.lenses, system, pupilOptions);
   const sampled = sampleExitPupilWavefront(context.lenses, system, {
     ...pupilOptions,
-    fieldKey: context.field.key,
-    fieldName: context.field.name,
-    fieldAngleDegrees: context.field.angle,
+    fieldKey: field.key,
+    fieldName: field.name,
+    fieldAngleDegrees: field.angle,
     sampleCount: 15
   });
   const imageSpaceCalibration = auditPhysicalMtfImageSpaceCalibration({
@@ -21436,6 +21437,7 @@ const preparePhysicalMtfFocusResponsePlane = (context, imagePlaneX, gridSize = 1
     status: sampled.status === "opd-sampled" && pupil?.status === "opd-connected-prototype" ? "ready" : "failed",
     lineKey,
     line,
+    field,
     system,
     imagePlaneX,
     sampled,
@@ -21446,16 +21448,25 @@ const preparePhysicalMtfFocusResponsePlane = (context, imagePlaneX, gridSize = 1
   };
 };
 
-const calculatePhysicalMtfEndToEndFocusResponse = async (context, token) => {
+const calculatePhysicalMtfFocusResponseCase = async (context, field, lineKey, token) => {
   const gridSize = 128;
   const normalizedFrequency = 0.2;
   const maximumRequiredMtfLoss = 0.03;
   const minimumRelativeMtfLoss = 0.08;
-  const reference = preparePhysicalMtfFocusResponsePlane(context, 0, gridSize);
+  const line = SPECTRAL_LINES[lineKey] || SPECTRAL_LINES.d;
+  const stableLineKey = SPECTRAL_LINES[lineKey] ? lineKey : "d";
+  const caseId = `${field.key}-${stableLineKey}`;
+  const reference = preparePhysicalMtfFocusResponsePlane(context, 0, gridSize, { field, lineKey: stableLineKey });
   const rayFocus = solvePhysicalMtfRayBestFocus(reference.sampled?.wavefront, { maximumShiftMm: 5 });
   if (reference.status !== "ready" || rayFocus.status !== "solved") {
     return {
       status: "failed",
+      caseId,
+      fieldKey: field.key,
+      fieldName: field.name,
+      fieldAngleDegrees: field.angle,
+      wavelengthKey: stableLineKey,
+      wavelengthNm: line.wavelengthNm,
       method: "Lens Design ray trace → OPD → complex pupil → physical MTF through-focus response",
       reason: reference.status !== "ready" ? "The reference-plane OPD pupil could not be built." : rayFocus.reason,
       rayFocus,
@@ -21466,12 +21477,13 @@ const calculatePhysicalMtfEndToEndFocusResponse = async (context, token) => {
       samples: []
     };
   }
-  const defocusStepMm = physicalMtfFocusResponseDefocusMm(SPECTRAL_LINES.d.wavelengthNm, reference.workingFNumber);
+  const baseDefocusStepMm = physicalMtfFocusResponseDefocusMm(line.wavelengthNm, reference.workingFNumber);
+  const defocusStepMm = Math.min(0.6, baseDefocusStepMm * 2);
   const planeCache = new Map();
   const evaluatePlane = async (imagePlaneX, requestKey) => {
     const key = Number(imagePlaneX.toFixed(7));
     if (planeCache.has(key)) return planeCache.get(key);
-    const prepared = preparePhysicalMtfFocusResponsePlane(context, key, gridSize);
+    const prepared = preparePhysicalMtfFocusResponsePlane(context, key, gridSize, { field, lineKey: stableLineKey });
     if (prepared.status !== "ready") {
       const failed = { status: "failed", imagePlaneX: key, score: NaN, prepared };
       planeCache.set(key, failed);
@@ -21481,7 +21493,7 @@ const calculatePhysicalMtfEndToEndFocusResponse = async (context, token) => {
       wavelengthNm: prepared.line.wavelengthNm,
       workingFNumber: prepared.workingFNumber,
       imageSpaceCalibration: prepared.imageSpaceCalibration
-    }, token, gridSize, `focus-response-${requestKey}`);
+    }, token, gridSize, `focus-matrix-${caseId}-${requestKey}`);
     const value = {
       status: calculated.status === "invalid" || calculated.status === "prototype-failed" ? "failed" : "valid",
       imagePlaneX: key,
@@ -21519,15 +21531,20 @@ const calculatePhysicalMtfEndToEndFocusResponse = async (context, token) => {
     && minimumMeasuredLoss >= requiredMtfLoss;
   return {
     status: passed ? "passed" : "failed",
+    caseId,
+    fieldKey: field.key,
+    fieldName: field.name,
+    fieldAngleDegrees: field.angle,
     method: "Lens Design ray trace → OPD → complex pupil → shared-core physical MTF through-focus response",
     gridSize,
-    wavelengthKey: "d",
-    wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+    wavelengthKey: stableLineKey,
+    wavelengthNm: line.wavelengthNm,
     normalizedFrequency,
     maximumRequiredMtfLoss,
     minimumRelativeMtfLoss,
     requiredMtfLoss,
     defocusStepMm,
+    baseDefocusStepMm,
     rayFocus,
     searchStable,
     bestFocusPlaneX: best?.imagePlaneX ?? NaN,
@@ -21544,6 +21561,54 @@ const calculatePhysicalMtfEndToEndFocusResponse = async (context, token) => {
       : !searchStable
         ? "The physical MTF best-focus peak was not interior to the bounded scan."
         : "One or both deliberate defocus directions did not reduce physical MTF by the required relative amount."
+  };
+};
+
+const summarizePhysicalMtfFocusResponseMatrix = (caseResults = []) => {
+  const fields = new Set(caseResults.map((item) => item.fieldKey).filter(Boolean));
+  const wavelengths = new Set(caseResults.map((item) => item.wavelengthKey).filter(Boolean));
+  const expectedCaseCount = RAY_TRACE_FIELDS.length * Object.keys(SPECTRAL_LINES).length;
+  const finiteLosses = caseResults.map((item) => item.minimumMeasuredLoss).filter(Number.isFinite);
+  const passed = caseResults.length === expectedCaseCount
+    && fields.size === RAY_TRACE_FIELDS.length
+    && wavelengths.size === Object.keys(SPECTRAL_LINES).length
+    && caseResults.every((item) => item.status === "passed");
+  return {
+    status: passed ? "passed" : "failed",
+    method: "selected-lens centre / mid / corner × C / d / F ray trace → OPD → complex pupil → physical MTF focus-response matrix",
+    coverage: {
+      fieldCount: fields.size,
+      wavelengthCount: wavelengths.size,
+      caseCount: caseResults.length,
+      expectedCaseCount,
+      planeCount: caseResults.reduce((sum, item) => sum + (item.samples?.length || 0), 0)
+    },
+    minimumMeasuredLoss: finiteLosses.length ? Math.min(...finiteLosses) : NaN,
+    caseResults,
+    failures: caseResults.filter((item) => item.status !== "passed"),
+    reason: passed ? "" : "One or more field × wavelength focus-response cases failed or the matrix coverage is incomplete."
+  };
+};
+
+const calculatePhysicalMtfEndToEndFocusResponseMatrix = async (context, token) => {
+  const caseResults = [];
+  for (const field of RAY_TRACE_FIELDS) {
+    for (const lineKey of Object.keys(SPECTRAL_LINES)) {
+      caseResults.push(await calculatePhysicalMtfFocusResponseCase(context, field, lineKey, token));
+      if (token !== state.physicalLensMtfCalculationToken) {
+        throw new Error("Physical MTF focus-response matrix request became stale.");
+      }
+    }
+  }
+  const summary = summarizePhysicalMtfFocusResponseMatrix(caseResults);
+  const selectedCase = caseResults.find((item) => (
+    item.fieldKey === context.field.key && item.wavelengthKey === "d"
+  )) || caseResults.find((item) => item.wavelengthKey === "d") || caseResults[0] || null;
+  return {
+    ...summary,
+    phase: "Phase 2 Step 7F",
+    gridSize: 128,
+    selectedCase
   };
 };
 
@@ -21886,7 +21951,7 @@ const schedulePhysicalLensMtfCalculation = ({ immediate = false } = {}) => {
       if (token !== state.physicalLensMtfCalculationToken) return;
       const aberrationValidation = await calculatePhysicalMtfCanonicalAberrationValidation(token);
       if (token !== state.physicalLensMtfCalculationToken) return;
-      const focusResponseValidation = await calculatePhysicalMtfEndToEndFocusResponse(context, token);
+      const focusResponseValidation = await calculatePhysicalMtfEndToEndFocusResponseMatrix(context, token);
       if (token !== state.physicalLensMtfCalculationToken) return;
       const weights = isPolychromatic ? getCurrentPolychromaticWeights() : { [context.wavelengthKey]: 1 };
       const selected = isPolychromatic
@@ -21947,8 +22012,8 @@ const schedulePhysicalLensMtfCalculation = ({ immediate = false } = {}) => {
         status: !validationPassed
           ? "prototype-failed"
           : convergence
-            ? (isPolychromatic ? "step-7e-polychromatic-convergence-passed" : "step-7e-monochromatic-convergence-passed")
-            : (isPolychromatic ? "step-7e-polychromatic-prototype" : "step-7e-monochromatic-prototype"),
+            ? (isPolychromatic ? "step-7f-polychromatic-convergence-passed" : "step-7f-monochromatic-convergence-passed")
+            : (isPolychromatic ? "step-7f-polychromatic-prototype" : "step-7f-monochromatic-prototype"),
         validationLabel: !calibrationPassed
           ? "Image-space calibration audit failed"
           : !referenceParityPassed
@@ -21958,14 +22023,14 @@ const schedulePhysicalLensMtfCalculation = ({ immediate = false } = {}) => {
             : !canonicalAberrationsPassed
               ? "Canonical defocus / astigmatism validation failed"
             : !focusResponsePassed
-              ? "Ray-traced OPD focus-response validation failed"
+              ? "Field × wavelength ray-traced OPD focus-response matrix failed"
             : !polychromaticPassed
               ? "Complex C/d/F OTF combination failed"
               : convergence
-                ? (convergencePassed ? "Step 7E real-lens focus response, canonical aberration, two-family reference and convergence passed" : "Lens-pupil convergence failed")
+                ? (convergencePassed ? "Step 7F focus-response matrix, canonical aberration, two-family reference and convergence passed" : "Lens-pupil convergence failed")
                 : isPolychromatic
-                  ? "Step 7E real-lens focus response, canonical aberration and two-family reference passed — select 256 for convergence"
-                  : "Step 7E monochromatic prototype — select RGB for spectral validation",
+                  ? "Step 7F focus-response matrix, canonical aberration and two-family reference passed — select 256 for convergence"
+                  : "Step 7F monochromatic prototype — select RGB for spectral validation",
         context: {
           fieldKey: context.field.key,
           fieldName: context.field.name,
@@ -22007,7 +22072,7 @@ const schedulePhysicalLensMtfCalculation = ({ immediate = false } = {}) => {
           "The external gate covers DoubleGauss and ReverseTelephoto at 6 field points × 3 Fraunhofer lines: 18 cases and 180 S/T checkpoints.",
           "Canonical ±0.25-wave defocus-coefficient and astigmatic focus-split pupils passed the shared-core behavioural gate.",
           focusResponsePassed
-            ? "The selected lens passed the d-line 3D ray trace → OPD → complex pupil → physical MTF best-focus / deliberate-defocus gate."
+            ? "The selected lens passed all 9 centre / mid / corner × C / d / F ray trace → OPD → complex pupil → physical MTF focus-response cases."
             : focusResponseValidation.reason
         ].filter(Boolean)
       };
@@ -25344,18 +25409,20 @@ const renderPhysicalLensMtfPrototype = ({ result, pending, error }) => {
   const externalReferencePassed = result?.externalReferenceParity?.status === "passed";
   const canonicalAberrationsPassed = result?.aberrationValidation?.status === "passed";
   const focusResponsePassed = result?.focusResponseValidation?.status === "passed";
+  const focusResponseCase = result?.focusResponseValidation?.selectedCase;
+  const focusResponseCoverage = result?.focusResponseValidation?.coverage || {};
   const isPolychromatic = result?.context?.wavelengthMode === "rgb";
   return `
     <section class="mtf-subsection physical-lens-mtf-prototype">
       <div class="panel-heading compact-heading">
         <h4>Lens OPD Physical MTF Prototype</h4>
-        <span class="badge">Phase 2 Step 7E</span>
+        <span class="badge">Phase 2 Step 7F</span>
         <span class="badge ${result?.executionMode === "worker" ? "badge-good" : ""}">${escapeHtml(executionLabel)}</span>
         ${result?.imageSpaceCalibration ? `<span class="badge ${calibrationPassed ? "badge-good" : "badge-warning"}">${calibrationPassed ? "Image-space calibration passed" : "Calibration audit failed"}</span>` : ""}
         ${result?.convergence ? `<span class="badge ${convergencePassed ? "badge-good" : "badge-warning"}">${escapeHtml(result.validationLabel)}</span>` : ""}
         ${result?.externalReferenceParity ? `<span class="badge ${externalReferencePassed ? "badge-good" : "badge-warning"}">${externalReferencePassed ? "External matrix parity passed" : "External matrix parity check"}</span>` : ""}
         ${result?.aberrationValidation ? `<span class="badge ${canonicalAberrationsPassed ? "badge-good" : "badge-warning"}">${canonicalAberrationsPassed ? "Defocus + astigmatism gate passed" : "Aberration gate check"}</span>` : ""}
-        ${result?.focusResponseValidation ? `<span class="badge ${focusResponsePassed ? "badge-good" : "badge-warning"}">${focusResponsePassed ? "Real-lens focus response passed" : "Focus-response gate check"}</span>` : ""}
+        ${result?.focusResponseValidation ? `<span class="badge ${focusResponsePassed ? "badge-good" : "badge-warning"}">${focusResponsePassed ? "3 × 3 focus matrix passed" : "Focus matrix check"}</span>` : ""}
       </div>
       ${pending ? `<div class="analysis-updating" role="status">Building ray-traced complex pupil and calculating FFT MTF…</div>` : ""}
       ${error ? `<p class="warning ray-warning">${escapeHtml(error)}</p>` : ""}
@@ -25383,23 +25450,45 @@ const renderPhysicalLensMtfPrototype = ({ result, pending, error }) => {
           ${metric("Reference pupil", referenceParityPassed ? "Pass" : result.referenceParity?.status === "not-applicable" ? "N/A" : "Check", Number.isFinite(result.referenceParity?.maximumDifference) ? `max Δ ${formatNumber(result.referenceParity.maximumDifference, 4)}` : "zero-phase parity")}
           ${metric("External matrix", externalReferencePassed ? "Pass" : "Check", Number.isFinite(result.externalReferenceParity?.maximumDifference) ? `${formatNumber(result.externalReferenceParity?.coverage?.caseCount, 0)} cases · max Δ ${formatNumber(result.externalReferenceParity.maximumDifference, 4)}` : "pinned fixture")}
           ${metric("Canonical aberrations", canonicalAberrationsPassed ? "Pass" : "Check", Number.isFinite(result.aberrationValidation?.diagnostics?.astigmatismSeparationAt30) ? `S/T split ${formatNumber(result.aberrationValidation.diagnostics.astigmatismSeparationAt30, 4)}` : "defocus + astigmatism")}
-          ${metric("Real-lens focus", focusResponsePassed ? "Pass" : "Check", Number.isFinite(result.focusResponseValidation?.minimumMeasuredLoss) ? `min MTF loss ${formatNumber(result.focusResponseValidation.minimumMeasuredLoss, 4)}` : "ray → OPD → pupil → MTF")}
+          ${metric("Focus matrix", focusResponsePassed ? "Pass" : "Check", `${formatNumber(focusResponseCoverage.caseCount, 0)} / ${formatNumber(focusResponseCoverage.expectedCaseCount, 0)} cases`)}
           ${metric("Spectral OTF", polychromaticPassed ? "Pass" : isPolychromatic ? "Check" : "Not selected", polychromaticPassed ? "C 25% · d 50% · F 25%" : "select RGB C/d/F")}
           ${metric("Complex vs |OTF|", Number.isFinite(result.polychromaticValidation?.maximumComplexCombinationDelta) ? formatNumber(result.polychromaticValidation.maximumComplexCombinationDelta, 4) : "--", "maximum MTF difference")}
         </div>
         ${renderPhysicalLensMtfReadouts(result)}
         ${result.focusResponseValidation ? `
           <details class="mtf-diagnostics-details physical-mtf-focus-response-audit">
-            <summary>Real-lens focus-response audit — ${focusResponsePassed ? "passed" : "check"}</summary>
+            <summary>Real-lens field × wavelength focus-response matrix — ${focusResponsePassed ? "passed" : "check"}</summary>
             <div class="compact-metric-row">
-              ${metric("Ray best focus", formatNumber(result.focusResponseValidation.rayFocus?.bestFocusPlaneX, 4), "mm image-plane X")}
-              ${metric("MTF best focus", formatNumber(result.focusResponseValidation.bestFocusPlaneX, 4), "mm image-plane X")}
-              ${metric("Defocus step", formatNumber(result.focusResponseValidation.defocusStepMm, 4), "mm each side")}
-              ${metric("Best MTF", formatNumber(result.focusResponseValidation.bestScore, 4), `mean S/T at ${formatNumber(result.focusResponseValidation.normalizedFrequency, 2)} cutoff`)}
-              ${metric("−defocus loss", formatNumber(result.focusResponseValidation.negativeMtfLoss, 4), `required ${formatNumber(result.focusResponseValidation.requiredMtfLoss, 4)}`)}
-              ${metric("+defocus loss", formatNumber(result.focusResponseValidation.positiveMtfLoss, 4), `required ${formatNumber(result.focusResponseValidation.requiredMtfLoss, 4)}`)}
+              ${metric("Fields", formatNumber(focusResponseCoverage.fieldCount, 0), "centre · mid · corner")}
+              ${metric("Wavelengths", formatNumber(focusResponseCoverage.wavelengthCount, 0), "C · d · F")}
+              ${metric("Cases", formatNumber(focusResponseCoverage.caseCount, 0), `expected ${formatNumber(focusResponseCoverage.expectedCaseCount, 0)}`)}
+              ${metric("Audit planes", formatNumber(focusResponseCoverage.planeCount, 0), "128 × 128 worker FFT")}
+              ${metric("Minimum loss", formatNumber(result.focusResponseValidation.minimumMeasuredLoss, 4), "across passing matrix")}
+              ${metric("Selected d focus", formatNumber(focusResponseCase?.bestFocusPlaneX, 4), `${escapeHtml(focusResponseCase?.fieldName || "field")} mm`)}
             </div>
-            <p class="diagram-note">This gate uses the selected lens and field at d-line on a fixed 128 × 128 audit grid. It solves a bounded 3D real-ray focus, rebuilds ray-traced OPD and the complex pupil at each plane, then requires an interior physical-MTF peak and at least 8% relative contrast loss on both deliberate-defocus sides (capped at 0.03 absolute MTF).</p>
+            <div class="mtf-readout-table physical-mtf-focus-matrix-table" role="table" aria-label="Physical MTF field and wavelength focus-response matrix">
+              <div class="mtf-readout-row mtf-readout-head" role="row">
+                <span role="columnheader">Field</span>
+                <span role="columnheader">Line</span>
+                <span role="columnheader">Best focus</span>
+                <span role="columnheader">Step</span>
+                <span role="columnheader">−loss</span>
+                <span role="columnheader">+loss</span>
+                <span role="columnheader">Gate</span>
+              </div>
+              ${(result.focusResponseValidation.caseResults || []).map((item) => `
+                <div class="mtf-readout-row" role="row">
+                  <span role="cell">${escapeHtml(item.fieldName || item.fieldKey || "Field")} ${formatNumber(item.fieldAngleDegrees, 1)}°</span>
+                  <span role="cell">${escapeHtml(item.wavelengthKey || "d")} ${formatNumber(item.wavelengthNm, 1)} nm</span>
+                  <span role="cell">${formatNumber(item.bestFocusPlaneX, 4)} mm</span>
+                  <span role="cell">±${formatNumber(item.defocusStepMm, 4)} mm</span>
+                  <span role="cell">${formatNumber(item.negativeMtfLoss, 4)}</span>
+                  <span role="cell">${formatNumber(item.positiveMtfLoss, 4)}</span>
+                  <span role="cell">${item.status === "passed" ? "Pass" : "Check"}</span>
+                </div>
+              `).join("")}
+            </div>
+            <p class="diagram-note">Every case uses a fixed 128 × 128 audit grid, solves a bounded 3D real-ray focus, rebuilds OPD and the complex pupil across five local focus planes at twice the base depth-of-focus audit separation, and requires an interior MTF peak with at least 8% relative loss on both adjacent defocus sides (capped at 0.03 absolute MTF).</p>
           </details>
         ` : ""}
         ${renderPhysicalMtfExternalReferenceAudit(result.externalReferenceParity)}
@@ -25408,7 +25497,7 @@ const renderPhysicalLensMtfPrototype = ({ result, pending, error }) => {
         ` : `<p class="diagram-note">Select the 256 × 256 grid to run the 128 / 256 convergence gate.</p>`}
         ${result.warnings.map((warning) => `<p class="warning ray-warning">${escapeHtml(warning)}</p>`).join("")}
       ` : ""}
-      <p class="diagram-note">Phase 2 Step 7E adds a selected-lens d-line 3D ray trace → OPD → complex pupil → physical MTF focus-response gate to the deterministic aberration checks and two independent Optiland 0.5.8 lens-family matrices.</p>
+      <p class="diagram-note">Phase 2 Step 7F expands the selected-lens 3D ray trace → OPD → complex pupil → physical MTF focus-response gate to centre, mid and corner fields across C, d and F lines: 9 cases on a fixed audit grid.</p>
     </section>
   `;
 };
@@ -25517,7 +25606,7 @@ const renderPhysicalMtfLab = () => {
         ` : ""}
       ` : ""}
       ${renderPhysicalLensMtfPrototype({ result: lensResult, pending: lensPending, error: lensErrorForCurrentContext })}
-      <p class="diagram-note">The upper chart validates the ideal circular-pupil FFT pipeline. Phase 2 Step 7E also checks canonical aberrations and the selected real lens's best-focus / deliberate-defocus response before accepting the two-family field × wavelength gate.</p>
+      <p class="diagram-note">The upper chart validates the ideal circular-pupil FFT pipeline. Phase 2 Step 7F also checks canonical aberrations and a 3-field × 3-wavelength real-lens focus-response matrix before accepting the two-family external field × wavelength gate.</p>
       ` : ""}
     </details>
   `;
@@ -37684,7 +37773,7 @@ const runOpticsSelfCheck = (options = {}) => {
   test("physical FFT MTF engine remains separate and gated", () => {
     const status = physicalMtf.createStatus();
     const fft = physicalMtf.fftRadix2Complex([1, 0, 0, 0], [0, 0, 0, 0]);
-    return status.status === "phase-2-step-7e-focus-response"
+    return status.status === "phase-2-step-7f-focus-matrix"
       && status.coreVersion === PHYSICAL_MTF_CORE_VERSION
       && [10, 30, 40, 50].every((frequency) => status.validationFrequenciesLpMm.includes(frequency))
       && status.warnings.some((warning) => warning.includes("geometric preview"))
@@ -37820,8 +37909,34 @@ const runOpticsSelfCheck = (options = {}) => {
       && Math.abs(solved.bestFocusPlaneX - bestFocusPlaneX) < 1e-12
       && solved.rmsSpotAtBestFocusMm < 1e-12
       && solved.rmsSpotAtReferenceMm > solved.rmsSpotAtBestFocusMm
-      && calculatePhysicalMtfEndToEndFocusResponse.toString().includes("preparePhysicalMtfFocusResponsePlane")
-      && calculatePhysicalMtfEndToEndFocusResponse.toString().includes("calculatePhysicalLensMtfWithWorker");
+      && calculatePhysicalMtfFocusResponseCase.toString().includes("preparePhysicalMtfFocusResponsePlane")
+      && calculatePhysicalMtfFocusResponseCase.toString().includes("calculatePhysicalLensMtfWithWorker");
+  });
+
+  test("physical MTF phase 2 step 7F requires complete centre mid corner by C d F focus coverage", () => {
+    const makeCases = () => RAY_TRACE_FIELDS.flatMap((field) => Object.keys(SPECTRAL_LINES).map((lineKey) => ({
+      status: "passed",
+      fieldKey: field.key,
+      wavelengthKey: lineKey,
+      minimumMeasuredLoss: 0.01,
+      samples: Array(5).fill({ status: "valid" })
+    })));
+    const complete = summarizePhysicalMtfFocusResponseMatrix(makeCases());
+    const incomplete = summarizePhysicalMtfFocusResponseMatrix(makeCases().slice(0, -1));
+    const failedCases = makeCases();
+    failedCases[4] = { ...failedCases[4], status: "failed" };
+    const failed = summarizePhysicalMtfFocusResponseMatrix(failedCases);
+    return complete.status === "passed"
+      && complete.coverage.fieldCount === 3
+      && complete.coverage.wavelengthCount === 3
+      && complete.coverage.caseCount === 9
+      && complete.coverage.expectedCaseCount === 9
+      && complete.coverage.planeCount === 45
+      && incomplete.status === "failed"
+      && failed.status === "failed"
+      && failed.failures.length === 1
+      && calculatePhysicalMtfEndToEndFocusResponseMatrix.toString().includes("RAY_TRACE_FIELDS")
+      && calculatePhysicalMtfEndToEndFocusResponseMatrix.toString().includes("Object.keys(SPECTRAL_LINES)");
   });
 
   deepTest("physical MTF phase 2 step 7E connects a real lens ray trace to focus-dependent complex-pupil MTF", () => withTemporaryState(() => {
@@ -37905,7 +38020,7 @@ const runOpticsSelfCheck = (options = {}) => {
     const analyticMidpoint = physicalMtf.analyticDiffractionMtf(0.5);
     const polyOtf = physicalMtf.combinePolychromaticComplexOtf();
     const sensorMtf = physicalMtf.calculateSensorMtfProfile();
-    return physicalMtf.createStatus().status === "phase-2-step-7e-focus-response"
+    return physicalMtf.createStatus().status === "phase-2-step-7f-focus-matrix"
       && pupilResult.status === "opd-connected-prototype"
       && pupilResult.gridSize === 128
       && pupilResult.radiusPx / pupilResult.gridSize > 0.4
@@ -38078,17 +38193,32 @@ const runOpticsSelfCheck = (options = {}) => {
       },
       focusResponseValidation: {
         status: "passed",
-        rayFocus: { bestFocusPlaneX: 0.012 },
-        bestFocusPlaneX: 0.01,
-        defocusStepMm: 0.02,
-        normalizedFrequency: 0.2,
-        bestScore: 0.72,
-        negativeMtfLoss: 0.12,
-        positiveMtfLoss: 0.11,
-        maximumRequiredMtfLoss: 0.03,
-        minimumRelativeMtfLoss: 0.08,
-        requiredMtfLoss: 0.03,
-        minimumMeasuredLoss: 0.11
+        coverage: { fieldCount: 3, wavelengthCount: 3, caseCount: 9, expectedCaseCount: 9, planeCount: 45 },
+        minimumMeasuredLoss: 0.08,
+        selectedCase: {
+          status: "passed",
+          fieldKey: "center",
+          fieldName: "Centre field",
+          fieldAngleDegrees: 0,
+          wavelengthKey: "d",
+          wavelengthNm: 587.6,
+          bestFocusPlaneX: 0.01,
+          defocusStepMm: 0.02,
+          negativeMtfLoss: 0.12,
+          positiveMtfLoss: 0.11
+        },
+        caseResults: RAY_TRACE_FIELDS.flatMap((field) => Object.entries(SPECTRAL_LINES).map(([lineKey, line]) => ({
+          status: "passed",
+          fieldKey: field.key,
+          fieldName: field.name,
+          fieldAngleDegrees: field.angle,
+          wavelengthKey: lineKey,
+          wavelengthNm: line.wavelengthNm,
+          bestFocusPlaneX: 0.01 + field.angle / 1000,
+          defocusStepMm: 0.02,
+          negativeMtfLoss: 0.12,
+          positiveMtfLoss: 0.11
+        })))
       },
       polychromaticValidation: { status: "passed", maximumComplexCombinationDelta: 0.02 },
       opdDiagnostics: { rmsOpdWaves: 0.02 },
@@ -38098,7 +38228,7 @@ const runOpticsSelfCheck = (options = {}) => {
     };
     const markup = renderPhysicalLensMtfPrototype({ result, pending: false, error: "" });
     return markup.includes("Lens OPD Physical MTF Prototype")
-      && markup.includes("Phase 2 Step 7E")
+      && markup.includes("Phase 2 Step 7F")
       && markup.includes("physical-lens-mtf-chart")
       && markup.includes("physical-lens-mtf-sagittal")
       && markup.includes("physical-lens-mtf-tangential")
@@ -38107,8 +38237,11 @@ const runOpticsSelfCheck = (options = {}) => {
       && markup.includes("Reference pupil")
       && markup.includes("External matrix parity passed")
       && markup.includes("Defocus + astigmatism gate passed")
-      && markup.includes("Real-lens focus response passed")
-      && markup.includes("Real-lens focus-response audit — passed")
+      && markup.includes("3 × 3 focus matrix passed")
+      && markup.includes("Real-lens field × wavelength focus-response matrix — passed")
+      && markup.includes("9 / 9 cases")
+      && markup.includes("Centre field 0°")
+      && markup.includes("Corner field 20°")
       && markup.includes("Canonical aberrations")
       && markup.includes("External reference lens-family audit")
       && markup.includes("18 cases · 180 S/T checkpoints")

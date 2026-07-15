@@ -4339,6 +4339,15 @@ select {
   grid-template-columns: minmax(106px, 1fr) minmax(62px, 0.65fr) repeat(4, minmax(56px, 0.62fr)) minmax(58px, 0.58fr) minmax(70px, 0.7fr);
 }
 
+.physical-mtf-focus-matrix-table {
+  overflow-x: auto;
+}
+
+.physical-mtf-focus-matrix-table .mtf-readout-row {
+  min-width: 760px;
+  grid-template-columns: minmax(138px, 1.3fr) minmax(108px, 1fr) repeat(4, minmax(82px, 0.72fr)) minmax(64px, 0.58fr);
+}
+
 .mtf-readout-row span {
   border: 1px solid var(--line);
   border-radius: 6px;

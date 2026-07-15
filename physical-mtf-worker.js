@@ -1,9 +1,9 @@
 /* eslint-env worker */
 
-const PHYSICAL_MTF_WORKER_VERSION = "20260715-physical-mtf-focus-response-1";
+const PHYSICAL_MTF_WORKER_VERSION = "20260715-physical-mtf-focus-matrix-1";
 
 try {
-  importScripts("physical-mtf-core.js?v=20260715-physical-mtf-focus-response-1");
+  importScripts("physical-mtf-core.js?v=20260715-physical-mtf-focus-matrix-1");
 } catch (error) {
   self.physicalMtfCoreLoadError = error;
 }

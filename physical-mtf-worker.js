@@ -1,6 +1,6 @@
 /* eslint-env worker */
 
-const PHYSICAL_MTF_WORKER_VERSION = "20260714-default-ray-count-3-1";
+const PHYSICAL_MTF_WORKER_VERSION = "20260715-ray-sampling-performance-1";
 const PHYSICAL_LENS_PUPIL_RADIUS_FRACTION = 0.44;
 const clamp = (value, min, max) => Math.min(max, Math.max(min, Number.isFinite(Number(value)) ? Number(value) : min));
 const isPowerOfTwo = (value) => Number.isInteger(value) && value > 0 && (value & (value - 1)) === 0;

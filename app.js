@@ -10,7 +10,7 @@ const DIAGRAM_SIZE = {
   height: 480
 };
 
-const ANALYSIS_WORKER_VERSION = "20260714-default-ray-count-3-1";
+const ANALYSIS_WORKER_VERSION = "20260715-ray-sampling-performance-1";
 const GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION = "geometric-lsf-contract-20260630-1";
 const DEFAULT_PRESET_KEY = "zeissBiotar50F14Us1786916Ex2";
 const OLD_MISLEADING_ZEISS_PRESET_KEYS = [
@@ -313,6 +313,7 @@ const PANEL_FIELD_STEPS = {
   retargetMaxDiameter: 1,
   retargetMaxTrackLength: 1,
   rayTraceRayCount: 2,
+  analysisRayTraceRayCount: 2,
   imageCircleFocalLength: 1,
   imageCircleAngleDegrees: 0.5,
   rayCircleMaxFieldAngleDegrees: 1,
@@ -377,6 +378,7 @@ const DEFAULT_ANALYSIS_SETTINGS = {
   derivedApertureStopSpec: null,
   optimizerAllowStopShiftInAnchorGap: false,
   rayTraceRayCount: 3,
+  analysisRayTraceRayCount: 9,
   spotDisplayMode: "rgb",
   spotQuality: "interactive",
   spotScaleMode: "auto",
@@ -4679,6 +4681,16 @@ const loadDesign = (design) => {
       : DEFAULT_ANALYSIS_SETTINGS.diagramCustomFieldAngleDegrees;
     state.diagramRayColorMode = normalizeDiagramRayColorMode(design.analysisSettings.diagramRayColorMode);
     state.diagramRayWavelengthMode = normalizeDiagramRayWavelengthMode(design.analysisSettings.diagramRayWavelengthMode);
+    state.rayTraceRayCount = Math.round(clamp(
+      toNumber(design.analysisSettings.rayTraceRayCount) || DEFAULT_ANALYSIS_SETTINGS.rayTraceRayCount,
+      3,
+      31
+    ));
+    state.analysisRayTraceRayCount = Math.round(clamp(
+      toNumber(design.analysisSettings.analysisRayTraceRayCount) || DEFAULT_ANALYSIS_SETTINGS.analysisRayTraceRayCount,
+      5,
+      31
+    ));
     state.diagramTargetReferenceMode = normalizeDiagramTargetReferenceMode(design.analysisSettings.diagramTargetReferenceMode);
     state.diagramMountReferenceMode = normalizeDiagramMountReferenceMode(design.analysisSettings.diagramMountReferenceMode);
     state.diagramManualMountDistanceMm = Number.isFinite(toNumber(design.analysisSettings.diagramManualMountDistanceMm))
@@ -4817,6 +4829,7 @@ const serializeProjectJson = () => ({
     optimizerAllowStopShiftInAnchorGap: state.optimizerAllowStopShiftInAnchorGap,
     apertureDiameter: state.apertureDiameter,
     rayTraceRayCount: state.rayTraceRayCount,
+    analysisRayTraceRayCount: state.analysisRayTraceRayCount,
     imageMagnificationFocusKey: state.imageMagnificationFocusKey,
     mtfEngine: state.mtfEngine,
     mtfLsfQuality: state.mtfLsfQuality,
@@ -5028,6 +5041,7 @@ const adjustPanelField = (field, delta) => {
   if (field === "apertureStopDistanceFromSensorMm") nextValue = Math.max(0, nextValue);
   if (field === "apertureStopDistanceFromFrontMm") nextValue = Math.max(0, nextValue);
   if (field === "rayTraceRayCount") nextValue = clamp(Math.round(nextValue), 3, 31);
+  if (field === "analysisRayTraceRayCount") nextValue = clamp(Math.round(nextValue), 5, 31);
   if (field === "imageCircleFocalLength") nextValue = Math.max(0.1, nextValue);
   if (field === "imageCircleAngleDegrees") nextValue = clamp(nextValue, 0.1, 178.9);
   if (field === "rayCircleMaxFieldAngleDegrees") nextValue = clamp(nextValue, 1, 70);
@@ -5908,7 +5922,7 @@ const calculateImageMagnificationAnalysis = (system, options = {}) => {
     fieldAngleDegrees: 0,
     fieldKey: "center",
     fieldName: "On-axis",
-    rayCount: Math.min(9, Math.max(5, toNumber(state.rayTraceRayCount) || 7)),
+    rayCount: Math.min(9, Math.max(5, toNumber(state.analysisRayTraceRayCount) || 9)),
     apertureDiameter: state.apertureDiameter
   });
   const finiteConjugateValidation = calculateFiniteConjugateFocusValidation(
@@ -10856,7 +10870,7 @@ const fieldImageHeight = (system, angleDegrees, trace) => {
 const sampleImageCircleCoverage = (lenses, system, options = {}) => {
   const maxFieldAngleDegrees = clamp(toNumber(options.maxFieldAngleDegrees) || 30, 1, 70);
   const fieldStepDegrees = clamp(toNumber(options.fieldStepDegrees) || 1, 0.5, 10);
-  const rayCountPerField = Math.round(clamp(toNumber(options.rayCountPerField) || state.rayTraceRayCount, 3, 31));
+  const rayCountPerField = Math.round(clamp(toNumber(options.rayCountPerField) || state.analysisRayTraceRayCount, 5, 31));
   const wavelengthMode = options.wavelengthMode === "rgbWorst" ? "rgbWorst" : "d";
   const sampleCount = Math.floor(maxFieldAngleDegrees / fieldStepDegrees) + 1;
   const angles = Array.from({ length: sampleCount }, (_, index) => Number(Math.min(maxFieldAngleDegrees, index * fieldStepDegrees).toFixed(3)));
@@ -11103,7 +11117,7 @@ const calculateDistortionCurve = (lenses, system, options = {}) => {
     const fan = calculateRayFan(lenses, system, {
       ...options,
       fieldAngleDegrees: angle,
-      rayCount: Math.max(3, Math.min(toNumber(options.rayCount) || state.rayTraceRayCount, 9))
+      rayCount: Math.max(5, Math.min(toNumber(options.rayCount) || state.analysisRayTraceRayCount, 9))
     });
     const valid = fan.samples.filter((sample) => sample.status === "valid" && Number.isFinite(sample.rayImageY));
     const chief = valid.reduce((closest, sample) => (
@@ -11183,7 +11197,7 @@ const estimateBestFocusByField = (lenses, system, options = {}) => {
 
 const calculateRayFanAberrationData = (lenses, system, options = {}) => {
   const fieldAngleDegrees = selectedRayFanFieldAngle();
-  const rayCount = Math.round(clamp(toNumber(options.rayCount) || state.rayTraceRayCount, 3, 31));
+  const rayCount = Math.round(clamp(toNumber(options.rayCount) || state.analysisRayTraceRayCount, 5, 31));
   const commonOptions = {
     ...rayTraceApertureOptions(state),
     rayCount,
@@ -11247,7 +11261,7 @@ const calculateClassicalAberrationSummary = (lenses, system, spectralSystems = {
     state.mtfSensorFormatKey,
     Math.abs(toNumber(system.effectiveFocalLength)) || 50
   );
-  const rayCount = Math.round(clamp(toNumber(state.rayTraceRayCount) || 9, 5, 15));
+  const rayCount = Math.round(clamp(toNumber(state.analysisRayTraceRayCount) || 9, 5, 15));
   const fanRows = fields.map((field) => {
     const lines = Object.entries(SPECTRAL_LINES).map(([lineKey, line]) => {
       const lineSystem = spectralSystems[lineKey] || system;
@@ -11714,7 +11728,7 @@ const evaluateToleranceRun = (lenses, options = {}) => {
   const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
   const rayOptions = {
     ...rayTraceApertureOptions(state),
-    rayCount: Math.min(9, Math.max(5, toNumber(state.rayTraceRayCount) || 7)),
+    rayCount: Math.min(9, Math.max(5, toNumber(state.analysisRayTraceRayCount) || 9)),
     wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
     spectralLineKey: "d"
   };
@@ -16587,7 +16601,7 @@ const renderOpticalDiagram = (system, spectralSystems, rayTraceResult, diagramAp
     ? findBestRealRayFocusPlane(diagramLenses, spectralSystems.d || system, {
       ...rayTraceApertureOptions(state),
       apertureDiameter: diagramAperturePreview?.apertureDiameter || state.apertureDiameter,
-      rayCount: Math.max(9, state.rayTraceRayCount),
+      rayCount: Math.max(9, state.analysisRayTraceRayCount),
       referenceImagePlaneX: referenceImagePlaneXValue
     })
     : null;
@@ -19166,7 +19180,7 @@ const renderRayTracePanel = (rayTraceResults, spectralSystems, system) => {
         Show real traced rays
       </label>
       <div class="ray-trace-inputs">
-        ${panelSteppableInput({ field: "rayTraceRayCount", label: "Ray count", action: "update-ray-trace", inputmode: "numeric", unit: "3-31" })}
+        ${panelSteppableInput({ field: "rayTraceRayCount", label: "Diagram ray count", action: "update-ray-trace", inputmode: "numeric", unit: "3-31" })}
         <label>
           Spot display
           <select data-action="update-spot-mode" aria-label="Spot diagram display mode">
@@ -19180,6 +19194,7 @@ const renderRayTracePanel = (rayTraceResults, spectralSystems, system) => {
       </div>
       <div class="ray-trace-results">
         ${metric("Real ray trace", `${aggregate.validRayCount}/${aggregate.totalRayCount}`, "valid rays")}
+        ${metric("Analysis sampling", state.analysisRayTraceRayCount, "rays per field · independent of diagram")}
         ${metric("Worst RMS spot radius", formatNumber(aggregate.rmsSpotRadius, 4), "mm at sensor")}
         ${metric("Missed aperture", aggregate.missedRayCount, "rays")}
         ${metric("First failed surface", escapeHtml(failedSurfaceText), failedSurface?.patentSurfaceNumber ? `patent S${failedSurface.patentSurfaceNumber}` : "trace diagnostic")}
@@ -19282,7 +19297,7 @@ const throughFocusSpotRows = (lenses, system, spectralMode = "rgb") => {
       fieldKey: `through-focus-${rowIndex}`,
       fieldName: `${formatNumber(imageHeightMm, 2)} mm image height`,
       fieldAngleDegrees,
-      rayCount: Math.max(7, Math.min(17, Math.round(clamp(toNumber(state.rayTraceRayCount) || 9, 3, 31)))),
+      rayCount: Math.max(7, Math.min(17, Math.round(clamp(toNumber(state.analysisRayTraceRayCount) || 9, 5, 31)))),
       wavelengthNm: line.wavelengthNm,
       spectralLineKey: lineKey
     }));
@@ -27258,7 +27273,7 @@ const resolveSystemResultApertureContext = (lenses, system) => {
 
 const calculateApertureDependentChromaticFocus = (lenses, geometrySystem, spectralSystems, apertureContext) => {
   const referenceX = referenceImagePlaneX();
-  const rayCount = Math.max(9, Math.min(21, Math.round(toNumber(state.rayTraceRayCount) || 9)));
+  const rayCount = Math.max(9, Math.min(21, Math.round(toNumber(state.analysisRayTraceRayCount) || 9)));
   const searchRangeMm = Math.max(
     1,
     Math.min(12, Math.abs(toNumber(geometrySystem.effectiveFocalLength) || 50) * 0.12)
@@ -27369,7 +27384,7 @@ const calculateSystemResultMtfSummary = (lenses, system, apertureContext = null)
     quality: "interactive",
     maxFrequencyLpMm: 50,
     frequencyStepLpMm: 5,
-    rayCount: Math.min(9, Math.max(5, toNumber(state.rayTraceRayCount) || 7)),
+    rayCount: Math.min(9, Math.max(5, toNumber(state.analysisRayTraceRayCount) || 9)),
     spectralLineKey: "d",
     wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
     imagePlaneX: 0
@@ -27909,6 +27924,21 @@ const render = () => {
   const system = focusedAnalysisConfiguration.focusedSystem;
   const spectralSystems = measureTiming("spectralSystemCalculation", {}, () => getSpectralSystems(analysisLenses));
   const baseApertureOptions = rayTraceApertureOptions(state);
+  const needsRayTraceSpot = isPanelExpanded("rayTraceSpot");
+  const needsRayFanAberrations = isPanelExpanded("rayFanAberrations");
+  const needsClassicalAberrations = isPanelExpanded("classicalAberrations");
+  const needsMtfResolution = isPanelExpanded("mtfResolution");
+  const needsCoverageIllumination = isPanelExpanded("coverageIllumination");
+  const needsWavefrontDiagnostics = isPanelExpanded("wavefrontDiagnostics");
+  const needsDebugTools = isPanelExpanded("debugTools");
+  const needsApertureFieldTrace = isPanelExpanded("apertureField");
+  const needsDLineFieldTrace = needsRayTraceSpot || needsApertureFieldTrace || needsDebugTools;
+  const needsSpectralFieldTrace = needsRayTraceSpot;
+  const analysisRayTraceRayCount = Math.round(clamp(
+    toNumber(state.analysisRayTraceRayCount) || DEFAULT_ANALYSIS_SETTINGS.analysisRayTraceRayCount,
+    5,
+    31
+  ));
   const sensorTraceFields = fieldDefinitionsForSensor(state.mtfSensorFormatKey, Math.abs(toNumber(system.effectiveFocalLength)) || 50);
   const diagramAperturePreview = resolveDiagramAperturePreview(analysisLenses, spectralSystems.d || system);
   const diagramApertureOptions = {
@@ -27916,26 +27946,30 @@ const render = () => {
     apertureDiameter: diagramAperturePreview.apertureDiameter
   };
   const sensorTraceSignature = sensorTraceFields.map((field) => `${field.key}:${Number(field.angle).toFixed(6)}`).join("|");
-  const dLineRayTraceResults = measureTiming("rayTrace", { mode: "d-line-field-set" }, () => cachedAnalysis("renderDLineFieldTrace", {
-    rayCount: state.rayTraceRayCount,
-    sensor: state.mtfSensorFormatKey,
-    fields: sensorTraceSignature
-  }, () => traceSystemFieldSet(analysisLenses, spectralSystems.d || system, {
-    ...baseApertureOptions,
-    rayCount: state.rayTraceRayCount,
-    fieldDefinitions: sensorTraceFields,
-    wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
-    spectralLineKey: "d"
-  })));
-  const spectralRayTraceResults = measureTiming("rayTrace", { mode: "spectral-field-set" }, () => cachedAnalysis("renderSpectralFieldTrace", {
-    rayCount: state.rayTraceRayCount,
-    sensor: state.mtfSensorFormatKey,
-    fields: sensorTraceSignature
-  }, () => traceSpectralFieldSet(analysisLenses, spectralSystems.d || system, {
-    ...baseApertureOptions,
-    rayCount: state.rayTraceRayCount,
-    fieldDefinitions: sensorTraceFields
-  })));
+  const dLineRayTraceResults = needsDLineFieldTrace
+    ? measureTiming("rayTrace", { mode: "d-line-field-set" }, () => cachedAnalysis("renderDLineFieldTrace", {
+      rayCount: analysisRayTraceRayCount,
+      sensor: state.mtfSensorFormatKey,
+      fields: sensorTraceSignature
+    }, () => traceSystemFieldSet(analysisLenses, spectralSystems.d || system, {
+      ...baseApertureOptions,
+      rayCount: analysisRayTraceRayCount,
+      fieldDefinitions: sensorTraceFields,
+      wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+      spectralLineKey: "d"
+    })))
+    : [];
+  const spectralRayTraceResults = needsSpectralFieldTrace
+    ? measureTiming("rayTrace", { mode: "spectral-field-set" }, () => cachedAnalysis("renderSpectralFieldTrace", {
+      rayCount: analysisRayTraceRayCount,
+      sensor: state.mtfSensorFormatKey,
+      fields: sensorTraceSignature
+    }, () => traceSpectralFieldSet(analysisLenses, spectralSystems.d || system, {
+      ...baseApertureOptions,
+      rayCount: analysisRayTraceRayCount,
+      fieldDefinitions: sensorTraceFields
+    })))
+    : [];
   const diagramRayCount = normalizeDiagramRayDisplayMode(state.diagramRayDisplayMode) === "selected"
     ? 7
     : state.rayTraceRayCount;
@@ -27964,13 +27998,6 @@ const render = () => {
     })))
     : [];
   const diagramRayTraceResults = visibleDiagramRayTraceResults(diagramDLineRayTraceResults, diagramSpectralRayTraceResults);
-  const needsRayTraceSpot = isPanelExpanded("rayTraceSpot");
-  const needsRayFanAberrations = isPanelExpanded("rayFanAberrations");
-  const needsClassicalAberrations = isPanelExpanded("classicalAberrations");
-  const needsMtfResolution = isPanelExpanded("mtfResolution");
-  const needsCoverageIllumination = isPanelExpanded("coverageIllumination");
-  const needsWavefrontDiagnostics = isPanelExpanded("wavefrontDiagnostics");
-  const needsDebugTools = isPanelExpanded("debugTools");
   const needsRayTrace3D = (needsRayTraceSpot || needsDebugTools) && state.enable3DRayTrace;
   const transmissionResult = needsCoverageIllumination
     ? cachedAnalysis("transmission", {}, () => calculateSystemTransmission(analysisLenses, spectralSystems.d || system, {
@@ -27981,13 +28008,13 @@ const render = () => {
     ? cachedAnalysis("imageCircle", {
       maxField: state.rayCircleMaxFieldAngleDegrees,
       step: state.rayCircleFieldStepDegrees,
-      rays: state.rayTraceRayCount,
+      rays: analysisRayTraceRayCount,
       wavelength: state.rayCircleWavelengthMode
     }, () => sampleImageCircleCoverage(analysisLenses, spectralSystems.d || system, {
       ...rayTraceApertureOptions(state),
       maxFieldAngleDegrees: state.rayCircleMaxFieldAngleDegrees,
       fieldStepDegrees: state.rayCircleFieldStepDegrees,
-      rayCountPerField: state.rayTraceRayCount,
+      rayCountPerField: analysisRayTraceRayCount,
       wavelengthMode: state.rayCircleWavelengthMode,
       wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
       spectralLineKey: "d"
@@ -27995,18 +28022,18 @@ const render = () => {
     : null;
   const rayFanAberrationResult = needsRayFanAberrations
     ? cachedAnalysis("rayFanAberrations", {
-      rays: state.rayTraceRayCount,
+      rays: analysisRayTraceRayCount,
       field: state.rayFanFieldPreset,
       customField: state.rayFanCustomFieldAngleDegrees,
       wavelength: state.rayFanWavelengthMode
     }, () => calculateRayFanAberrationData(analysisLenses, spectralSystems.d || system, {
-      rayCount: state.rayTraceRayCount
+      rayCount: analysisRayTraceRayCount
     }))
     : null;
   const classicalAberrationResult = needsClassicalAberrations
     ? cachedAnalysis("classicalAberrations", {
       sensor: state.mtfSensorFormatKey,
-      rays: state.rayTraceRayCount,
+      rays: analysisRayTraceRayCount,
       aperture: Number(toNumber(state.apertureDiameter).toFixed(6))
     }, () => calculateClassicalAberrationSummary(analysisLenses, spectralSystems.d || system, spectralSystems))
     : null;
@@ -28172,7 +28199,10 @@ const render = () => {
                   <summary>3D / Experimental</summary>
                   ${renderRayTrace3DPanel(rayTrace3DResults)}
                 </details>
-              ` : "", { summary: `${dLineRayTraceResults[0]?.validRayCount || 0}/${dLineRayTraceResults[0]?.totalRayCount || 0} centre rays` })}
+              ` : "", { summary: needsRayTraceSpot
+                ? `${dLineRayTraceResults[0]?.validRayCount || 0}/${dLineRayTraceResults[0]?.totalRayCount || 0} centre rays`
+                : `${analysisRayTraceRayCount} analysis rays/field`
+              })}
               ${renderWorkflowPanel("rayFanAberrations", isPanelExpanded("rayFanAberrations") ? `
                 <div class="segmented-note">Tangential / sagittal / both views are grouped here for fan and aberration work.</div>
                 ${renderRayFanAberrationPanel(rayFanAberrationResult)}
@@ -31029,11 +31059,22 @@ const runOpticsSelfCheck = (options = {}) => {
     return traced.status === "total internal reflection";
   });
 
-  test("ray count limits remain between 3 and 31", () => (
+  test("diagram rays default to 3 while analysis sampling remains isolated at 9", () => (
     DEFAULT_ANALYSIS_SETTINGS.rayTraceRayCount === 3
+    && DEFAULT_ANALYSIS_SETTINGS.analysisRayTraceRayCount === 9
     && generateRayBundle({ rayCount: 1, apertureHeight: 1 }).length === 3
     && generateRayBundle({ rayCount: 100, apertureHeight: 1 }).length === 31
   ));
+
+  test("hidden spot panels skip d-line and spectral field tracing", () => {
+    const source = render.toString();
+    return source.includes('const needsDLineFieldTrace = needsRayTraceSpot || needsApertureFieldTrace || needsDebugTools')
+      && source.includes('const needsSpectralFieldTrace = needsRayTraceSpot')
+      && source.includes('const dLineRayTraceResults = needsDLineFieldTrace')
+      && source.includes('const spectralRayTraceResults = needsSpectralFieldTrace')
+      && source.includes('rayCount: analysisRayTraceRayCount')
+      && source.includes(': state.rayTraceRayCount');
+  });
 
   test("BK7-like glass has nF > nd > nC", () => {
     const indices = getGlassLineIndices({ glassKey: "bk7", customNd: 1.5168, customVd: 64.2 });
@@ -35445,7 +35486,7 @@ const runOpticsSelfCheck = (options = {}) => {
   test("classical aberration summary returns five-field S/T and colour diagnostics", () => withTemporaryState(() => {
     loadPresetIntoState("manual");
     state.mtfSensorFormatKey = "fullFrame";
-    state.rayTraceRayCount = 5;
+    state.analysisRayTraceRayCount = 5;
     const lenses = clonePresetLenses("manual");
     const system = calculateSystem(lenses, SPECTRAL_LINES.d.wavelengthNm);
     const spectralSystems = getSpectralSystems(lenses);

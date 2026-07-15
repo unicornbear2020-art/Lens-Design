@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the pinned Optiland DoubleGauss physical-MTF coverage fixture.
+"""Generate pinned Optiland physical-MTF coverage fixtures.
 
 Requires optiland==0.5.8 and numpy. The generated JavaScript is runtime-only
 data; Lens Design never imports Optiland or performs network access.
@@ -16,14 +16,19 @@ from pathlib import Path
 import numpy as np
 from optiland.mtf.fft import FFTMTF
 from optiland.psf.fft import FFTPSF
-from optiland.samples.objectives import DoubleGauss
+from optiland.samples.objectives import DoubleGauss, ReverseTelephoto
 
 
 FREQUENCIES_LP_MM = (0, 10, 30, 40, 50)
-FIELDS = (
+DOUBLE_GAUSS_FIELDS = (
     {"key": "center", "name": "On-axis", "coordinates": (0, 0), "angleDeg": 0},
     {"key": "mid", "name": "Mid field", "coordinates": (0, 10 / 14), "angleDeg": 10},
     {"key": "corner", "name": "Full field", "coordinates": (0, 1), "angleDeg": 14},
+)
+REVERSE_TELEPHOTO_FIELDS = (
+    {"key": "center", "name": "On-axis", "coordinates": (0, 0), "angleDeg": 0},
+    {"key": "mid", "name": "Mid field", "coordinates": (0, 21 / 30), "angleDeg": 21},
+    {"key": "corner", "name": "Full field", "coordinates": (0, 1), "angleDeg": 30},
 )
 WAVELENGTHS = (
     {"key": "C", "wavelengthUm": 0.6563},
@@ -59,7 +64,7 @@ def encode_pupil(pupil: np.ndarray) -> dict:
     }
 
 
-def build_case(optic: DoubleGauss, field: dict, wavelength: dict) -> dict:
+def build_case(optic, lens_slug: str, field: dict, wavelength: dict) -> dict:
     coordinates = field["coordinates"]
     wavelength_um = wavelength["wavelengthUm"]
     mtf = FFTMTF(
@@ -94,7 +99,7 @@ def build_case(optic: DoubleGauss, field: dict, wavelength: dict) -> dict:
     ]
 
     return {
-        "id": f"optiland-v0.5.8-double-gauss-{field['key']}-{wavelength['key']}",
+        "id": f"optiland-v0.5.8-{lens_slug}-{field['key']}-{wavelength['key']}",
         "fieldKey": field["key"],
         "fieldName": field["name"],
         "field": list(coordinates),
@@ -110,21 +115,29 @@ def build_case(optic: DoubleGauss, field: dict, wavelength: dict) -> dict:
     }
 
 
-def build_fixture() -> dict:
-    optic = DoubleGauss()
+def build_fixture(
+    optic,
+    *,
+    fixture_id: str,
+    lens_slug: str,
+    lens_class: str,
+    fields: tuple,
+    source_url: str,
+    scope: str,
+) -> dict:
     cases = [
-        build_case(optic, field, wavelength)
-        for field in FIELDS
+        build_case(optic, lens_slug, field, wavelength)
+        for field in fields
         for wavelength in WAVELENGTHS
     ]
     return {
-        "id": "optiland-v0.5.8-double-gauss-field-spectral-matrix",
+        "id": fixture_id,
         "schemaVersion": 2,
         "solver": "Optiland FFTMTF",
         "solverVersion": "0.5.8",
-        "sourceUrl": "https://github.com/optiland/optiland/blob/v0.5.8/optiland/samples/objectives.py#L75-L114",
+        "sourceUrl": source_url,
         "sourceBlobSha": "69044dae6866b187cc627b74345804af393ae62f",
-        "lensClass": "DoubleGauss",
+        "lensClass": lens_class,
         "strategy": "chief_ray",
         "removeTilt": False,
         "requestedNumRays": REQUESTED_RAYS,
@@ -133,30 +146,56 @@ def build_fixture() -> dict:
         "fields": [
             {key: value for key, value in field.items() if key != "coordinates"}
             | {"coordinates": list(field["coordinates"])}
-            for field in FIELDS
+            for field in fields
         ],
         "wavelengths": list(WAVELENGTHS),
         "frequenciesLpMm": list(FREQUENCIES_LP_MM),
         "cases": cases,
         "tolerance": 0.005,
         "coverage": {
-            "fieldCount": len(FIELDS),
+            "fieldCount": len(fields),
             "wavelengthCount": len(WAVELENGTHS),
             "caseCount": len(cases),
             "comparisonCount": len(cases) * len(FREQUENCIES_LP_MM) * 2,
         },
-        "scope": "on-axis and off-axis 0/10/14 degree fields, monochromatic C/d/F, complex exit-pupil to MTF parity",
+        "scope": scope,
     }
+
+
+def build_fixtures() -> tuple[dict, dict]:
+    double_gauss = build_fixture(
+        DoubleGauss(),
+        fixture_id="optiland-v0.5.8-double-gauss-field-spectral-matrix",
+        lens_slug="double-gauss",
+        lens_class="DoubleGauss",
+        fields=DOUBLE_GAUSS_FIELDS,
+        source_url="https://github.com/optiland/optiland/blob/v0.5.8/optiland/samples/objectives.py#L75-L114",
+        scope="on-axis and off-axis 0/10/14 degree fields, monochromatic C/d/F, complex exit-pupil to MTF parity",
+    )
+    reverse_telephoto = build_fixture(
+        ReverseTelephoto(),
+        fixture_id="optiland-v0.5.8-reverse-telephoto-field-spectral-matrix",
+        lens_slug="reverse-telephoto",
+        lens_class="ReverseTelephoto",
+        fields=REVERSE_TELEPHOTO_FIELDS,
+        source_url="https://github.com/optiland/optiland/blob/v0.5.8/optiland/samples/objectives.py#L117-L175",
+        scope="independent retrofocus validation at on-axis and off-axis 0/21/30 degree fields, monochromatic C/d/F, complex exit-pupil to MTF parity",
+    )
+    return double_gauss, reverse_telephoto
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("output", type=Path)
     args = parser.parse_args()
-    fixture = json.dumps(build_fixture(), separators=(",", ":"))
+    double_gauss, reverse_telephoto = build_fixtures()
+    primary_fixture = json.dumps(double_gauss, separators=(",", ":"))
+    secondary_fixture = json.dumps(reverse_telephoto, separators=(",", ":"))
     args.output.write_text(
         "globalThis.PHYSICAL_MTF_EXTERNAL_REFERENCE_FIXTURE = Object.freeze("
-        f"{fixture});\n",
+        f"{primary_fixture});\n"
+        "globalThis.PHYSICAL_MTF_SECONDARY_EXTERNAL_REFERENCE_FIXTURE = Object.freeze("
+        f"{secondary_fixture});\n",
         encoding="utf-8",
     )
 

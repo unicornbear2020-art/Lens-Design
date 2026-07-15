@@ -10,7 +10,8 @@ const DIAGRAM_SIZE = {
   height: 480
 };
 
-const ANALYSIS_WORKER_VERSION = "20260715-ray-sampling-performance-1";
+const ANALYSIS_WORKER_VERSION = "20260715-physical-mtf-focus-response-1";
+const PHYSICAL_MTF_CORE_VERSION = "20260715-physical-mtf-focus-response-1";
 const GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION = "geometric-lsf-contract-20260630-1";
 const DEFAULT_PRESET_KEY = "zeissBiotar50F14Us1786916Ex2";
 const OLD_MISLEADING_ZEISS_PRESET_KEYS = [
@@ -20112,7 +20113,8 @@ const calculateIdealCircularPupilPhysicalMtf = (options = {}) => {
     const reference128 = calculateIdealCircularPupilPhysicalMtf({
       ...options,
       gridSize: 128,
-      skipConvergence: true
+      skipConvergence: true,
+      skipCanonicalAberration: true
     });
     const comparisons = PHYSICAL_MTF_ENGINE_SETTINGS.validationFrequenciesLpMm.map((frequencyLpMm) => {
       const normalizedFrequency = clamp(frequencyLpMm / cutoffFrequencyLpMm, 0, 1);
@@ -20134,12 +20136,16 @@ const calculateIdealCircularPupilPhysicalMtf = (options = {}) => {
   }
   const convergencePassed = !convergence || convergence.status === "passed";
   const autocorrelationReferencePassed = maxAutocorrelationError <= tolerance.maxError && rmsAutocorrelationError <= tolerance.rmsError;
-  const validationPassed = matchPassed && sanityPassed && convergencePassed;
+  const aberrationValidation = options.skipCanonicalAberration
+    ? null
+    : globalThis.physicalMtfCore?.calculateCanonicalAberrationValidation?.() || null;
+  const canonicalAberrationsPassed = options.skipCanonicalAberration || aberrationValidation?.status === "passed";
+  const validationPassed = matchPassed && sanityPassed && canonicalAberrationsPassed && convergencePassed;
   const validationLabel = !validationPassed
     ? "Prototype — validation failed"
     : convergence
-      ? "Ideal-pupil convergence passed"
-      : "FFT pipeline match passed";
+      ? "Ideal-pupil convergence and canonical aberration gates passed"
+      : "FFT and canonical aberration gates passed";
   return {
     status: validationPassed
       ? (convergence ? "ideal-convergence-passed" : "fft-match-passed")
@@ -20161,6 +20167,7 @@ const calculateIdealCircularPupilPhysicalMtf = (options = {}) => {
     maxAutocorrelationError,
     rmsAutocorrelationError,
     maxFftAutocorrelationDifference,
+    aberrationValidation,
     elapsedMs,
     tolerance,
     convergence,
@@ -20175,6 +20182,7 @@ const calculateIdealCircularPupilPhysicalMtf = (options = {}) => {
         rmsError,
         passed: matchPassed && sanityPassed
       },
+      canonicalAberrations: { passed: canonicalAberrationsPassed },
       convergence
     },
     pipeline: {
@@ -20508,7 +20516,7 @@ const calculatePhysicalReferencePupilParity = (pupil, cutoffFrequencyLpMm) => {
   };
 };
 
-const calculatePhysicalMtfFromPupil = (pupil = {}, options = {}) => {
+const calculatePhysicalMtfFromPupilLegacy = (pupil = {}, options = {}) => {
   const gridSize = toNumber(pupil.gridSize);
   const expectedLength = gridSize * gridSize;
   if (!isPowerOfTwo(gridSize) || pupil.real?.length !== expectedLength || pupil.imag?.length !== expectedLength) {
@@ -20588,6 +20596,49 @@ const calculatePhysicalMtfFromPupil = (pupil = {}, options = {}) => {
       minimumMtf: finiteValues.length ? Math.min(...finiteValues) : NaN,
       maximumMtf: finiteValues.length ? Math.max(...finiteValues) : NaN,
       cutSamplingMethod: "subpixel complex-pupil autocorrelation (FFT-equivalent OTF)"
+    },
+    warnings: [
+      ...(pupil.warnings || []),
+      calibration.warning,
+      "This OPD-connected result remains a prototype until convergence, external reference-lens parity and polychromatic gates pass."
+    ].filter(Boolean)
+  };
+};
+
+const calculatePhysicalMtfFromPupil = (pupil = {}, options = {}) => {
+  const sharedCore = globalThis.physicalMtfCore;
+  if (typeof sharedCore?.calculateLensComplexPupilMtf !== "function") {
+    return calculatePhysicalMtfFromPupilLegacy(pupil, options);
+  }
+  const wavelengthNm = toNumber(options.wavelengthNm) || toNumber(pupil.wavelengthNm);
+  const workingFNumber = toNumber(options.workingFNumber ?? options.fNumber);
+  const calibration = calibrateFrequencyToImageSpaceLpMm({
+    wavelengthNm,
+    workingFNumber,
+    calibrationStatus: options.calibrationStatus
+  });
+  const result = sharedCore.calculateLensComplexPupilMtf({
+    gridSize: pupil.gridSize,
+    radiusPx: pupil.radiusPx,
+    real: pupil.real,
+    imag: pupil.imag,
+    wavelengthNm,
+    workingFNumber,
+    frequencyStepLpMm: options.frequencyStepLpMm,
+    sampleCount: options.sampleCount,
+    includeArrays: options.includeArrays !== false
+  });
+  if (result.status === "invalid") return { ...result, mtf: result.mtf || null, calibration };
+  return {
+    ...result,
+    status: result.status === "opd-connected-worker-prototype"
+      ? "opd-connected-prototype"
+      : result.status,
+    calibration,
+    diagnostics: {
+      ...result.diagnostics,
+      gridSize: result.gridSize,
+      pupilRadiusPx: result.radiusPx
     },
     warnings: [
       ...(pupil.warnings || []),
@@ -20764,27 +20815,35 @@ const calculateSensorMtfProfile = () => ({
 const physicalMtf = {
   settings: PHYSICAL_MTF_ENGINE_SETTINGS,
   calculateIdealCircularPupilValidation: calculateIdealCircularPupilPhysicalMtf,
+  calculateCanonicalAberrationValidation: () => globalThis.physicalMtfCore?.calculateCanonicalAberrationValidation?.() || {
+    status: "failed",
+    reason: "Shared physical MTF core does not provide canonical aberration validation."
+  },
   analyticDiffractionMtf: calculateAnalyticDiffractionMtfValue,
   createStatus: () => ({
-    status: "phase-2-step-6-field-spectral-reference",
-    label: "Physical FFT MTF Phase 2 Step 6",
+    status: "phase-2-step-7e-focus-response",
+    label: "Physical FFT MTF Phase 2 Step 7E",
+    coreVersion: globalThis.physicalMtfCore?.PHYSICAL_MTF_CORE_VERSION || "unavailable",
     wavelengthMode: "selectable monochromatic C / d / F and weighted RGB",
     pupilResolutions: PHYSICAL_MTF_ENGINE_SETTINGS.supportedPupilResolutions,
     validationFrequenciesLpMm: PHYSICAL_MTF_ENGINE_SETTINGS.validationFrequenciesLpMm,
     validationGates: [
       "Ideal circular pupil must match analytic diffraction-limited MTF.",
-      "Known defocus and astigmatism cases must behave correctly.",
+      "Deterministic positive/negative defocus pupils must preserve S/T symmetry, reduce MTF, and match as complex-conjugate cases.",
+      "A deterministic astigmatic focus-split pupil must produce the expected sagittal/tangential separation.",
+      "A real Lens Design 3D ray trace must produce an interior best-focus MTF peak and lose contrast on both deliberately defocused sides.",
       "Paraxial exit-pupil working f-number must agree with the entrance-pupil nominal f-number; the independent real marginal-ray image-space NA remains visible as a diagnostic.",
       "128 and 256 lens-pupil grids are compared at 10, 30, 40 and 50 lp/mm for both S/T cuts.",
       "Ray-traced OPD must build a finite complex pupil with sampled visibility.",
       "A zero-phase reference pupil must match analytic circular-aperture MTF on the calibrated lp/mm axis.",
       "Polychromatic MTF must combine calibrated C, d and F complex OTFs before taking magnitude.",
       "The pinned Optiland 0.5.8 DoubleGauss 0°, 10° and 14° fields must pass C/d/F complex-pupil MTF parity.",
+      "The independent pinned Optiland 0.5.8 ReverseTelephoto 0°, 21° and 30° fields must pass the same C/d/F parity gate.",
       "No physical MTF result is labelled converged until all gates pass."
     ],
     warnings: [
       "The isolated upper lab still validates an ideal circular pupil.",
-      "Phase 2 Step 6 adds offline, version-pinned off-axis and C/d/F external reference coverage; the production geometric preview remains active until the remaining physical-lens validation gates are complete."
+      "Phase 2 Step 7E adds a lens-specific ray trace → OPD → complex pupil → MTF focus-response gate on top of the canonical and two-family external checks; the production geometric preview remains active until the remaining physical-lens validation gates are complete."
     ]
   }),
   sampleExitPupilWavefront,
@@ -20805,6 +20864,7 @@ const physicalMtfCoreCache = new Map();
 const physicalMtfDisplayCache = new Map();
 const physicalLensMtfCache = new Map();
 let physicalMtfExternalReferenceParityCache = null;
+let physicalMtfCanonicalAberrationValidationCache = null;
 let physicalMtfLabIdleHandle = null;
 let physicalLensMtfIdleHandle = null;
 
@@ -20823,7 +20883,7 @@ const physicalMtfLabInputsFromState = () => {
 
 const physicalMtfCoreCacheKey = (inputs = physicalMtfLabInputsFromState()) => JSON.stringify({
   gridSize: inputs.gridSize,
-  pupilGeometry: "idealCircular-v1"
+  pupilGeometry: "idealCircular-canonical-v2"
 });
 
 const physicalMtfLabCacheKey = (inputs = physicalMtfLabInputsFromState()) => JSON.stringify({
@@ -20842,7 +20902,7 @@ const makePhysicalMtfDisplayResult = (coreResult, inputs = physicalMtfLabInputsF
   const cutoffFrequencyLpMm = 1 / ((wavelengthNm / 1000000) * fNumber);
   let convergence = null;
   if (coreResult.gridSize >= 256) {
-    const reference128 = physicalMtfCoreCache.get(JSON.stringify({ gridSize: 128, pupilGeometry: "idealCircular-v1" }));
+    const reference128 = physicalMtfCoreCache.get(JSON.stringify({ gridSize: 128, pupilGeometry: "idealCircular-canonical-v2" }));
     if (reference128?.samples?.length) {
       const comparisons = PHYSICAL_MTF_ENGINE_SETTINGS.validationFrequenciesLpMm.map((frequencyLpMm) => {
         const normalizedFrequency = clamp(frequencyLpMm / cutoffFrequencyLpMm, 0, 1);
@@ -20865,7 +20925,8 @@ const makePhysicalMtfDisplayResult = (coreResult, inputs = physicalMtfLabInputsF
   }
   const convergencePassed = !convergence || convergence.status === "passed";
   const fftPassed = coreResult.validation?.fftPipeline?.passed === true;
-  const validationPassed = fftPassed && convergencePassed;
+  const canonicalAberrationsPassed = coreResult.aberrationValidation?.status === "passed";
+  const validationPassed = fftPassed && canonicalAberrationsPassed && convergencePassed;
   return {
     ...coreResult,
     fNumber,
@@ -20879,8 +20940,8 @@ const makePhysicalMtfDisplayResult = (coreResult, inputs = physicalMtfLabInputsF
     validationLabel: !validationPassed
       ? "Prototype — FFT validation failed"
       : convergence
-        ? "Ideal-pupil convergence passed"
-        : "FFT pipeline match passed",
+        ? "Ideal-pupil convergence and canonical aberration gates passed"
+        : "FFT and canonical aberration gates passed",
     validation: {
       ...coreResult.validation,
       convergence
@@ -20958,10 +21019,10 @@ const schedulePhysicalMtfLabCalculation = ({ immediate = false } = {}) => {
   const run = async () => {
     physicalMtfLabIdleHandle = null;
     if (token !== state.physicalMtfCalculationToken) return;
-    if (inputs.gridSize >= 256 && !physicalMtfCoreCache.has(JSON.stringify({ gridSize: 128, pupilGeometry: "idealCircular-v1" }))) {
+    if (inputs.gridSize >= 256 && !physicalMtfCoreCache.has(JSON.stringify({ gridSize: 128, pupilGeometry: "idealCircular-canonical-v2" }))) {
       const reference128 = await calculatePhysicalMtfCoreWithWorker({ ...inputs, gridSize: 128 }, `${token}-128`);
       if (token !== state.physicalMtfCalculationToken) return;
-      physicalMtfCoreCache.set(JSON.stringify({ gridSize: 128, pupilGeometry: "idealCircular-v1" }), reference128);
+      physicalMtfCoreCache.set(JSON.stringify({ gridSize: 128, pupilGeometry: "idealCircular-canonical-v2" }), reference128);
     }
     const coreResult = await calculatePhysicalMtfCoreWithWorker(inputs, token);
     if (token !== state.physicalMtfCalculationToken) return;
@@ -21161,10 +21222,13 @@ const calculatePhysicalLensMtfWithWorker = async (pupil, context, token, gridSiz
       isStale: (response) => (
         response.requestId !== requestId
         || response.workerVersion !== ANALYSIS_WORKER_VERSION
+        || response.coreVersion !== PHYSICAL_MTF_CORE_VERSION
         || token !== state.physicalLensMtfCalculationToken
       )
     });
-    if (message.status !== "complete" || message.workerVersion !== ANALYSIS_WORKER_VERSION) {
+    if (message.status !== "complete"
+      || message.workerVersion !== ANALYSIS_WORKER_VERSION
+      || message.coreVersion !== PHYSICAL_MTF_CORE_VERSION) {
       throw new Error(message.result?.reason || message.result?.warning || "Physical MTF worker response failed validation.");
     }
     return {
@@ -21255,10 +21319,243 @@ const calculatePhysicalLensMtfSpectralLine = async (context, lineKey, gridSize, 
   };
 };
 
+const solvePhysicalMtfRayBestFocus = (wavefront = {}, options = {}) => {
+  const referencePlaneX = Number.isFinite(toNumber(wavefront.imagePlaneX)) ? toNumber(wavefront.imagePlaneX) : 0;
+  const samples = (wavefront.pupilSamples || []).filter((sample) => (
+    toNumber(sample.amplitude) > 0.001
+    && Number.isFinite(sample.imageY)
+    && Number.isFinite(sample.imageZ)
+    && Number.isFinite(sample.imageDirectionX)
+    && Number.isFinite(sample.imageDirectionY)
+    && Number.isFinite(sample.imageDirectionZ)
+    && Math.abs(sample.imageDirectionX) > 1e-9
+  )).map((sample) => ({
+    imageY: sample.imageY,
+    imageZ: sample.imageZ,
+    slopeY: sample.imageDirectionY / sample.imageDirectionX,
+    slopeZ: sample.imageDirectionZ / sample.imageDirectionX
+  }));
+  if (samples.length < 5) {
+    return {
+      status: "failed",
+      reason: "At least five valid image-space rays are required for the physical MTF focus solve.",
+      referencePlaneX,
+      bestFocusPlaneX: NaN,
+      validRayCount: samples.length
+    };
+  }
+  const mean = (key) => samples.reduce((sum, sample) => sum + sample[key], 0) / samples.length;
+  const meanImageY = mean("imageY");
+  const meanImageZ = mean("imageZ");
+  const meanSlopeY = mean("slopeY");
+  const meanSlopeZ = mean("slopeZ");
+  let numerator = 0;
+  let denominator = 0;
+  samples.forEach((sample) => {
+    const imageY = sample.imageY - meanImageY;
+    const imageZ = sample.imageZ - meanImageZ;
+    const slopeY = sample.slopeY - meanSlopeY;
+    const slopeZ = sample.slopeZ - meanSlopeZ;
+    numerator += imageY * slopeY + imageZ * slopeZ;
+    denominator += slopeY ** 2 + slopeZ ** 2;
+  });
+  const shiftMm = denominator > 1e-12 ? -numerator / denominator : NaN;
+  const maximumShiftMm = Math.max(0.25, toNumber(options.maximumShiftMm) || 5);
+  const bestFocusPlaneX = referencePlaneX + shiftMm;
+  const stable = Number.isFinite(bestFocusPlaneX) && Math.abs(shiftMm) <= maximumShiftMm;
+  const rmsSpotAt = (planeX) => {
+    const projected = samples.map((sample) => ({
+      y: sample.imageY + sample.slopeY * (planeX - referencePlaneX),
+      z: sample.imageZ + sample.slopeZ * (planeX - referencePlaneX)
+    }));
+    const meanY = projected.reduce((sum, point) => sum + point.y, 0) / projected.length;
+    const meanZ = projected.reduce((sum, point) => sum + point.z, 0) / projected.length;
+    return Math.sqrt(projected.reduce((sum, point) => (
+      sum + (point.y - meanY) ** 2 + (point.z - meanZ) ** 2
+    ), 0) / projected.length);
+  };
+  return {
+    status: stable ? "solved" : "failed",
+    method: "least-squares 3D image-space ray bundle focus",
+    referencePlaneX,
+    bestFocusPlaneX,
+    shiftMm,
+    maximumShiftMm,
+    validRayCount: samples.length,
+    rmsSpotAtReferenceMm: rmsSpotAt(referencePlaneX),
+    rmsSpotAtBestFocusMm: stable ? rmsSpotAt(bestFocusPlaneX) : NaN,
+    reason: stable ? "" : "The real-ray best-focus solution is outside the bounded image-plane search."
+  };
+};
+
+const physicalMtfFocusResponseDefocusMm = (wavelengthNm, workingFNumber) => {
+  const wavelengthMm = toNumber(wavelengthNm) / 1000000;
+  const fNumber = Math.max(0.5, toNumber(workingFNumber) || 1);
+  return clamp(8 * wavelengthMm * fNumber ** 2, 0.02, 0.3);
+};
+
+const physicalMtfFocusResponseScore = (result, normalizedFrequency = 0.2) => {
+  const values = ["sagittal", "tangential"]
+    .map((axis) => mtfCutValueAtNormalized(result?.mtf?.[axis] || [], normalizedFrequency))
+    .filter(Number.isFinite);
+  return values.length === 2 ? values.reduce((sum, value) => sum + value, 0) / values.length : NaN;
+};
+
+const preparePhysicalMtfFocusResponsePlane = (context, imagePlaneX, gridSize = 128) => {
+  const lineKey = "d";
+  const line = SPECTRAL_LINES[lineKey];
+  const system = calculateSystem(context.lenses, line.wavelengthNm);
+  const pupilOptions = {
+    ...rayTraceApertureOptions(state),
+    wavelengthNm: line.wavelengthNm,
+    spectralLineKey: lineKey,
+    imagePlaneX,
+    prescription: state.prescription
+  };
+  const nominalFNumber = calculateFNumber(system, state.apertureDiameter, context.lenses, {
+    ...pupilOptions,
+    useEntrancePupil: true
+  });
+  const exitPupil = calculateExitPupil(context.lenses, system, pupilOptions);
+  const sampled = sampleExitPupilWavefront(context.lenses, system, {
+    ...pupilOptions,
+    fieldKey: context.field.key,
+    fieldName: context.field.name,
+    fieldAngleDegrees: context.field.angle,
+    sampleCount: 15
+  });
+  const imageSpaceCalibration = auditPhysicalMtfImageSpaceCalibration({
+    exitPupil,
+    realRayNa: sampled.imageSpaceNa,
+    nominalFNumber
+  });
+  const pupil = sampled.status === "opd-sampled"
+    ? buildComplexPupil(sampled, { gridSize, wavelengthNm: line.wavelengthNm })
+    : null;
+  return {
+    status: sampled.status === "opd-sampled" && pupil?.status === "opd-connected-prototype" ? "ready" : "failed",
+    lineKey,
+    line,
+    system,
+    imagePlaneX,
+    sampled,
+    pupil,
+    nominalFNumber,
+    imageSpaceCalibration,
+    workingFNumber: imageSpaceCalibration.workingFNumber
+  };
+};
+
+const calculatePhysicalMtfEndToEndFocusResponse = async (context, token) => {
+  const gridSize = 128;
+  const normalizedFrequency = 0.2;
+  const maximumRequiredMtfLoss = 0.03;
+  const minimumRelativeMtfLoss = 0.08;
+  const reference = preparePhysicalMtfFocusResponsePlane(context, 0, gridSize);
+  const rayFocus = solvePhysicalMtfRayBestFocus(reference.sampled?.wavefront, { maximumShiftMm: 5 });
+  if (reference.status !== "ready" || rayFocus.status !== "solved") {
+    return {
+      status: "failed",
+      method: "Lens Design ray trace → OPD → complex pupil → physical MTF through-focus response",
+      reason: reference.status !== "ready" ? "The reference-plane OPD pupil could not be built." : rayFocus.reason,
+      rayFocus,
+      gridSize,
+      normalizedFrequency,
+      maximumRequiredMtfLoss,
+      minimumRelativeMtfLoss,
+      samples: []
+    };
+  }
+  const defocusStepMm = physicalMtfFocusResponseDefocusMm(SPECTRAL_LINES.d.wavelengthNm, reference.workingFNumber);
+  const planeCache = new Map();
+  const evaluatePlane = async (imagePlaneX, requestKey) => {
+    const key = Number(imagePlaneX.toFixed(7));
+    if (planeCache.has(key)) return planeCache.get(key);
+    const prepared = preparePhysicalMtfFocusResponsePlane(context, key, gridSize);
+    if (prepared.status !== "ready") {
+      const failed = { status: "failed", imagePlaneX: key, score: NaN, prepared };
+      planeCache.set(key, failed);
+      return failed;
+    }
+    const calculated = await calculatePhysicalLensMtfWithWorker(prepared.pupil, {
+      wavelengthNm: prepared.line.wavelengthNm,
+      workingFNumber: prepared.workingFNumber,
+      imageSpaceCalibration: prepared.imageSpaceCalibration
+    }, token, gridSize, `focus-response-${requestKey}`);
+    const value = {
+      status: calculated.status === "invalid" || calculated.status === "prototype-failed" ? "failed" : "valid",
+      imagePlaneX: key,
+      score: physicalMtfFocusResponseScore(calculated, normalizedFrequency),
+      rmsOpdWaves: prepared.sampled.wavefront?.rmsOpdWaves,
+      validRayCount: prepared.sampled.validRayCount,
+      calculated
+    };
+    planeCache.set(key, value);
+    return value;
+  };
+  const searchOffsets = [-2, -1, 0, 1, 2];
+  const samples = [];
+  for (const offset of searchOffsets) {
+    samples.push(await evaluatePlane(rayFocus.bestFocusPlaneX + offset * defocusStepMm, `scan-${offset + 2}`));
+    if (token !== state.physicalLensMtfCalculationToken) throw new Error("Physical MTF focus-response request became stale.");
+  }
+  const validSamples = samples.filter((sample) => sample.status === "valid" && Number.isFinite(sample.score));
+  const best = validSamples.reduce((selected, sample) => (!selected || sample.score > selected.score ? sample : selected), null);
+  const bestIndex = best ? samples.indexOf(best) : -1;
+  const searchStable = bestIndex > 0 && bestIndex < samples.length - 1;
+  const negative = best ? await evaluatePlane(best.imagePlaneX - defocusStepMm, "negative-defocus") : null;
+  const positive = best ? await evaluatePlane(best.imagePlaneX + defocusStepMm, "positive-defocus") : null;
+  const negativeLoss = best && negative ? best.score - negative.score : NaN;
+  const positiveLoss = best && positive ? best.score - positive.score : NaN;
+  const minimumMeasuredLoss = Math.min(negativeLoss, positiveLoss);
+  const requiredMtfLoss = Number.isFinite(best?.score)
+    ? Math.min(maximumRequiredMtfLoss, best.score * minimumRelativeMtfLoss)
+    : NaN;
+  const passed = searchStable
+    && negative?.status === "valid"
+    && positive?.status === "valid"
+    && Number.isFinite(minimumMeasuredLoss)
+    && Number.isFinite(requiredMtfLoss)
+    && minimumMeasuredLoss >= requiredMtfLoss;
+  return {
+    status: passed ? "passed" : "failed",
+    method: "Lens Design ray trace → OPD → complex pupil → shared-core physical MTF through-focus response",
+    gridSize,
+    wavelengthKey: "d",
+    wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+    normalizedFrequency,
+    maximumRequiredMtfLoss,
+    minimumRelativeMtfLoss,
+    requiredMtfLoss,
+    defocusStepMm,
+    rayFocus,
+    searchStable,
+    bestFocusPlaneX: best?.imagePlaneX ?? NaN,
+    bestScore: best?.score ?? NaN,
+    negativeDefocusScore: negative?.score ?? NaN,
+    positiveDefocusScore: positive?.score ?? NaN,
+    negativeMtfLoss: negativeLoss,
+    positiveMtfLoss: positiveLoss,
+    minimumMeasuredLoss,
+    samples,
+    deliberateDefocus: { negative, positive },
+    reason: passed
+      ? ""
+      : !searchStable
+        ? "The physical MTF best-focus peak was not interior to the bounded scan."
+        : "One or both deliberate defocus directions did not reduce physical MTF by the required relative amount."
+  };
+};
+
 const physicalMtfExternalReferenceCases = (fixture = globalThis.PHYSICAL_MTF_EXTERNAL_REFERENCE_FIXTURE) => {
   if (Array.isArray(fixture?.cases)) return fixture.cases.filter((item) => item?.pupilEncoding);
   return fixture?.pupilEncoding ? [fixture] : [];
 };
+
+const physicalMtfExternalReferenceFixtures = () => [
+  globalThis.PHYSICAL_MTF_EXTERNAL_REFERENCE_FIXTURE,
+  globalThis.PHYSICAL_MTF_SECONDARY_EXTERNAL_REFERENCE_FIXTURE
+].filter((fixture) => physicalMtfExternalReferenceCases(fixture).length > 0);
 
 const physicalMtfExternalReferenceCase = (reference = globalThis.PHYSICAL_MTF_EXTERNAL_REFERENCE_FIXTURE) => (
   reference?.pupilEncoding ? reference : physicalMtfExternalReferenceCases(reference)[0]
@@ -21342,7 +21639,7 @@ const comparePhysicalMtfExternalReference = (
     && finite.every((item) => item.absoluteDifference <= tolerance);
   return {
     status: passed ? "passed" : "failed",
-    method: "pinned Optiland 0.5.8 DoubleGauss complex exit-pupil parity",
+    method: `pinned Optiland 0.5.8 ${suite?.lensClass || "reference lens"} complex exit-pupil parity`,
     tolerance,
     maximumDifference: finite.length ? Math.max(...finite.map((item) => item.absoluteDifference)) : NaN,
     comparisons,
@@ -21384,7 +21681,7 @@ const summarizePhysicalMtfExternalReferenceParity = (
     && caseResults.every((result) => result.status === "passed");
   return {
     status: passed ? "passed" : "failed",
-    method: "pinned Optiland 0.5.8 DoubleGauss off-axis field × C/d/F complex exit-pupil parity",
+    method: `pinned Optiland 0.5.8 ${suite?.lensClass || "reference lens"} off-axis field × C/d/F complex exit-pupil parity`,
     tolerance: toNumber(suite?.tolerance) || PHYSICAL_MTF_ENGINE_SETTINGS.externalReferenceTolerance,
     maximumDifference: finite.length ? Math.max(...finite.map((item) => item.absoluteDifference)) : NaN,
     comparisons,
@@ -21407,11 +21704,7 @@ const summarizePhysicalMtfExternalReferenceParity = (
   };
 };
 
-const calculatePhysicalMtfExternalReferenceParity = async (token) => {
-  if (physicalMtfExternalReferenceParityCache?.version === ANALYSIS_WORKER_VERSION) {
-    return physicalMtfExternalReferenceParityCache.result;
-  }
-  const fixture = globalThis.PHYSICAL_MTF_EXTERNAL_REFERENCE_FIXTURE;
+const calculatePhysicalMtfExternalReferenceSuiteParity = async (fixture, token) => {
   const cases = physicalMtfExternalReferenceCases(fixture);
   const caseResults = [];
   for (const referenceCase of cases) {
@@ -21425,7 +21718,7 @@ const calculatePhysicalMtfExternalReferenceParity = async (token) => {
       workingFNumber: referenceCase.workingFNumber,
       frequencyStepLpMm: referenceCase.frequencyStepLpMm,
       imageSpaceCalibration: { status: "external-reference" }
-    }, token, pupil.gridSize, `external-reference-${referenceCase.fieldKey}-${referenceCase.wavelengthKey}`);
+    }, token, pupil.gridSize, `external-reference-${fixture?.lensClass || fixture?.id || "lens"}-${referenceCase.fieldKey}-${referenceCase.wavelengthKey}`);
     caseResults.push({
       ...comparePhysicalMtfExternalReference(calculated, referenceCase, fixture),
       executionMode: calculated.executionMode,
@@ -21440,8 +21733,106 @@ const calculatePhysicalMtfExternalReferenceParity = async (token) => {
     elapsedMs: caseResults.reduce((sum, item) => sum + (toNumber(item.elapsedMs) || 0), 0),
     pupilSamples: caseResults.reduce((sum, item) => sum + (toNumber(item.pupilSamples) || 0), 0)
   };
+  return result;
+};
+
+const calculatePhysicalMtfExternalReferenceParity = async (token) => {
+  if (physicalMtfExternalReferenceParityCache?.version === ANALYSIS_WORKER_VERSION) {
+    return physicalMtfExternalReferenceParityCache.result;
+  }
+  const fixtures = physicalMtfExternalReferenceFixtures();
+  const suiteResults = [];
+  for (const fixture of fixtures) {
+    suiteResults.push(await calculatePhysicalMtfExternalReferenceSuiteParity(fixture, token));
+  }
+  const comparisons = suiteResults.flatMap((suite) => suite.comparisons || []);
+  const caseResults = suiteResults.flatMap((suite) => suite.caseResults || []);
+  const finiteMaximumDifferences = suiteResults
+    .map((suite) => suite.maximumDifference)
+    .filter(Number.isFinite);
+  const expectedFixtureCount = 2;
+  const result = {
+    status: suiteResults.length === expectedFixtureCount && suiteResults.every((suite) => suite.status === "passed")
+      ? "passed"
+      : "failed",
+    method: "two-family pinned Optiland 0.5.8 off-axis field × C/d/F complex exit-pupil parity",
+    tolerance: suiteResults.length
+      ? Math.max(...suiteResults.map((suite) => toNumber(suite.tolerance) || PHYSICAL_MTF_ENGINE_SETTINGS.externalReferenceTolerance))
+      : PHYSICAL_MTF_ENGINE_SETTINGS.externalReferenceTolerance,
+    maximumDifference: finiteMaximumDifferences.length ? Math.max(...finiteMaximumDifferences) : NaN,
+    comparisons,
+    caseResults,
+    suiteResults,
+    fixtures: suiteResults.map((suite) => suite.fixture).filter(Boolean),
+    fixture: suiteResults[0]?.fixture || null,
+    coverage: {
+      lensFamilyCount: suiteResults.length,
+      fieldCount: suiteResults.reduce((sum, suite) => sum + (toNumber(suite.coverage?.fieldCount) || 0), 0),
+      wavelengthCount: new Set(caseResults.map((item) => item.fixture?.wavelengthKey).filter(Boolean)).size,
+      caseCount: caseResults.length,
+      comparisonCount: comparisons.length
+    },
+    executionMode: suiteResults.length && suiteResults.every((suite) => suite.executionMode === "worker")
+      ? "worker"
+      : "main-thread-fallback",
+    elapsedMs: suiteResults.reduce((sum, suite) => sum + (toNumber(suite.elapsedMs) || 0), 0),
+    pupilSamples: suiteResults.reduce((sum, suite) => sum + (toNumber(suite.pupilSamples) || 0), 0)
+  };
   physicalMtfExternalReferenceParityCache = { version: ANALYSIS_WORKER_VERSION, result };
   return result;
+};
+
+const calculatePhysicalMtfCanonicalAberrationValidation = async (token) => {
+  if (physicalMtfCanonicalAberrationValidationCache?.version === ANALYSIS_WORKER_VERSION) {
+    return physicalMtfCanonicalAberrationValidationCache.result;
+  }
+  const cachedCoreResult = [...physicalMtfCoreCache.values()]
+    .find((result) => result?.aberrationValidation)?.aberrationValidation;
+  if (cachedCoreResult) {
+    physicalMtfCanonicalAberrationValidationCache = {
+      version: ANALYSIS_WORKER_VERSION,
+      result: cachedCoreResult
+    };
+    return cachedCoreResult;
+  }
+  const fallback = () => globalThis.physicalMtfCore?.calculateCanonicalAberrationValidation?.() || {
+    status: "failed",
+    reason: "Shared physical MTF core does not provide canonical aberration validation."
+  };
+  if (typeof Worker === "undefined") {
+    const result = fallback();
+    physicalMtfCanonicalAberrationValidationCache = { version: ANALYSIS_WORKER_VERSION, result };
+    return result;
+  }
+  try {
+    const requestId = `${token}-canonical-aberrations`;
+    const message = await physicalMtfWorkerClient.request({
+      requestId,
+      task: "canonical-aberration-validation"
+    }, {
+      isStale: (response) => (
+        response.requestId !== requestId
+        || response.workerVersion !== ANALYSIS_WORKER_VERSION
+        || response.coreVersion !== PHYSICAL_MTF_CORE_VERSION
+        || token !== state.physicalLensMtfCalculationToken
+      )
+    });
+    if (message.status !== "complete"
+      || message.workerVersion !== ANALYSIS_WORKER_VERSION
+      || message.coreVersion !== PHYSICAL_MTF_CORE_VERSION) {
+      throw new Error(message.result?.reason || "Canonical aberration worker validation failed.");
+    }
+    physicalMtfCanonicalAberrationValidationCache = {
+      version: ANALYSIS_WORKER_VERSION,
+      result: message.result
+    };
+    return message.result;
+  } catch (error) {
+    if (token !== state.physicalLensMtfCalculationToken) throw error;
+    const result = fallback();
+    physicalMtfCanonicalAberrationValidationCache = { version: ANALYSIS_WORKER_VERSION, result };
+    return result;
+  }
 };
 
 const storePhysicalLensMtfResult = (key, result) => {
@@ -21493,6 +21884,10 @@ const schedulePhysicalLensMtfCalculation = ({ immediate = false } = {}) => {
       }
       const externalReferenceParity = await calculatePhysicalMtfExternalReferenceParity(token);
       if (token !== state.physicalLensMtfCalculationToken) return;
+      const aberrationValidation = await calculatePhysicalMtfCanonicalAberrationValidation(token);
+      if (token !== state.physicalLensMtfCalculationToken) return;
+      const focusResponseValidation = await calculatePhysicalMtfEndToEndFocusResponse(context, token);
+      if (token !== state.physicalLensMtfCalculationToken) return;
       const weights = isPolychromatic ? getCurrentPolychromaticWeights() : { [context.wavelengthKey]: 1 };
       const selected = isPolychromatic
         ? combinePolychromaticComplexOtf(monoResults, weights)
@@ -21523,13 +21918,17 @@ const schedulePhysicalLensMtfCalculation = ({ immediate = false } = {}) => {
         || (convergence?.status === "passed" && perLineConvergence.every((item) => item.status === "passed"));
       const polychromaticPassed = !isPolychromatic || selected.status === "complex-otf-combined";
       const externalReferencePassed = externalReferenceParity.status === "passed";
+      const canonicalAberrationsPassed = aberrationValidation.status === "passed";
+      const focusResponsePassed = focusResponseValidation.status === "passed";
       const calculationPassed = monoResults.every((item) => item.status !== "prototype-failed" && item.status !== "invalid");
       const validationPassed = calculationPassed
         && convergencePassed
         && calibrationPassed
         && referenceParityPassed
         && polychromaticPassed
-        && externalReferencePassed;
+        && externalReferencePassed
+        && canonicalAberrationsPassed
+        && focusResponsePassed;
       const aggregateReferenceParity = {
         status: referenceParityPassed ? "passed" : "failed",
         maximumDifference: Math.max(0, ...monoResults.map((item) => toNumber(item.referenceParity?.maximumDifference) || 0)),
@@ -21548,21 +21947,25 @@ const schedulePhysicalLensMtfCalculation = ({ immediate = false } = {}) => {
         status: !validationPassed
           ? "prototype-failed"
           : convergence
-            ? (isPolychromatic ? "step-6-polychromatic-convergence-passed" : "step-6-monochromatic-convergence-passed")
-            : (isPolychromatic ? "step-6-polychromatic-prototype" : "step-6-monochromatic-prototype"),
+            ? (isPolychromatic ? "step-7e-polychromatic-convergence-passed" : "step-7e-monochromatic-convergence-passed")
+            : (isPolychromatic ? "step-7e-polychromatic-prototype" : "step-7e-monochromatic-prototype"),
         validationLabel: !calibrationPassed
           ? "Image-space calibration audit failed"
           : !referenceParityPassed
             ? "Reference-pupil parity failed"
             : !externalReferencePassed
               ? "External reference-lens parity failed"
+            : !canonicalAberrationsPassed
+              ? "Canonical defocus / astigmatism validation failed"
+            : !focusResponsePassed
+              ? "Ray-traced OPD focus-response validation failed"
             : !polychromaticPassed
               ? "Complex C/d/F OTF combination failed"
               : convergence
-                ? (convergencePassed ? "Step 6 field + spectral reference and convergence passed" : "Lens-pupil convergence failed")
+                ? (convergencePassed ? "Step 7E real-lens focus response, canonical aberration, two-family reference and convergence passed" : "Lens-pupil convergence failed")
                 : isPolychromatic
-                  ? "Step 6 field + spectral reference passed — select 256 for convergence"
-                  : "Step 6 monochromatic prototype — select RGB for spectral validation",
+                  ? "Step 7E real-lens focus response, canonical aberration and two-family reference passed — select 256 for convergence"
+                  : "Step 7E monochromatic prototype — select RGB for spectral validation",
         context: {
           fieldKey: context.field.key,
           fieldName: context.field.name,
@@ -21577,6 +21980,8 @@ const schedulePhysicalLensMtfCalculation = ({ immediate = false } = {}) => {
         imageSpaceCalibration,
         referenceParity: aggregateReferenceParity,
         externalReferenceParity,
+        aberrationValidation,
+        focusResponseValidation,
         pupilDiagnostics: representative.pupilDiagnostics,
         opdDiagnostics: representative.opdDiagnostics,
         monoResults,
@@ -21597,9 +22002,13 @@ const schedulePhysicalLensMtfCalculation = ({ immediate = false } = {}) => {
         warnings: [
           ...new Set(monoResults.flatMap((item) => item.spectralWarnings || [])),
           isPolychromatic
-            ? "Weighted C/d/F complex OTF combination and the pinned 0°/10°/14° × C/d/F external reference matrix passed."
+            ? "Weighted C/d/F complex OTF combination and both pinned external reference matrices passed."
             : "Select RGB C/d/F to run the Phase 2 Step 4 complex-OTF spectral gate.",
-          "The external gate covers 3 fields × 3 Fraunhofer lines for the pinned DoubleGauss reference lens; an additional independent reference-lens family remains desirable before replacing the production geometric preview."
+          "The external gate covers DoubleGauss and ReverseTelephoto at 6 field points × 3 Fraunhofer lines: 18 cases and 180 S/T checkpoints.",
+          "Canonical ±0.25-wave defocus-coefficient and astigmatic focus-split pupils passed the shared-core behavioural gate.",
+          focusResponsePassed
+            ? "The selected lens passed the d-line 3D ray trace → OPD → complex pupil → physical MTF best-focus / deliberate-defocus gate."
+            : focusResponseValidation.reason
         ].filter(Boolean)
       };
       storePhysicalLensMtfResult(context.signature, result);
@@ -24892,20 +25301,36 @@ const renderPhysicalLensMtfReadouts = (result) => `
 `;
 
 const renderPhysicalMtfExternalReferenceAudit = (audit) => {
-  if (!audit?.fixture) return "";
-  const fixture = audit.fixture;
-  const hasCoverageMatrix = Array.isArray(audit.caseResults) && audit.caseResults.length > 0;
+  const suites = Array.isArray(audit?.suiteResults) && audit.suiteResults.length
+    ? audit.suiteResults
+    : audit?.fixture
+      ? [audit]
+      : [];
+  if (!suites.length) return "";
   const coverage = audit.coverage || {};
+  const renderSuite = (suite) => {
+    const fixture = suite.fixture || {};
+    const hasCoverageMatrix = Array.isArray(suite.caseResults) && suite.caseResults.length > 0;
+    const suiteCoverage = suite.coverage || {};
+    return `
+      <section class="physical-mtf-reference-suite">
+        <h5>${escapeHtml(fixture.lensClass || "Reference lens")} — ${suite.status === "passed" ? "passed" : "check"}</h5>
+        <p class="diagram-note">${escapeHtml(fixture.solver || "External solver")} ${escapeHtml(fixture.solverVersion || "")} · ${hasCoverageMatrix ? `${formatNumber(suiteCoverage.fieldCount, 0)} fields × ${formatNumber(suiteCoverage.wavelengthCount, 0)} wavelengths · ${formatNumber(suiteCoverage.caseCount, 0)} cases · ${formatNumber(suiteCoverage.comparisonCount, 0)} S/T checkpoints` : `field [${(fixture.field || []).map((value) => formatNumber(value, 3)).join(", ")}] · ${formatNumber(fixture.wavelengthUm * 1000, 1)} nm · f/${formatNumber(fixture.workingFNumber, 4)}`}.</p>
+        <ul class="compact-diagnostic-list">
+          ${hasCoverageMatrix
+            ? suite.caseResults.map((item) => `<li>${escapeHtml(item.fixture?.fieldName || item.fixture?.fieldKey || "Field")} ${formatNumber(item.fixture?.fieldAngleDeg, 1)}° · ${escapeHtml(item.fixture?.wavelengthKey || "d")} ${formatNumber(item.fixture?.wavelengthUm * 1000, 1)} nm: ${item.status === "passed" ? "passed" : "check"} · max |ΔMTF| ${formatNumber(item.maximumDifference, 4)} · f/${formatNumber(item.fixture?.workingFNumber, 4)}</li>`).join("")
+            : (suite.comparisons || []).map((item) => `<li>${escapeHtml(item.axis === "sagittal" ? "S" : "T")} ${formatNumber(item.frequencyLpMm, 0)} lp/mm: Lens Design ${formatNumber(item.actual, 4)} · Optiland ${formatNumber(item.expected, 4)} · |Δ| ${formatNumber(item.absoluteDifference, 4)}</li>`).join("")}
+        </ul>
+        <p class="diagram-note">Maximum |ΔMTF| ${formatNumber(suite.maximumDifference, 4)}; gate ${formatNumber(suite.tolerance, 3)}. ${hasCoverageMatrix ? `Pinned prescription blob: <code>${escapeHtml(fixture.sourceBlobSha || "")}</code>.` : `Pupil payload SHA-256: <code>${escapeHtml(fixture.payloadSha256 || "")}</code>.`} <a href="${escapeHtml(fixture.sourceUrl || "")}" target="_blank" rel="noreferrer">Pinned source prescription</a>.</p>
+      </section>
+    `;
+  };
   return `
     <details class="mtf-diagnostics-details physical-mtf-external-reference-audit">
-      <summary>External reference lens audit — ${audit.status === "passed" ? "passed" : "check"}</summary>
-      <p class="diagram-note">${escapeHtml(fixture.solver)} ${escapeHtml(fixture.solverVersion)} · ${escapeHtml(fixture.lensClass)} · ${hasCoverageMatrix ? `${formatNumber(coverage.fieldCount, 0)} fields × ${formatNumber(coverage.wavelengthCount, 0)} wavelengths · ${formatNumber(coverage.caseCount, 0)} cases · ${formatNumber(coverage.comparisonCount, 0)} S/T checkpoints` : `field [${(fixture.field || []).map((value) => formatNumber(value, 3)).join(", ")}] · ${formatNumber(fixture.wavelengthUm * 1000, 1)} nm · f/${formatNumber(fixture.workingFNumber, 4)}`}. Runtime uses pinned complex exit-pupil payloads only; no network request is made.</p>
-      <ul class="compact-diagnostic-list">
-        ${hasCoverageMatrix
-          ? audit.caseResults.map((item) => `<li>${escapeHtml(item.fixture?.fieldName || item.fixture?.fieldKey || "Field")} ${formatNumber(item.fixture?.fieldAngleDeg, 1)}° · ${escapeHtml(item.fixture?.wavelengthKey || "d")} ${formatNumber(item.fixture?.wavelengthUm * 1000, 1)} nm: ${item.status === "passed" ? "passed" : "check"} · max |ΔMTF| ${formatNumber(item.maximumDifference, 4)} · f/${formatNumber(item.fixture?.workingFNumber, 4)}</li>`).join("")
-          : (audit.comparisons || []).map((item) => `<li>${escapeHtml(item.axis === "sagittal" ? "S" : "T")} ${formatNumber(item.frequencyLpMm, 0)} lp/mm: Lens Design ${formatNumber(item.actual, 4)} · Optiland ${formatNumber(item.expected, 4)} · |Δ| ${formatNumber(item.absoluteDifference, 4)}</li>`).join("")}
-      </ul>
-      <p class="diagram-note">Maximum |ΔMTF| ${formatNumber(audit.maximumDifference, 4)}; gate ${formatNumber(audit.tolerance, 3)}. ${hasCoverageMatrix ? `Pinned prescription blob: <code>${escapeHtml(fixture.sourceBlobSha || "")}</code>.` : `Pupil payload SHA-256: <code>${escapeHtml(fixture.payloadSha256 || "")}</code>.`} <a href="${escapeHtml(fixture.sourceUrl || "")}" target="_blank" rel="noreferrer">Pinned source prescription</a>.</p>
+      <summary>External reference lens-family audit — ${audit.status === "passed" ? "passed" : "check"}</summary>
+      <p class="diagram-note">${formatNumber(coverage.lensFamilyCount || suites.length, 0)} independent lens families · ${formatNumber(coverage.fieldCount, 0)} field points · ${formatNumber(coverage.wavelengthCount, 0)} wavelengths · ${formatNumber(coverage.caseCount, 0)} cases · ${formatNumber(coverage.comparisonCount, 0)} S/T checkpoints. Runtime uses pinned complex exit-pupil payloads only; no network request is made.</p>
+      ${suites.map(renderSuite).join("")}
+      ${suites.length > 1 ? `<p class="diagram-note">Combined maximum |ΔMTF| ${formatNumber(audit.maximumDifference, 4)}; all lens-family suites must pass.</p>` : ""}
     </details>
   `;
 };
@@ -24917,16 +25342,20 @@ const renderPhysicalLensMtfPrototype = ({ result, pending, error }) => {
   const referenceParityPassed = result?.referenceParity?.status === "passed";
   const polychromaticPassed = result?.polychromaticValidation?.status === "passed";
   const externalReferencePassed = result?.externalReferenceParity?.status === "passed";
+  const canonicalAberrationsPassed = result?.aberrationValidation?.status === "passed";
+  const focusResponsePassed = result?.focusResponseValidation?.status === "passed";
   const isPolychromatic = result?.context?.wavelengthMode === "rgb";
   return `
     <section class="mtf-subsection physical-lens-mtf-prototype">
       <div class="panel-heading compact-heading">
         <h4>Lens OPD Physical MTF Prototype</h4>
-        <span class="badge">Phase 2 Step 6</span>
+        <span class="badge">Phase 2 Step 7E</span>
         <span class="badge ${result?.executionMode === "worker" ? "badge-good" : ""}">${escapeHtml(executionLabel)}</span>
         ${result?.imageSpaceCalibration ? `<span class="badge ${calibrationPassed ? "badge-good" : "badge-warning"}">${calibrationPassed ? "Image-space calibration passed" : "Calibration audit failed"}</span>` : ""}
         ${result?.convergence ? `<span class="badge ${convergencePassed ? "badge-good" : "badge-warning"}">${escapeHtml(result.validationLabel)}</span>` : ""}
         ${result?.externalReferenceParity ? `<span class="badge ${externalReferencePassed ? "badge-good" : "badge-warning"}">${externalReferencePassed ? "External matrix parity passed" : "External matrix parity check"}</span>` : ""}
+        ${result?.aberrationValidation ? `<span class="badge ${canonicalAberrationsPassed ? "badge-good" : "badge-warning"}">${canonicalAberrationsPassed ? "Defocus + astigmatism gate passed" : "Aberration gate check"}</span>` : ""}
+        ${result?.focusResponseValidation ? `<span class="badge ${focusResponsePassed ? "badge-good" : "badge-warning"}">${focusResponsePassed ? "Real-lens focus response passed" : "Focus-response gate check"}</span>` : ""}
       </div>
       ${pending ? `<div class="analysis-updating" role="status">Building ray-traced complex pupil and calculating FFT MTF…</div>` : ""}
       ${error ? `<p class="warning ray-warning">${escapeHtml(error)}</p>` : ""}
@@ -24953,17 +25382,33 @@ const renderPhysicalLensMtfPrototype = ({ result, pending, error }) => {
           ${metric("f/# parity", Number.isFinite(result.imageSpaceCalibration?.relativeDifference) ? `${formatNumber(result.imageSpaceCalibration.relativeDifference * 100, 1)}%` : "--", `limit ${formatNumber((result.imageSpaceCalibration?.tolerance || 0) * 100, 0)}%`)}
           ${metric("Reference pupil", referenceParityPassed ? "Pass" : result.referenceParity?.status === "not-applicable" ? "N/A" : "Check", Number.isFinite(result.referenceParity?.maximumDifference) ? `max Δ ${formatNumber(result.referenceParity.maximumDifference, 4)}` : "zero-phase parity")}
           ${metric("External matrix", externalReferencePassed ? "Pass" : "Check", Number.isFinite(result.externalReferenceParity?.maximumDifference) ? `${formatNumber(result.externalReferenceParity?.coverage?.caseCount, 0)} cases · max Δ ${formatNumber(result.externalReferenceParity.maximumDifference, 4)}` : "pinned fixture")}
+          ${metric("Canonical aberrations", canonicalAberrationsPassed ? "Pass" : "Check", Number.isFinite(result.aberrationValidation?.diagnostics?.astigmatismSeparationAt30) ? `S/T split ${formatNumber(result.aberrationValidation.diagnostics.astigmatismSeparationAt30, 4)}` : "defocus + astigmatism")}
+          ${metric("Real-lens focus", focusResponsePassed ? "Pass" : "Check", Number.isFinite(result.focusResponseValidation?.minimumMeasuredLoss) ? `min MTF loss ${formatNumber(result.focusResponseValidation.minimumMeasuredLoss, 4)}` : "ray → OPD → pupil → MTF")}
           ${metric("Spectral OTF", polychromaticPassed ? "Pass" : isPolychromatic ? "Check" : "Not selected", polychromaticPassed ? "C 25% · d 50% · F 25%" : "select RGB C/d/F")}
           ${metric("Complex vs |OTF|", Number.isFinite(result.polychromaticValidation?.maximumComplexCombinationDelta) ? formatNumber(result.polychromaticValidation.maximumComplexCombinationDelta, 4) : "--", "maximum MTF difference")}
         </div>
         ${renderPhysicalLensMtfReadouts(result)}
+        ${result.focusResponseValidation ? `
+          <details class="mtf-diagnostics-details physical-mtf-focus-response-audit">
+            <summary>Real-lens focus-response audit — ${focusResponsePassed ? "passed" : "check"}</summary>
+            <div class="compact-metric-row">
+              ${metric("Ray best focus", formatNumber(result.focusResponseValidation.rayFocus?.bestFocusPlaneX, 4), "mm image-plane X")}
+              ${metric("MTF best focus", formatNumber(result.focusResponseValidation.bestFocusPlaneX, 4), "mm image-plane X")}
+              ${metric("Defocus step", formatNumber(result.focusResponseValidation.defocusStepMm, 4), "mm each side")}
+              ${metric("Best MTF", formatNumber(result.focusResponseValidation.bestScore, 4), `mean S/T at ${formatNumber(result.focusResponseValidation.normalizedFrequency, 2)} cutoff`)}
+              ${metric("−defocus loss", formatNumber(result.focusResponseValidation.negativeMtfLoss, 4), `required ${formatNumber(result.focusResponseValidation.requiredMtfLoss, 4)}`)}
+              ${metric("+defocus loss", formatNumber(result.focusResponseValidation.positiveMtfLoss, 4), `required ${formatNumber(result.focusResponseValidation.requiredMtfLoss, 4)}`)}
+            </div>
+            <p class="diagram-note">This gate uses the selected lens and field at d-line on a fixed 128 × 128 audit grid. It solves a bounded 3D real-ray focus, rebuilds ray-traced OPD and the complex pupil at each plane, then requires an interior physical-MTF peak and at least 8% relative contrast loss on both deliberate-defocus sides (capped at 0.03 absolute MTF).</p>
+          </details>
+        ` : ""}
         ${renderPhysicalMtfExternalReferenceAudit(result.externalReferenceParity)}
         ${result.convergence ? `
           <p class="diagram-note">128 / 256 convergence: maximum |ΔMTF| ${formatNumber(result.convergence.maximumDifference, 4)}; gate ${formatNumber(result.convergence.tolerance, 3)} at 10, 30, 40 and 50 lp/mm for both S/T cuts.</p>
         ` : `<p class="diagram-note">Select the 256 × 256 grid to run the 128 / 256 convergence gate.</p>`}
         ${result.warnings.map((warning) => `<p class="warning ray-warning">${escapeHtml(warning)}</p>`).join("")}
       ` : ""}
-      <p class="diagram-note">Phase 2 Step 6 validates the pinned Optiland 0.5.8 DoubleGauss at 0°, 10° and 14° for C, d and F lines: 9 complex-pupil cases and 90 sagittal/tangential checkpoints.</p>
+      <p class="diagram-note">Phase 2 Step 7E adds a selected-lens d-line 3D ray trace → OPD → complex pupil → physical MTF focus-response gate to the deterministic aberration checks and two independent Optiland 0.5.8 lens-family matrices.</p>
     </section>
   `;
 };
@@ -24990,6 +25435,7 @@ const renderPhysicalMtfLab = () => {
     && state.physicalLensMtfLastKey === lensContext.signature;
   const pending = isOpen && state.physicalMtfPending && state.physicalMtfLastKey === key;
   const validationPassed = result?.status === "fft-match-passed" || result?.status === "ideal-convergence-passed";
+  const canonicalAberrationsPassed = result?.aberrationValidation?.status === "passed";
   const statusText = pending
     ? "Calculating diffraction validation…"
     : result
@@ -25031,6 +25477,7 @@ const renderPhysicalMtfLab = () => {
       <div class="mtf-status-strip">
         <span class="badge ${pending ? "" : validationPassed ? "badge-good" : "badge-warning"}">${escapeHtml(statusText)}</span>
         <span class="badge">Ideal circular pupil only</span>
+        ${result?.aberrationValidation ? `<span class="badge ${canonicalAberrationsPassed ? "badge-good" : "badge-warning"}">${canonicalAberrationsPassed ? "Canonical aberrations passed" : "Canonical aberrations check"}</span>` : ""}
         <span class="badge">Complex C/d/F OTF ready</span>
       </div>
       ${result ? renderPhysicalMtfValidationChart(result, inputs.chartMode) : ""}
@@ -25049,6 +25496,14 @@ const renderPhysicalMtfLab = () => {
           ${metric("Elapsed", formatNumber(result.elapsedMs, 1), "ms")}
           ${metric("Cutoff", formatNumber(result.cutoffFrequencyLpMm, 1), "lp/mm")}
         </div>
+        ${result.aberrationValidation ? `
+          <div class="compact-metric-row physical-mtf-aberration-validation-row">
+            ${metric("Defocus MTF loss", formatNumber(result.aberrationValidation.diagnostics?.minimumDefocusMtfLoss, 4), `minimum ${formatNumber(result.aberrationValidation.tolerances?.minimumDefocusMtfLoss, 3)}`)}
+            ${metric("±defocus parity", formatNumber(result.aberrationValidation.diagnostics?.maximumDefocusConjugateDifference, 6), `maximum ${formatNumber(result.aberrationValidation.tolerances?.maximumDefocusConjugateDifference, 6)}`)}
+            ${metric("Defocus S/T symmetry", formatNumber(result.aberrationValidation.diagnostics?.maximumDefocusAxisDifference, 6), `maximum ${formatNumber(result.aberrationValidation.tolerances?.maximumDefocusAxisDifference, 3)}`)}
+            ${metric("Astigmatic S/T split", formatNumber(result.aberrationValidation.diagnostics?.astigmatismSeparationAt30, 4), `minimum ${formatNumber(result.aberrationValidation.tolerances?.minimumAstigmatismSeparation, 3)}`)}
+          </div>
+        ` : ""}
         <div class="compact-metric-row">
           ${metric("PSF energy", formatNumber(result.pipeline?.normalizedPsfEnergy, 4), "normalised")}
           ${metric("OTF DC", formatNumber(result.pipeline?.otfDc, 4), `complex ${formatNumber(result.pipeline?.otfDcReal, 4)} + ${formatNumber(result.pipeline?.otfDcImag, 4)}i`)}
@@ -25062,7 +25517,7 @@ const renderPhysicalMtfLab = () => {
         ` : ""}
       ` : ""}
       ${renderPhysicalLensMtfPrototype({ result: lensResult, pending: lensPending, error: lensErrorForCurrentContext })}
-      <p class="diagram-note">The upper chart validates the ideal circular-pupil FFT pipeline. Phase 2 Step 6 retains weighted C/d/F complex OTF combination on a shared calibrated lp/mm grid and adds pinned off-axis field × wavelength coverage.</p>
+      <p class="diagram-note">The upper chart validates the ideal circular-pupil FFT pipeline. Phase 2 Step 7E also checks canonical aberrations and the selected real lens's best-focus / deliberate-defocus response before accepting the two-family field × wavelength gate.</p>
       ` : ""}
     </details>
   `;
@@ -37229,7 +37684,8 @@ const runOpticsSelfCheck = (options = {}) => {
   test("physical FFT MTF engine remains separate and gated", () => {
     const status = physicalMtf.createStatus();
     const fft = physicalMtf.fftRadix2Complex([1, 0, 0, 0], [0, 0, 0, 0]);
-    return status.status === "phase-2-step-6-field-spectral-reference"
+    return status.status === "phase-2-step-7e-focus-response"
+      && status.coreVersion === PHYSICAL_MTF_CORE_VERSION
       && [10, 30, 40, 50].every((frequency) => status.validationFrequenciesLpMm.includes(frequency))
       && status.warnings.some((warning) => warning.includes("geometric preview"))
       && fft.status === "valid"
@@ -37237,7 +37693,34 @@ const runOpticsSelfCheck = (options = {}) => {
       && fft.real.every((value) => Math.abs(value - 1) < 0.000001);
   });
 
-  test("physical MTF phase 2 step 6 loads the pinned Optiland field and spectral matrix", () => {
+  test("physical MTF main-thread fallback uses the shared worker core", () => {
+    const size = 8;
+    const radiusPx = 2.5;
+    const center = (size - 1) / 2;
+    const real = Array.from({ length: size * size }, (_, index) => {
+      const x = index % size;
+      const y = Math.floor(index / size);
+      return Math.hypot(x - center, y - center) <= radiusPx ? 1 : 0;
+    });
+    const pupil = { gridSize: size, radiusPx, wavelengthNm: SPECTRAL_LINES.d.wavelengthNm, real, imag: new Array(real.length).fill(0) };
+    const options = { fNumber: 4, wavelengthNm: SPECTRAL_LINES.d.wavelengthNm, includeArrays: false };
+    const legacy = calculatePhysicalMtfFromPupilLegacy(pupil, options);
+    const shared = calculatePhysicalMtfFromPupil(pupil, options);
+    const sharedWithArrays = calculatePhysicalMtfFromPupil(pupil, { ...options, includeArrays: true });
+    const differences = ["sagittal", "tangential"].flatMap((axis) => (
+      shared.mtf[axis].map((point, index) => Math.abs(point.value - legacy.mtf[axis][index].value))
+    ));
+    return globalThis.physicalMtfCore?.PHYSICAL_MTF_CORE_VERSION === PHYSICAL_MTF_CORE_VERSION
+      && calculatePhysicalMtfFromPupil.toString().includes("sharedCore.calculateLensComplexPupilMtf")
+      && shared.status === "opd-connected-prototype"
+      && shared.mtf.sagittal.length === legacy.mtf.sagittal.length
+      && shared.mtf.tangential.length === legacy.mtf.tangential.length
+      && sharedWithArrays.psf?.values?.length === size * size
+      && sharedWithArrays.otf?.real?.length === size * size
+      && Math.max(...differences) < 1e-12;
+  });
+
+  test("physical MTF phase 2 step 7C loads the pinned DoubleGauss field and spectral matrix", () => {
     const fixture = globalThis.PHYSICAL_MTF_EXTERNAL_REFERENCE_FIXTURE;
     const cases = physicalMtfExternalReferenceCases(fixture);
     const decoded = cases.map((referenceCase) => decodePhysicalMtfExternalReferencePupil(referenceCase));
@@ -37258,27 +37741,117 @@ const runOpticsSelfCheck = (options = {}) => {
       && decoded.every((pupil) => pupil.status === "valid" && pupil.gridSize === 128 && pupil.sourceSize === 90 && pupil.nonzeroSamples === 6180);
   });
 
-  deepTest("physical MTF phase 2 step 6 matches all pinned Optiland field and spectral cases", () => {
-    const fixture = globalThis.PHYSICAL_MTF_EXTERNAL_REFERENCE_FIXTURE;
-    const caseResults = physicalMtfExternalReferenceCases(fixture).map((referenceCase) => {
-      const pupil = decodePhysicalMtfExternalReferencePupil(referenceCase);
-      const calculated = physicalMtf.calculatePhysicalMtfFromPupil(pupil, {
-        workingFNumber: referenceCase.workingFNumber,
-        wavelengthNm: referenceCase.wavelengthUm * 1000,
-        frequencyStepLpMm: referenceCase.frequencyStepLpMm,
-        calibrationStatus: "external-reference",
+  test("physical MTF phase 2 step 7C loads the pinned ReverseTelephoto field and spectral matrix", () => {
+    const fixture = globalThis.PHYSICAL_MTF_SECONDARY_EXTERNAL_REFERENCE_FIXTURE;
+    const cases = physicalMtfExternalReferenceCases(fixture);
+    const decoded = cases.map((referenceCase) => decodePhysicalMtfExternalReferencePupil(referenceCase));
+    const centerD = cases.find((referenceCase) => referenceCase.fieldKey === "center" && referenceCase.wavelengthKey === "d");
+    return fixture?.schemaVersion === 2
+      && fixture?.solverVersion === "0.5.8"
+      && fixture?.lensClass === "ReverseTelephoto"
+      && fixture?.sourceBlobSha === "69044dae6866b187cc627b74345804af393ae62f"
+      && fixture.coverage?.fieldCount === 3
+      && fixture.coverage?.wavelengthCount === 3
+      && fixture.coverage?.caseCount === 9
+      && fixture.coverage?.comparisonCount === 90
+      && cases.length === 9
+      && [...new Set(cases.map((referenceCase) => referenceCase.fieldAngleDeg))].join(",") === "0,21,30"
+      && new Set(cases.map((referenceCase) => referenceCase.wavelengthKey)).size === 3
+      && cases.every((referenceCase) => referenceCase.samples?.length === 5)
+      && cases.every((referenceCase) => referenceCase.pupilEncoding?.payloadSha256?.length === 64)
+      && centerD?.pupilEncoding?.payloadSha256 === "397f90cb5b1d45de4a2f02d1c2a1708da714abf12fabdd0c70f672c7d2055443"
+      && decoded.every((pupil) => pupil.status === "valid" && pupil.gridSize === 128 && pupil.sourceSize === 90 && pupil.nonzeroSamples === 6180);
+  });
+
+  deepTest("physical MTF phase 2 step 7C matches both pinned lens-family field and spectral matrices", () => {
+    const fixtures = physicalMtfExternalReferenceFixtures();
+    const suiteResults = fixtures.map((fixture) => {
+      const caseResults = physicalMtfExternalReferenceCases(fixture).map((referenceCase) => {
+        const pupil = decodePhysicalMtfExternalReferencePupil(referenceCase);
+        const calculated = physicalMtf.calculatePhysicalMtfFromPupil(pupil, {
+          workingFNumber: referenceCase.workingFNumber,
+          wavelengthNm: referenceCase.wavelengthUm * 1000,
+          frequencyStepLpMm: referenceCase.frequencyStepLpMm,
+          calibrationStatus: "external-reference",
+          includeArrays: false
+        });
+        return comparePhysicalMtfExternalReference(calculated, referenceCase, fixture);
+      });
+      return summarizePhysicalMtfExternalReferenceParity(caseResults, fixture);
+    });
+    return fixtures.length === 2
+      && suiteResults.every((parity) => parity.status === "passed")
+      && suiteResults.reduce((sum, parity) => sum + parity.caseResults.length, 0) === 18
+      && suiteResults.reduce((sum, parity) => sum + parity.comparisons.length, 0) === 180
+      && suiteResults.every((parity) => parity.coverage.fieldCount === 3)
+      && suiteResults.every((parity) => parity.coverage.wavelengthCount === 3)
+      && suiteResults.every((parity) => parity.maximumDifference <= parity.tolerance);
+  });
+
+  deepTest("physical MTF phase 2 step 7D validates canonical defocus and astigmatism behaviour", () => {
+    const validation = physicalMtf.calculateCanonicalAberrationValidation();
+    return validation?.status === "passed"
+      && validation.gridSize === 128
+      && validation.checkpoints?.length === 4
+      && validation.checkpoints.every((item) => item.samples?.length === 4)
+      && validation.diagnostics?.zeroAndRangePassed === true
+      && validation.diagnostics.maximumDefocusAxisDifference <= validation.tolerances.maximumDefocusAxisDifference
+      && validation.diagnostics.maximumDefocusConjugateDifference <= validation.tolerances.maximumDefocusConjugateDifference
+      && validation.diagnostics.minimumDefocusMtfLoss >= validation.tolerances.minimumDefocusMtfLoss
+      && validation.diagnostics.astigmatismSeparationAt30 >= validation.tolerances.minimumAstigmatismSeparation;
+  });
+
+  test("physical MTF phase 2 step 7E solves a bounded 3D real-ray best-focus plane", () => {
+    const bestFocusPlaneX = 0.25;
+    const pupilSamples = [
+      [-0.08, -0.04], [-0.08, 0.04], [-0.04, -0.08], [-0.04, 0.08],
+      [0.04, -0.08], [0.04, 0.08], [0.08, -0.04], [0.08, 0.04]
+    ].map(([slopeY, slopeZ]) => ({
+      amplitude: 1,
+      imageY: -slopeY * bestFocusPlaneX,
+      imageZ: -slopeZ * bestFocusPlaneX,
+      imageDirectionX: 1,
+      imageDirectionY: slopeY,
+      imageDirectionZ: slopeZ
+    }));
+    const solved = solvePhysicalMtfRayBestFocus({ imagePlaneX: 0, pupilSamples }, { maximumShiftMm: 1 });
+    return solved.status === "solved"
+      && solved.validRayCount === pupilSamples.length
+      && Math.abs(solved.bestFocusPlaneX - bestFocusPlaneX) < 1e-12
+      && solved.rmsSpotAtBestFocusMm < 1e-12
+      && solved.rmsSpotAtReferenceMm > solved.rmsSpotAtBestFocusMm
+      && calculatePhysicalMtfEndToEndFocusResponse.toString().includes("preparePhysicalMtfFocusResponsePlane")
+      && calculatePhysicalMtfEndToEndFocusResponse.toString().includes("calculatePhysicalLensMtfWithWorker");
+  });
+
+  deepTest("physical MTF phase 2 step 7E connects a real lens ray trace to focus-dependent complex-pupil MTF", () => withTemporaryState(() => {
+    loadPresetIntoState("manual");
+    state.physicalMtfFieldKey = "center";
+    const context = physicalLensMtfContextFromState();
+    const reference = preparePhysicalMtfFocusResponsePlane(context, 0, 128);
+    const rayFocus = solvePhysicalMtfRayBestFocus(reference.sampled?.wavefront, { maximumShiftMm: 5 });
+    const stepMm = physicalMtfFocusResponseDefocusMm(SPECTRAL_LINES.d.wavelengthNm, reference.workingFNumber);
+    const evaluate = (imagePlaneX) => {
+      const prepared = preparePhysicalMtfFocusResponsePlane(context, imagePlaneX, 128);
+      if (prepared.status !== "ready") return NaN;
+      const calculated = physicalMtf.calculatePhysicalMtfFromPupil(prepared.pupil, {
+        workingFNumber: prepared.workingFNumber,
+        wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
+        calibrationStatus: prepared.imageSpaceCalibration.status,
         includeArrays: false
       });
-      return comparePhysicalMtfExternalReference(calculated, referenceCase, fixture);
-    });
-    const parity = summarizePhysicalMtfExternalReferenceParity(caseResults, fixture);
-    return parity.status === "passed"
-      && parity.caseResults.length === 9
-      && parity.comparisons.length === 90
-      && parity.coverage.fieldCount === 3
-      && parity.coverage.wavelengthCount === 3
-      && parity.maximumDifference <= parity.tolerance;
-  });
+      return physicalMtfFocusResponseScore(calculated, 0.2);
+    };
+    const best = evaluate(rayFocus.bestFocusPlaneX);
+    const negative = evaluate(rayFocus.bestFocusPlaneX - stepMm);
+    const positive = evaluate(rayFocus.bestFocusPlaneX + stepMm);
+    return reference.status === "ready"
+      && rayFocus.status === "solved"
+      && Number.isFinite(stepMm)
+      && stepMm >= 0.02
+      && [best, negative, positive].every(Number.isFinite)
+      && Math.max(Math.abs(best - negative), Math.abs(best - positive)) > 0.005;
+  }));
 
   deepTest("physical MTF ideal circular pupil validates against analytic diffraction", () => {
     const result = physicalMtf.calculateIdealCircularPupilValidation({ gridSize: 128, fNumber: 4, wavelengthKey: "d" });
@@ -37293,6 +37866,8 @@ const runOpticsSelfCheck = (options = {}) => {
       && result.fftDerivedMtf.length === result.analyticMtf.length
       && result.autocorrelationReferenceMtf.length === result.analyticMtf.length
       && result.validation?.autocorrelationReference?.passed === true
+      && result.aberrationValidation?.status === "passed"
+      && result.validation?.canonicalAberrations?.passed === true
       && Math.abs(physicalMtf.analyticDiffractionMtf(0) - 1) < 0.000001
       && physicalMtf.analyticDiffractionMtf(1) === 0
       && collapsedMarkup.includes("Physical MTF Lab — diffraction validation")
@@ -37330,7 +37905,7 @@ const runOpticsSelfCheck = (options = {}) => {
     const analyticMidpoint = physicalMtf.analyticDiffractionMtf(0.5);
     const polyOtf = physicalMtf.combinePolychromaticComplexOtf();
     const sensorMtf = physicalMtf.calculateSensorMtfProfile();
-    return physicalMtf.createStatus().status === "phase-2-step-6-field-spectral-reference"
+    return physicalMtf.createStatus().status === "phase-2-step-7e-focus-response"
       && pupilResult.status === "opd-connected-prototype"
       && pupilResult.gridSize === 128
       && pupilResult.radiusPx / pupilResult.gridSize > 0.4
@@ -37427,7 +38002,7 @@ const runOpticsSelfCheck = (options = {}) => {
         maximumDifference: 0.012,
         tolerance: 0.03,
         comparisons: [],
-        coverage: { fieldCount: 3, wavelengthCount: 3, caseCount: 9, comparisonCount: 90 },
+        coverage: { lensFamilyCount: 2, fieldCount: 6, wavelengthCount: 3, caseCount: 18, comparisonCount: 180 },
         caseResults: [{
           status: "passed",
           maximumDifference: 0.012,
@@ -37440,6 +38015,44 @@ const runOpticsSelfCheck = (options = {}) => {
             workingFNumber: 4.9918
           }
         }],
+        suiteResults: [
+          {
+            status: "passed",
+            maximumDifference: 0.012,
+            tolerance: 0.03,
+            coverage: { fieldCount: 3, wavelengthCount: 3, caseCount: 9, comparisonCount: 90 },
+            caseResults: [{
+              status: "passed",
+              maximumDifference: 0.012,
+              fixture: { fieldName: "Full field", fieldAngleDeg: 14, wavelengthKey: "F", wavelengthUm: 0.4861, workingFNumber: 4.9918 }
+            }],
+            fixture: {
+              solver: "Optiland FFTMTF",
+              solverVersion: "0.5.8",
+              lensClass: "DoubleGauss",
+              sourceBlobSha: "fixture-source-sha",
+              sourceUrl: "https://github.com/optiland/optiland/blob/v0.5.8/optiland/samples/objectives.py"
+            }
+          },
+          {
+            status: "passed",
+            maximumDifference: 0.011,
+            tolerance: 0.03,
+            coverage: { fieldCount: 3, wavelengthCount: 3, caseCount: 9, comparisonCount: 90 },
+            caseResults: [{
+              status: "passed",
+              maximumDifference: 0.011,
+              fixture: { fieldName: "Full field", fieldAngleDeg: 30, wavelengthKey: "F", wavelengthUm: 0.4861, workingFNumber: 6.7 }
+            }],
+            fixture: {
+              solver: "Optiland FFTMTF",
+              solverVersion: "0.5.8",
+              lensClass: "ReverseTelephoto",
+              sourceBlobSha: "fixture-source-sha",
+              sourceUrl: "https://github.com/optiland/optiland/blob/v0.5.8/optiland/samples/objectives.py#L117-L175"
+            }
+          }
+        ],
         fixture: {
           solver: "Optiland FFTMTF",
           solverVersion: "0.5.8",
@@ -37447,6 +38060,35 @@ const runOpticsSelfCheck = (options = {}) => {
           sourceBlobSha: "fixture-source-sha",
           sourceUrl: "https://github.com/optiland/optiland/blob/v0.5.8/optiland/samples/objectives.py"
         }
+      },
+      aberrationValidation: {
+        status: "passed",
+        tolerances: {
+          maximumDefocusAxisDifference: 0.002,
+          maximumDefocusConjugateDifference: 0.000001,
+          minimumDefocusMtfLoss: 0.1,
+          minimumAstigmatismSeparation: 0.2
+        },
+        diagnostics: {
+          maximumDefocusAxisDifference: 0,
+          maximumDefocusConjugateDifference: 0,
+          minimumDefocusMtfLoss: 0.3,
+          astigmatismSeparationAt30: 0.37
+        }
+      },
+      focusResponseValidation: {
+        status: "passed",
+        rayFocus: { bestFocusPlaneX: 0.012 },
+        bestFocusPlaneX: 0.01,
+        defocusStepMm: 0.02,
+        normalizedFrequency: 0.2,
+        bestScore: 0.72,
+        negativeMtfLoss: 0.12,
+        positiveMtfLoss: 0.11,
+        maximumRequiredMtfLoss: 0.03,
+        minimumRelativeMtfLoss: 0.08,
+        requiredMtfLoss: 0.03,
+        minimumMeasuredLoss: 0.11
       },
       polychromaticValidation: { status: "passed", maximumComplexCombinationDelta: 0.02 },
       opdDiagnostics: { rmsOpdWaves: 0.02 },
@@ -37456,7 +38098,7 @@ const runOpticsSelfCheck = (options = {}) => {
     };
     const markup = renderPhysicalLensMtfPrototype({ result, pending: false, error: "" });
     return markup.includes("Lens OPD Physical MTF Prototype")
-      && markup.includes("Phase 2 Step 6")
+      && markup.includes("Phase 2 Step 7E")
       && markup.includes("physical-lens-mtf-chart")
       && markup.includes("physical-lens-mtf-sagittal")
       && markup.includes("physical-lens-mtf-tangential")
@@ -37464,8 +38106,14 @@ const runOpticsSelfCheck = (options = {}) => {
       && markup.includes("Image-space calibration passed")
       && markup.includes("Reference pupil")
       && markup.includes("External matrix parity passed")
-      && markup.includes("External reference lens audit")
-      && markup.includes("9 cases · 90 S/T checkpoints")
+      && markup.includes("Defocus + astigmatism gate passed")
+      && markup.includes("Real-lens focus response passed")
+      && markup.includes("Real-lens focus-response audit — passed")
+      && markup.includes("Canonical aberrations")
+      && markup.includes("External reference lens-family audit")
+      && markup.includes("18 cases · 180 S/T checkpoints")
+      && markup.includes("DoubleGauss")
+      && markup.includes("ReverseTelephoto")
       && markup.includes("Spectral OTF")
       && markup.includes("RGB C/d/F")
       && markup.includes("128 / 256 convergence");

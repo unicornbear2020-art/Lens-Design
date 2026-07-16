@@ -1,7 +1,7 @@
 /* eslint-env browser, worker */
 
 (() => {
-const PHYSICAL_MTF_CORE_VERSION = "20260716-physical-mtf-direct-pupil-8";
+const PHYSICAL_MTF_CORE_VERSION = "20260716-auto-improve-validation-1";
 const PHYSICAL_LENS_PUPIL_RADIUS_FRACTION = 0.44;
 let canonicalAberrationValidationCache = null;
 let canonicalApodizationValidationCache = null;

@@ -10,8 +10,8 @@ const DIAGRAM_SIZE = {
   height: 480
 };
 
-const ANALYSIS_WORKER_VERSION = "20260716-physical-mtf-direct-pupil-8";
-const PHYSICAL_MTF_CORE_VERSION = "20260716-physical-mtf-direct-pupil-8";
+const ANALYSIS_WORKER_VERSION = "20260716-auto-improve-validation-1";
+const PHYSICAL_MTF_CORE_VERSION = "20260716-auto-improve-validation-1";
 const GEOMETRIC_MTF_SOLVER_CONTRACT_VERSION = "geometric-lsf-contract-20260630-1";
 const DEFAULT_PRESET_KEY = "zeissBiotar50F14Us1786916Ex2";
 const OLD_MISLEADING_ZEISS_PRESET_KEYS = [
@@ -3800,7 +3800,9 @@ const state = {
   retargetLastResult: null,
   autoImproveMode: "focus",
   autoImproveResult: null,
-  autoImproveStatus: ""
+  autoImproveStatus: "",
+  autoImproveValidation: null,
+  autoImproveRunMode: ""
 };
 
 const DIAGRAM_VIEW_OPTIONS = [
@@ -12609,7 +12611,7 @@ const validateOptimizerCandidate = (candidate, system, options = {}) => {
       reasons.push(`L${index + 1} has invalid asphere coefficients.`);
     }
   });
-  try {
+  if (options.validateManufacturing !== false) try {
     const positions = lensPositions(system, candidate.lenses);
     const mapper = { x: (value) => value, y: (value) => value, mmScale: 1, positions };
     const models = candidate.lenses.map((lens, index) => (
@@ -12672,9 +12674,13 @@ const validateOptimizerCandidate = (candidate, system, options = {}) => {
   const apertureDiameter = Math.max(0.1, toNumber(options.apertureDiameter) || candidate.apertureDiameter || state.apertureDiameter || 1);
   const largestDiameter = Math.max(0, ...candidate.lenses.map((lens) => toNumber(lens.diameter) || 0));
   if (!(apertureDiameter > 0) || apertureDiameter > largestDiameter * 1.05) reasons.push("Physical stop diameter is invalid or larger than the largest clear aperture.");
+  const candidateFieldDefinitions = optimizerFieldDefinitions(system, options);
+  const validationFieldDefinitions = ["focus", "centerSharpness", "chromatic"].includes(options.autoImproveMode)
+    ? candidateFieldDefinitions.filter((field) => field.key === "center")
+    : candidateFieldDefinitions;
   const traces = traceSystemFieldSet(candidate.lenses, system, {
     ...rayTraceApertureOptions(state),
-    fieldDefinitions: optimizerFieldDefinitions(system, options),
+    fieldDefinitions: validationFieldDefinitions,
     rayCount: 5,
     apertureDiameter,
     wavelengthNm: SPECTRAL_LINES.d.wavelengthNm,
@@ -12833,6 +12839,9 @@ const candidateViolatesConstraints = (candidate, system, options = {}) => {
 
 const calculateMeritScore = (lenses, system, options = {}) => {
   const warnings = [];
+  const autoImproveMode = AUTO_IMPROVE_MODES.some((mode) => mode.key === options.autoImproveMode)
+    ? options.autoImproveMode
+    : "";
   const apertureDiameter = toNumber(options.apertureDiameter) || state.apertureDiameter;
   const apertureOptions = rayTraceApertureOptions({
     ...state,
@@ -12899,7 +12908,15 @@ const calculateMeritScore = (lenses, system, options = {}) => {
     metrics.rmsSpotCorner = traces.find((trace) => trace.fieldKey === "corner")?.rmsSpotRadius ?? NaN;
     metrics.worstRmsSpotRadius = rmsValues.length ? Math.max(...rmsValues) : NaN;
     if (options.useSpotSize ?? state.optimizerUseSpotSize) {
-      componentScores.spotSize = Number.isFinite(metrics.worstRmsSpotRadius) ? (metrics.worstRmsSpotRadius / 0.05) ** 2 : 100;
+      if (["focus", "centerSharpness"].includes(autoImproveMode)) {
+        componentScores.spotSize = Number.isFinite(metrics.rmsSpotCentre) ? (metrics.rmsSpotCentre / 0.05) ** 2 : 100;
+      } else if (autoImproveMode === "cornerSharpness") {
+        componentScores.spotSize = Number.isFinite(metrics.rmsSpotCorner)
+          ? (metrics.rmsSpotCorner / 0.05) ** 2 + (Number.isFinite(metrics.rmsSpotMid) ? (metrics.rmsSpotMid / 0.08) ** 2 * 0.25 : 0)
+          : 100;
+      } else {
+        componentScores.spotSize = Number.isFinite(metrics.worstRmsSpotRadius) ? (metrics.worstRmsSpotRadius / 0.05) ** 2 : 100;
+      }
     }
     if (options.useMtf ?? state.optimizerUseMtf) {
       const mtfValues = traces.map((trace) => calculateApproximateMTF(trace, { minRayCount: 3 }).readouts?.[40]).filter(Number.isFinite);
@@ -12907,7 +12924,12 @@ const calculateMeritScore = (lenses, system, options = {}) => {
       metrics.mtf40Mid = calculateApproximateMTF(traces.find((trace) => trace.fieldKey === "mid"), { minRayCount: 3 }).readouts?.[40] ?? NaN;
       metrics.mtf40Corner = calculateApproximateMTF(traces.find((trace) => trace.fieldKey === "corner"), { minRayCount: 3 }).readouts?.[40] ?? NaN;
       metrics.worstMtf40 = mtfValues.length ? Math.min(...mtfValues) : NaN;
-      componentScores.mtf40 = Number.isFinite(metrics.worstMtf40) ? (1 - metrics.worstMtf40) * 2 : 10;
+      const selectedMtf40 = autoImproveMode === "centerSharpness"
+        ? metrics.mtf40Centre
+        : autoImproveMode === "cornerSharpness"
+          ? metrics.mtf40Corner
+          : metrics.worstMtf40;
+      componentScores.mtf40 = Number.isFinite(selectedMtf40) ? (1 - selectedMtf40) * 2 : 10;
     }
   }
 
@@ -12950,6 +12972,32 @@ const calculateMeritScore = (lenses, system, options = {}) => {
     const values = distortion.samples.map((sample) => Math.abs(sample.distortionPercent)).filter(Number.isFinite);
     metrics.maxDistortionPercent = values.length ? Math.max(...values) : NaN;
     componentScores.distortion = Number.isFinite(metrics.maxDistortionPercent) ? (metrics.maxDistortionPercent / 10) ** 2 : 5;
+  }
+
+  if (autoImproveMode === "fieldCurvature") {
+    const curvature = estimateBestFocusByField(lenses, system, {
+      ...apertureOptions,
+      maxFieldAngleDegrees: 12,
+      fieldStepDegrees: 6,
+      rayCount: 5,
+      apertureDiameter
+    });
+    metrics.fieldCurvatureSpan = autoImproveFieldCurvatureSpan(curvature);
+    componentScores.fieldCurvature = Number.isFinite(metrics.fieldCurvatureSpan)
+      ? (metrics.fieldCurvatureSpan / 0.25) ** 2
+      : 25;
+  }
+
+  if (autoImproveMode === "chromatic") {
+    const chromaticFocus = calculateAutoImproveChromaticFocus(lenses, system, {
+      ...apertureOptions,
+      rayCount: 5,
+      apertureDiameter
+    });
+    metrics.chromaticShiftMm = chromaticFocus.longitudinalShiftMm;
+    componentScores.chromatic = Number.isFinite(metrics.chromaticShiftMm)
+      ? (Math.abs(metrics.chromaticShiftMm) / 0.1) ** 2
+      : 25;
   }
 
   if (options.useTransmission ?? state.optimizerUseTransmission) {
@@ -13011,6 +13059,7 @@ const evaluateOptimizerCandidate = (candidate, options = {}) => {
 };
 
 const optimizerOptionsFromState = () => ({
+  autoImproveMode: state.autoImproveRunMode || "",
   algorithm: state.optimizerAlgorithm,
   iterations: Math.max(0, Math.round(toNumber(state.optimizerIterations) || 0)),
   seed: Math.trunc(toNumber(state.optimizerSeed) || 1),
@@ -13038,7 +13087,8 @@ const optimizerOptionsFromState = () => ({
   prescription: state.prescription,
   maxTrackLength: state.optimizerMaxTrackLength,
   minBfd: state.optimizerMinBfd,
-  maxDiameter: state.optimizerMaxDiameter
+  maxDiameter: state.optimizerMaxDiameter,
+  validateManufacturing: !state.autoImproveRunMode
 });
 
 const runRandomOptimizer = (lenses, options = {}) => {
@@ -29050,6 +29100,37 @@ const renderRetargetLensPanel = (system) => {
   `;
 };
 
+const calculateAutoImproveChromaticFocus = (lenses, system, options = {}) => {
+  const searchRangeMm = Math.max(1, Math.min(12, Math.abs(toNumber(system?.effectiveFocalLength) || 50) * 0.12));
+  const byLine = Object.fromEntries(["C", "d", "F"].map((lineKey) => {
+    const line = SPECTRAL_LINES[lineKey];
+    const focus = findBestRealRayFocusPlane(lenses, system, {
+      ...options,
+      fieldAngleDegrees: 0,
+      fieldKey: "center",
+      fieldName: "On-axis",
+      rayCount: Math.max(7, Math.round(toNumber(options.rayCount) || 7)),
+      searchRangeMm,
+      referenceImagePlaneX: referenceImagePlaneX(),
+      wavelengthNm: line.wavelengthNm,
+      spectralLineKey: lineKey
+    });
+    return [lineKey, focus];
+  }));
+  const cFocus = byLine.C?.bestRealRayFocusPlaneX;
+  const fFocus = byLine.F?.bestRealRayFocusPlaneX;
+  return {
+    byLine,
+    longitudinalShiftMm: Number.isFinite(cFocus) && Number.isFinite(fFocus) ? fFocus - cFocus : NaN,
+    status: [byLine.C, byLine.d, byLine.F].every((focus) => focus?.status === "valid") ? "valid" : "invalid"
+  };
+};
+
+const autoImproveFieldCurvatureSpan = (curvature = {}) => {
+  const values = (curvature.samples || []).map((sample) => sample.bestFocusX).filter(Number.isFinite);
+  return values.length >= 2 ? Math.max(...values) - Math.min(...values) : NaN;
+};
+
 const runAutoImproveDiagnosis = (lenses = state.lenses, system = calculateSystem(state.lenses), mode = state.autoImproveMode) => {
   const apertureOptions = { ...rayTraceApertureOptions(state), rayCount: 7, apertureDiameter: state.apertureDiameter };
   const traces = traceSystemFieldSet(lenses, system, {
@@ -29063,7 +29144,7 @@ const runAutoImproveDiagnosis = (lenses = state.lenses, system = calculateSystem
     scanRangeMm: 5,
     samples: 31
   });
-  const longitudinal = calculateLongitudinalAberration(lenses, system, {
+  const chromaticFocus = calculateAutoImproveChromaticFocus(lenses, system, {
     ...apertureOptions,
     rayCount: 7
   });
@@ -29095,12 +29176,13 @@ const runAutoImproveDiagnosis = (lenses = state.lenses, system = calculateSystem
   const warnings = [];
   if (clippingRatio > 0.2) warnings.push("Vignetting / ray clipping is already significant; faster targets may require larger clear apertures.");
   if (lenses.some(lensHasActiveAsphere)) warnings.push("Active asphere present: worker MTF convergence is provisional for optimizer reporting.");
-  warnings.push("Auto Improve is diagnostic-first and experimental; use optimizer Accept/Revert before treating a result as a new design.");
+  warnings.push("Auto Improve is diagnostic-first and experimental; only Accept verified improvement changes the current design.");
+  warnings.push("Auto Improve enforces optical, ray-bundle, pupil, track, BFD, thickness, gap, and diameter constraints; run Manufacturing checks separately before production use.");
   return {
     mode,
     traces,
     focus,
-    longitudinal,
+    chromaticFocus,
     distortion,
     curvature,
     metrics: {
@@ -29108,12 +29190,86 @@ const runAutoImproveDiagnosis = (lenses = state.lenses, system = calculateSystem
       midRms: midTrace?.rmsSpotRadius ?? NaN,
       cornerRms: cornerTrace?.rmsSpotRadius ?? NaN,
       focusShift: focus.focusShiftMm,
-      chromaticShift: longitudinal.chromaticShiftMm,
+      chromaticShift: chromaticFocus.longitudinalShiftMm,
+      fieldCurvatureSpan: autoImproveFieldCurvatureSpan(curvature),
       maxDistortion: Math.max(0, ...distortion.samples.map((sample) => Math.abs(sample.distortionPercent)).filter(Number.isFinite)),
       clippingRatio
     },
     suggestions: suggestionsByMode[mode] || suggestionsByMode.focus,
     warnings
+  };
+};
+
+const autoImproveMetricDefinition = (mode) => ({
+  focus: { key: "rmsSpotCentre", label: "Centre RMS at sensor", unit: "mm", direction: "lower" },
+  centerSharpness: { key: "rmsSpotCentre", label: "Centre RMS spot", unit: "mm", direction: "lower" },
+  cornerSharpness: { key: "rmsSpotCorner", label: "Corner RMS spot", unit: "mm", direction: "lower" },
+  mtf40: { key: "worstMtf40", label: "Worst-field MTF 40", unit: "", direction: "higher" },
+  fieldCurvature: { key: "fieldCurvatureSpan", label: "Field-curvature focus span", unit: "mm", direction: "lower" },
+  chromatic: { key: "chromaticShiftMm", label: "C/F longitudinal focus span", unit: "mm", direction: "lower-absolute" },
+  faster: { key: "fNumber", label: "Working f-number", unit: "", direction: "lower" }
+})[mode] || { key: "rmsSpotCentre", label: "Centre RMS spot", unit: "mm", direction: "lower" };
+
+const summarizeAutoImproveOptimizerResult = (result, mode = state.autoImproveMode) => {
+  const definition = autoImproveMetricDefinition(mode);
+  const beforeMetrics = result?.baselineEval?.merit?.metrics || {};
+  const afterMetrics = result?.best?.evaluation?.merit?.metrics || {};
+  const beforeRaw = toNumber(beforeMetrics[definition.key]);
+  const afterRaw = toNumber(afterMetrics[definition.key]);
+  const before = definition.direction === "lower-absolute" ? Math.abs(beforeRaw) : beforeRaw;
+  const after = definition.direction === "lower-absolute" ? Math.abs(afterRaw) : afterRaw;
+  const finite = Number.isFinite(before) && Number.isFinite(after);
+  const relativeImprovement = finite
+    ? definition.direction === "higher"
+      ? (after - before) / Math.max(0.001, Math.abs(before))
+      : (before - after) / Math.max(0.001, Math.abs(before))
+    : NaN;
+  const scoreImprovementPercent = optimizerImprovementPercent(result);
+  const scorePassed = Number.isFinite(scoreImprovementPercent) && scoreImprovementPercent > 0.01;
+  const primaryPassed = Number.isFinite(relativeImprovement) && relativeImprovement > 0.001;
+  const candidateValid = result?.best?.evaluation?.status === "valid"
+    && result?.best?.evaluation?.validation?.valid !== false;
+  const fasterQualityPassed = mode !== "faster" || (
+    (!Number.isFinite(beforeMetrics.worstRmsSpotRadius)
+      || !Number.isFinite(afterMetrics.worstRmsSpotRadius)
+      || afterMetrics.worstRmsSpotRadius <= beforeMetrics.worstRmsSpotRadius * 1.1)
+    && (!Number.isFinite(beforeMetrics.worstMtf40)
+      || !Number.isFinite(afterMetrics.worstMtf40)
+      || afterMetrics.worstMtf40 >= beforeMetrics.worstMtf40 - 0.03)
+  );
+  const crossFieldQualityPassed = !["focus", "centerSharpness"].includes(mode) || (
+    (!Number.isFinite(beforeMetrics.rmsSpotMid)
+      || !Number.isFinite(afterMetrics.rmsSpotMid)
+      || afterMetrics.rmsSpotMid <= beforeMetrics.rmsSpotMid * 1.1)
+    && (!Number.isFinite(beforeMetrics.rmsSpotCorner)
+      || !Number.isFinite(afterMetrics.rmsSpotCorner)
+      || afterMetrics.rmsSpotCorner <= beforeMetrics.rmsSpotCorner * 1.1)
+  );
+  const passed = finite && candidateValid && scorePassed && primaryPassed && fasterQualityPassed && crossFieldQualityPassed;
+  return {
+    status: passed ? "passed" : "failed",
+    mode,
+    metric: definition,
+    before,
+    after,
+    relativeImprovement,
+    scoreImprovementPercent,
+    candidateValid,
+    fasterQualityPassed,
+    crossFieldQualityPassed,
+    reason: passed
+      ? "The selected mode metric and total merit both improved while hard constraints remained valid."
+      : !finite
+        ? `The ${definition.label} metric is unavailable for validation.`
+        : !candidateValid
+          ? "The best candidate does not pass the optimizer hard constraints."
+          : !scorePassed
+            ? "The total merit score did not improve."
+            : !primaryPassed
+              ? `The selected ${definition.label} metric did not improve.`
+              : !fasterQualityPassed
+                ? "The faster candidate exceeded the allowed image-quality loss."
+                : "The centre/focus candidate exceeded the allowed mid- or corner-field RMS loss."
   };
 };
 
@@ -29148,14 +29304,35 @@ const updateOptimizerVariablesForLensRange = (predicate, updates) => {
   }));
 };
 
-const applyAutoImproveOptimizerSetup = (mode = state.autoImproveMode) => {
+const applyAutoImproveOptimizerSetup = (mode = state.autoImproveMode, diagnosis = state.autoImproveResult) => {
+  const system = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
+  const currentEfl = Math.max(0.1, Math.abs(toNumber(system.effectiveFocalLength) || state.optimizerTargetFocalLength || 50));
+  const currentBfd = Math.max(0.1, toNumber(system.backFocalLength) || state.optimizerTargetBfd || 18);
+  const currentFNumber = calculateOptimizerFNumberMetrics(state.lenses, system, {
+    ...rayTraceApertureOptions(state),
+    apertureDiameter: state.apertureDiameter,
+    useRealEntrancePupil: true
+  }).fNumber;
+  const diagnosedFocusShift = toNumber(diagnosis?.metrics?.focusShift);
   resetOptimizerLensVariables();
+  state.autoImproveRunMode = mode;
+  state.autoImproveValidation = null;
   state.optimizerAlgorithm = "hybrid";
+  state.optimizerIterations = 50;
+  state.optimizerStepScale = 0.5;
+  state.optimizerTargetFocalLength = currentEfl;
+  state.optimizerTargetBfd = mode === "focus" && Number.isFinite(diagnosedFocusShift)
+    ? Math.max(0.1, currentBfd + diagnosedFocusShift)
+    : currentBfd;
+  if (Number.isFinite(currentFNumber) && currentFNumber > 0) {
+    state.optimizerTargetFNumber = mode === "faster" ? Math.max(0.5, currentFNumber * 0.92) : currentFNumber;
+  }
   state.optimizerUseTargetFocalLength = true;
-  state.optimizerUseTargetBfd = mode === "focus";
+  state.optimizerUseTargetBfd = true;
   state.optimizerUseTargetFNumber = mode === "faster";
   state.optimizerUseRealEntrancePupil = true;
-  state.optimizerUseSpotSize = ["focus", "centerSharpness", "cornerSharpness", "mtf40", "fieldCurvature", "faster"].includes(mode);
+  state.optimizerFNumberWeight = mode === "faster" ? 12 : state.optimizerFNumberWeight;
+  state.optimizerUseSpotSize = ["focus", "centerSharpness", "cornerSharpness", "mtf40", "fieldCurvature", "chromatic", "faster"].includes(mode);
   state.optimizerUseMtf = ["centerSharpness", "cornerSharpness", "mtf40", "faster"].includes(mode);
   state.optimizerUseStBalance = ["cornerSharpness", "fieldCurvature", "mtf40"].includes(mode);
   state.optimizerUseWavefront = false;
@@ -29177,6 +29354,8 @@ const applyAutoImproveOptimizerSetup = (mode = state.autoImproveMode) => {
     updateOptimizerVariablesForLensRange(() => true, { r1: true, r2: true });
     updateOptimizerVariablesForLensRange((lens, index) => index < state.lenses.length - 1, { gapAfter: true });
   } else if (mode === "chromatic") {
+    updateOptimizerVariablesForLensRange((lens, index) => index >= rearStart, { r1: true, r2: true });
+    updateOptimizerVariablesForLensRange((lens, index) => index >= rearStart && index < state.lenses.length - 1, { gapAfter: true });
     if (!state.retargetPreserveGlass) {
       updateOptimizerVariablesForLensRange(() => true, { glass: true, customVd: true });
     }
@@ -29187,39 +29366,67 @@ const applyAutoImproveOptimizerSetup = (mode = state.autoImproveMode) => {
     updateOptimizerVariablesForLensRange((lens, index) => index < state.lenses.length - 1, { gapAfter: true });
   }
 
-  state.autoImproveStatus = "Suggested optimizer setup applied.";
+  state.autoImproveStatus = `Suggested setup applied: preserve ${formatNumber(currentEfl, 2)} mm EFL and ${formatNumber(state.optimizerTargetBfd, 2)} mm BFD${mode === "faster" ? `; target f/${formatNumber(state.optimizerTargetFNumber, 2)}` : ""}.`;
   state.optimizerStatus = "idle";
   state.optimizerBest = null;
   return {
     mode,
     glassSubstitutionAllowed: !state.retargetPreserveGlass,
+    targets: {
+      effectiveFocalLength: state.optimizerTargetFocalLength,
+      backFocalLength: state.optimizerTargetBfd,
+      fNumber: state.optimizerTargetFNumber
+    },
     variableSummary: state.lenses.map((lens, index) => ({ index, variables: lens.optimizerVariables }))
   };
 };
 
 const renderAutoImprovePanel = () => {
   const result = state.autoImproveResult;
+  const optimizerResult = state.optimizerBest;
   const metrics = result?.metrics || {};
+  const validation = state.autoImproveValidation;
+  const running = state.optimizerStatus === "running" && state.autoImproveRunMode === state.autoImproveMode;
+  const canAccept = validation?.status === "passed" && !validation?.accepted && state.optimizerBest && !running;
+  const statusLabel = running ? "Running" : validation?.status === "passed" ? "Verified" : validation ? "Check" : "Diagnostic-first";
   return `
     <section class="optimizer-panel auto-improve-panel">
       <div class="panel-heading">
         <h3>Auto Improve (Experimental)</h3>
-        <span class="badge">Diagnostic-first</span>
+        <span class="badge ${validation?.status === "passed" ? "badge-good" : validation ? "badge-warning" : ""}">${statusLabel}</span>
       </div>
       <div class="optimizer-controls">
         <label>
           Improvement mode
-          <select data-action="update-auto-improve-mode" aria-label="Auto improve mode">
+          <select data-action="update-auto-improve-mode" aria-label="Auto improve mode" ${running ? "disabled" : ""}>
             ${AUTO_IMPROVE_MODES.map((mode) => `<option value="${mode.key}" ${state.autoImproveMode === mode.key ? "selected" : ""}>${escapeHtml(mode.label)}</option>`).join("")}
           </select>
         </label>
       </div>
       <div class="optimizer-actions">
-        <button class="action-button" type="button" data-action="run-auto-improve-diagnosis">Run diagnostic pass</button>
-        <button class="action-button" type="button" data-action="apply-auto-improve-setup">Apply suggested optimizer setup</button>
-        <button class="action-button" type="button" data-action="run-staged-auto-improve" ${state.optimizerStatus === "running" ? "disabled" : ""}>Run staged auto improve</button>
+        <button class="action-button" type="button" data-action="run-auto-improve-diagnosis" ${running ? "disabled" : ""}>Run diagnostic pass</button>
+        <button class="action-button" type="button" data-action="apply-auto-improve-setup" ${running ? "disabled" : ""}>Apply suggested setup</button>
+        <button class="action-button" type="button" data-action="run-staged-auto-improve" ${running ? "disabled" : ""}>Run Auto Improve</button>
+        <button class="action-button" type="button" data-action="stop-optimizer" ${running ? "" : "disabled"}>Stop</button>
+        <button class="action-button" type="button" data-action="accept-optimizer" ${canAccept ? "" : "disabled"}>Accept verified improvement</button>
+        <button class="action-button" type="button" data-action="dismiss-auto-improve-result" ${state.optimizerBest && !running ? "" : "disabled"}>Keep current design</button>
         ${state.autoImproveStatus ? `<span class="copy-status">${escapeHtml(state.autoImproveStatus)}</span>` : ""}
       </div>
+      ${validation ? `
+        <div class="optimizer-progress-grid auto-improve-validation-grid">
+          ${metric(validation.metric.label, formatNumber(validation.before, 5), `before · ${validation.metric.unit}`)}
+          ${metric("Candidate", formatNumber(validation.after, 5), `after · ${validation.metric.unit}`)}
+          ${metric("Mode improvement", formatNumber(validation.relativeImprovement * 100, 2), "%")}
+          ${metric("Total merit improvement", formatNumber(validation.scoreImprovementPercent, 2), "%")}
+          ${metric("Hard constraints", validation.candidateValid ? "Pass" : "Check", "candidate validation")}
+          ${metric("Quality guard", validation.fasterQualityPassed !== false && validation.crossFieldQualityPassed !== false ? "Pass" : "Check", "secondary image quality")}
+          ${metric("Acceptance gate", validation.status === "passed" ? "Pass" : "Check", "design unchanged until accepted")}
+          ${metric("Search variables", state.optimizerBest?.variables?.length ?? 0, "enabled")}
+          ${metric("Rejected candidates", state.optimizerRejectedCount, "hard constraints")}
+        </div>
+        <p class="${validation.status === "passed" ? "diagram-note" : "warning ray-warning"}">${escapeHtml(validation.reason)}</p>
+        ${(optimizerResult?.rejectionReasons || []).slice(0, 3).map((item) => `<p class="warning ray-warning">Rejected ${item.count}×: ${escapeHtml(item.reason)}</p>`).join("")}
+      ` : ""}
       ${result ? `
         <div class="optimizer-progress-grid">
           ${metric("Centre RMS", formatNumber(metrics.centreRms, 5), "mm")}
@@ -29227,6 +29434,7 @@ const renderAutoImprovePanel = () => {
           ${metric("Corner RMS", formatNumber(metrics.cornerRms, 5), "mm")}
           ${metric("Best-focus shift", formatNumber(metrics.focusShift, 4), "mm")}
           ${metric("Longitudinal colour", formatNumber(metrics.chromaticShift, 4), "mm C/F")}
+          ${metric("Field-curvature span", formatNumber(metrics.fieldCurvatureSpan, 4), "mm")}
           ${metric("Distortion", formatNumber(metrics.maxDistortion, 3), "% max")}
           ${metric("Clipping", formatPercentValue(metrics.clippingRatio, 1), "field average")}
         </div>
@@ -29236,7 +29444,7 @@ const renderAutoImprovePanel = () => {
         </div>
         ${state.optimizerBest ? renderOptimizerComparison(state.optimizerBest) : ""}
         ${result.warnings.map((warning) => `<p class="warning ray-warning">${escapeHtml(warning)}</p>`).join("")}
-      ` : `<p class="diagram-note">Run a diagnostic pass before optimizing. The app will compare centre, mid-field, corner, focus shift, colour, clipping, and distortion before suggesting variables.</p>`}
+      ` : `<p class="diagram-note">Run a diagnostic pass before optimizing. The app synchronizes EFL/BFD targets to the current lens, optimizes the selected mode, validates the candidate, and leaves the current design unchanged until you accept it.</p>`}
     </section>
   `;
 };
@@ -29311,6 +29519,8 @@ const renderOptimizerComparison = (result) => {
 
 const renderOptimizerPanel = () => {
   const result = state.optimizerBest;
+  const isAutoImproveCandidate = Boolean(state.autoImproveRunMode);
+  const autoImproveAcceptAllowed = !isAutoImproveCandidate || state.autoImproveValidation?.status === "passed";
   const metrics = result?.best?.evaluation?.merit?.metrics || {};
   const baselineScore = result?.baselineEval?.score;
   const bestScore = result?.best?.evaluation?.score;
@@ -29376,8 +29586,8 @@ const renderOptimizerPanel = () => {
       <div class="optimizer-actions">
         <button class="action-button" type="button" data-action="run-optimizer" ${state.optimizerStatus === "running" ? "disabled" : ""}>Run optimizer</button>
         <button class="action-button" type="button" data-action="stop-optimizer" ${state.optimizerStatus === "running" ? "" : "disabled"}>Stop optimizer</button>
-        <button class="action-button" type="button" data-action="revert-optimizer" ${state.optimizerBaseline ? "" : "disabled"}>Revert to previous design</button>
-        <button class="action-button" type="button" data-action="accept-optimizer" ${result && state.optimizerStatus !== "running" ? "" : "disabled"}>Accept optimized design</button>
+        <button class="action-button" type="button" data-action="revert-optimizer" ${state.optimizerBaseline && !isAutoImproveCandidate ? "" : "disabled"}>Revert to previous design</button>
+        <button class="action-button" type="button" data-action="accept-optimizer" ${result && state.optimizerStatus !== "running" && autoImproveAcceptAllowed ? "" : "disabled"}>${isAutoImproveCandidate ? "Accept verified improvement" : "Accept optimized design"}</button>
         <button class="action-button" type="button" data-action="copy-optimizer-csv" ${result ? "" : "disabled"}>Copy optimization report CSV</button>
         ${state.optimizerCopyStatus ? `<span class="copy-status">${escapeHtml(state.optimizerCopyStatus)}</span>` : ""}
       </div>
@@ -30588,9 +30798,13 @@ const refreshMtfResolutionAnalysisUi = () => {
 
 let optimizerRunToken = 0;
 
-const startOptimizerRun = () => {
+const startOptimizerRun = ({ source = "optimizer" } = {}) => {
   optimizerRunToken += 1;
   const token = optimizerRunToken;
+  const isAutoImproveRun = source === "autoImprove";
+  const autoImproveMode = isAutoImproveRun ? state.autoImproveMode : "";
+  state.autoImproveRunMode = autoImproveMode;
+  if (isAutoImproveRun) state.autoImproveValidation = null;
   const options = {
     ...optimizerOptionsFromState(),
     apertureDiameter: state.apertureDiameter,
@@ -30617,6 +30831,13 @@ const startOptimizerRun = () => {
   let coordinateStepScale = 1;
   const progress = [{ iteration: 0, score: best.evaluation.score }];
   const warnings = [];
+  const rejectionReasonCounts = new Map();
+  const recordRejectedEvaluation = (evaluation) => {
+    (evaluation?.validation?.reasons || ["Candidate evaluation was invalid."]).forEach((reason) => {
+      rejectionReasonCounts.set(reason, (rejectionReasonCounts.get(reason) || 0) + 1);
+    });
+  };
+  if (baselineEval.status !== "valid") recordRejectedEvaluation(baselineEval);
 
   state.optimizerEnabled = true;
   state.optimizerStatus = "running";
@@ -30638,7 +30859,10 @@ const startOptimizerRun = () => {
       progress: [...progress],
       rejectedCount,
       variables,
-      warnings: [...warnings]
+      warnings: [...warnings],
+      rejectionReasons: [...rejectionReasonCounts.entries()]
+        .map(([reason, count]) => ({ reason, count }))
+        .sort((a, b) => b.count - a.count)
     };
     state.optimizerBest = result;
     state.optimizerProgress = result.progress;
@@ -30646,6 +30870,16 @@ const startOptimizerRun = () => {
     state.optimizerCurrentIteration = currentIteration;
     state.optimizerWarnings = result.warnings;
     state.optimizerStatus = status;
+    if (isAutoImproveRun) {
+      if (status === "running") {
+        state.autoImproveStatus = `Auto Improve running: ${currentIteration}/${iterations} iterations.`;
+      } else if (status === "done") {
+        state.autoImproveValidation = summarizeAutoImproveOptimizerResult(result, autoImproveMode);
+        state.autoImproveStatus = state.autoImproveValidation.status === "passed"
+          ? `Verified candidate ready: ${formatNumber(state.autoImproveValidation.relativeImprovement * 100, 2)}% ${state.autoImproveValidation.metric.label} improvement.`
+          : `No verified improvement: ${state.autoImproveValidation.reason} Current design remains unchanged.`;
+      }
+    }
   };
 
   if (!variables.length) warnings.push("No optimizer variables are enabled.");
@@ -30663,6 +30897,7 @@ const startOptimizerRun = () => {
     const evaluation = evaluateOptimizerCandidate(candidate, options);
     if (evaluation.status !== "valid") {
       rejectedCount += 1;
+      recordRejectedEvaluation(evaluation);
     } else if (evaluation.score <= best.evaluation.score) {
       best = { candidate, evaluation };
     }
@@ -30677,6 +30912,7 @@ const startOptimizerRun = () => {
       const evaluation = evaluateOptimizerCandidate(candidate, options);
       if (evaluation.status !== "valid") {
         rejectedCount += 1;
+        recordRejectedEvaluation(evaluation);
       } else if (evaluation.score < best.evaluation.score) {
         best = { candidate, evaluation };
         improved = true;
@@ -31660,10 +31896,17 @@ mount.addEventListener("change", (event) => {
   }
 
   if (event.target.dataset.action === "update-auto-improve-mode") {
+    if (state.optimizerStatus === "running") return;
     state.autoImproveMode = AUTO_IMPROVE_MODES.some((mode) => mode.key === event.target.value)
       ? event.target.value
       : "focus";
+    state.autoImproveResult = null;
     state.autoImproveStatus = "";
+    state.autoImproveValidation = null;
+    state.autoImproveRunMode = "";
+    state.optimizerBest = null;
+    state.optimizerBaseline = null;
+    state.optimizerStatus = "idle";
     update();
     return;
   }
@@ -32339,13 +32582,14 @@ mount.addEventListener("click", (event) => {
   if (action === "run-auto-improve-diagnosis") {
     const system = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
     state.autoImproveResult = runAutoImproveDiagnosis(state.lenses, system, state.autoImproveMode);
+    state.autoImproveValidation = null;
     state.autoImproveStatus = "Diagnostic pass complete.";
     update();
     return;
   }
 
   if (action === "apply-auto-improve-setup") {
-    applyAutoImproveOptimizerSetup(state.autoImproveMode);
+    applyAutoImproveOptimizerSetup(state.autoImproveMode, state.autoImproveResult);
     update();
     return;
   }
@@ -32353,9 +32597,9 @@ mount.addEventListener("click", (event) => {
   if (action === "run-staged-auto-improve") {
     const system = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
     state.autoImproveResult = runAutoImproveDiagnosis(state.lenses, system, state.autoImproveMode);
-    applyAutoImproveOptimizerSetup(state.autoImproveMode);
-    state.autoImproveStatus = "Diagnostic complete; staged optimizer running.";
-    startOptimizerRun();
+    applyAutoImproveOptimizerSetup(state.autoImproveMode, state.autoImproveResult);
+    state.autoImproveStatus = "Diagnostic complete; verified Auto Improve search starting.";
+    startOptimizerRun({ source: "autoImprove" });
     return;
   }
 
@@ -32368,6 +32612,7 @@ mount.addEventListener("click", (event) => {
     optimizerRunToken += 1;
     state.optimizerStatus = state.optimizerStatus === "running" ? "stopped" : state.optimizerStatus;
     state.optimizerWarnings = [...(state.optimizerWarnings || []), "Optimizer run was stopped by the user."];
+    if (state.autoImproveRunMode) state.autoImproveStatus = "Auto Improve stopped; current design remains unchanged.";
     update();
     return;
   }
@@ -32375,6 +32620,11 @@ mount.addEventListener("click", (event) => {
   if (action === "accept-optimizer") {
     const best = state.optimizerBest?.best?.candidate;
     if (!best) return;
+    if (state.autoImproveRunMode && state.autoImproveValidation?.status !== "passed") {
+      state.autoImproveStatus = "Candidate was not accepted because the selected improvement gate did not pass.";
+      update();
+      return;
+    }
     rememberState();
     state.lenses = cloneOptimizerLenses(best.lenses).map((lens) => ({ ...lens, id: crypto.randomUUID() }));
     state.apertureDiameter = best.apertureDiameter;
@@ -32390,7 +32640,27 @@ mount.addEventListener("click", (event) => {
     }
     state.preset = "custom";
     state.optimizerStatus = "accepted";
+    if (state.autoImproveRunMode) {
+      state.autoImproveStatus = "Verified improvement accepted. Use Undo to restore the previous design.";
+      state.autoImproveValidation = state.autoImproveValidation
+        ? { ...state.autoImproveValidation, accepted: true }
+        : null;
+    }
     resetGeneratedAnalysisState();
+    update();
+    return;
+  }
+
+  if (action === "dismiss-auto-improve-result") {
+    optimizerRunToken += 1;
+    state.optimizerStatus = "idle";
+    state.optimizerBest = null;
+    state.optimizerBaseline = null;
+    state.optimizerProgress = [];
+    state.optimizerCurrentIteration = 0;
+    state.autoImproveValidation = null;
+    state.autoImproveRunMode = "";
+    state.autoImproveStatus = "Candidate discarded; current design was not changed.";
     update();
     return;
   }
@@ -37558,10 +37828,21 @@ const runOpticsSelfCheck = (options = {}) => {
 
   test("Auto Improve setup changes goals and variables by selected mode", () => withTemporaryState(() => {
     loadPresetIntoState("manual");
+    const system = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const currentFNumber = calculateOptimizerFNumberMetrics(state.lenses, system, {
+      ...rayTraceApertureOptions(state),
+      apertureDiameter: state.apertureDiameter,
+      useRealEntrancePupil: true
+    }).fNumber;
     state.autoImproveMode = "faster";
     applyAutoImproveOptimizerSetup("faster");
     return state.optimizerUseTargetFNumber === true
       && state.optimizerUseApertureDiameter === true
+      && state.optimizerIterations === 50
+      && state.optimizerStepScale === 0.5
+      && Math.abs(state.optimizerTargetFocalLength - Math.abs(system.effectiveFocalLength)) < 1e-9
+      && state.optimizerTargetFNumber < currentFNumber
+      && state.autoImproveRunMode === "faster"
       && state.lenses.some((lens) => lens.optimizerVariables?.diameter === true);
   }));
 
@@ -37571,6 +37852,100 @@ const runOpticsSelfCheck = (options = {}) => {
     applyAutoImproveOptimizerSetup("cornerSharpness");
     return JSON.stringify(PRESETS[DEFAULT_PRESET_KEY]) === before
       && state.preset === DEFAULT_PRESET_KEY;
+  }));
+
+  test("Auto Improve diagnosis reports finite C/F colour and field-curvature spans", () => withTemporaryState(() => {
+    loadPresetIntoState("manual");
+    const system = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const result = runAutoImproveDiagnosis(state.lenses, system, "chromatic");
+    return result.chromaticFocus?.status === "valid"
+      && Number.isFinite(result.metrics.chromaticShift)
+      && Number.isFinite(result.metrics.fieldCurvatureSpan);
+  }));
+
+  test("Auto Improve merit activates field-curvature and chromatic mode components", () => withTemporaryState(() => {
+    loadPresetIntoState("manual");
+    const system = calculateSystem(state.lenses, SPECTRAL_LINES.d.wavelengthNm);
+    const common = {
+      ...optimizerQuickOptions,
+      apertureDiameter: state.apertureDiameter,
+      useTargetFocalLength: false,
+      useTargetBfd: false,
+      useTargetFNumber: false,
+      useSpotSize: false,
+      useMtf: false
+    };
+    const curvature = calculateMeritScore(state.lenses, system, { ...common, autoImproveMode: "fieldCurvature" });
+    const chromatic = calculateMeritScore(state.lenses, system, { ...common, autoImproveMode: "chromatic" });
+    return Number.isFinite(curvature.componentScores.fieldCurvature)
+      && Number.isFinite(curvature.metrics.fieldCurvatureSpan)
+      && Number.isFinite(chromatic.componentScores.chromatic)
+      && Number.isFinite(chromatic.metrics.chromaticShiftMm);
+  }));
+
+  test("Auto Improve acceptance gate requires selected metric and total merit improvement", () => {
+    const result = {
+      baselineEval: { score: 10, merit: { metrics: { rmsSpotCentre: 0.1 } } },
+      best: {
+        evaluation: {
+          status: "valid",
+          score: 8,
+          validation: { valid: true },
+          merit: { metrics: { rmsSpotCentre: 0.08 } }
+        }
+      }
+    };
+    const passed = summarizeAutoImproveOptimizerResult(result, "centerSharpness");
+    const failed = summarizeAutoImproveOptimizerResult({
+      ...result,
+      best: { evaluation: { ...result.best.evaluation, merit: { metrics: { rmsSpotCentre: 0.11 } } } }
+    }, "centerSharpness");
+    return passed.status === "passed" && failed.status === "failed";
+  });
+
+  test("Auto Improve centre acceptance gate protects mid and corner RMS quality", () => {
+    const result = {
+      baselineEval: { score: 10, merit: { metrics: { rmsSpotCentre: 0.1, rmsSpotMid: 0.2, rmsSpotCorner: 0.3 } } },
+      best: {
+        evaluation: {
+          status: "valid",
+          score: 8,
+          validation: { valid: true },
+          merit: { metrics: { rmsSpotCentre: 0.08, rmsSpotMid: 0.2, rmsSpotCorner: 0.34 } }
+        }
+      }
+    };
+    const validation = summarizeAutoImproveOptimizerResult(result, "centerSharpness");
+    return validation.status === "failed" && validation.crossFieldQualityPassed === false;
+  });
+
+  test("Auto Improve uses optical validation while generic optimizer retains manufacturing validation", () => withTemporaryState(() => {
+    state.autoImproveRunMode = "centerSharpness";
+    const autoOptions = optimizerOptionsFromState();
+    state.autoImproveRunMode = "";
+    const genericOptions = optimizerOptionsFromState();
+    return autoOptions.validateManufacturing === false && genericOptions.validateManufacturing === true;
+  }));
+
+  test("Auto Improve panel exposes verified accept stop and keep-current controls", () => withTemporaryState(() => {
+    state.autoImproveResult = { metrics: {}, suggestions: [], warnings: [] };
+    state.autoImproveValidation = {
+      status: "passed",
+      metric: autoImproveMetricDefinition("centerSharpness"),
+      before: 0.1,
+      after: 0.08,
+      relativeImprovement: 0.2,
+      scoreImprovementPercent: 10,
+      candidateValid: true,
+      reason: "passed"
+    };
+    state.optimizerBest = { best: { candidate: {}, evaluation: {} }, baselineEval: {} };
+    const markup = renderAutoImprovePanel();
+    return markup.includes("Accept verified improvement")
+      && markup.includes("Keep current design")
+      && markup.includes("data-action=\"stop-optimizer\"")
+      && markup.includes("Acceptance gate")
+      && markup.includes("Run Auto Improve");
   }));
 
   test("ray tracing still works with aperture stop and d-line glass", () => {

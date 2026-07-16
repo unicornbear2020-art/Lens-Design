@@ -1,9 +1,9 @@
 /* eslint-env worker */
 
-const PHYSICAL_MTF_WORKER_VERSION = "20260716-physical-mtf-direct-pupil-8";
+const PHYSICAL_MTF_WORKER_VERSION = "20260716-auto-improve-validation-1";
 
 try {
-  importScripts("physical-mtf-core.js?v=20260716-physical-mtf-direct-pupil-8");
+  importScripts("physical-mtf-core.js?v=20260716-auto-improve-validation-1");
 } catch (error) {
   self.physicalMtfCoreLoadError = error;
 }

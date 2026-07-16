@@ -1,9 +1,10 @@
 /* eslint-env browser, worker */
 
 (() => {
-const PHYSICAL_MTF_CORE_VERSION = "20260715-physical-mtf-focus-matrix-1";
+const PHYSICAL_MTF_CORE_VERSION = "20260716-physical-mtf-direct-pupil-8";
 const PHYSICAL_LENS_PUPIL_RADIUS_FRACTION = 0.44;
 let canonicalAberrationValidationCache = null;
+let canonicalApodizationValidationCache = null;
 const clamp = (value, min, max) => Math.min(max, Math.max(min, Number.isFinite(Number(value)) ? Number(value) : min));
 const isPowerOfTwo = (value) => Number.isInteger(value) && value > 0 && (value & (value - 1)) === 0;
 
@@ -275,10 +276,12 @@ const calculateCore = (gridSize) => {
   const matchPassed = maxError <= tolerance.maxError && rmsError <= tolerance.rmsError;
   const aberrationValidation = calculateCanonicalAberrationValidation();
   const canonicalAberrationsPassed = aberrationValidation.status === "passed";
+  const apodizationValidation = calculateCanonicalApodizationValidation();
+  const canonicalApodizationPassed = apodizationValidation.status === "passed";
   return {
-    status: matchPassed && sanityPassed && canonicalAberrationsPassed ? "fft-match-passed" : "prototype-failed",
-    validationLabel: matchPassed && sanityPassed && canonicalAberrationsPassed
-      ? "FFT and canonical aberration gates passed"
+    status: matchPassed && sanityPassed && canonicalAberrationsPassed && canonicalApodizationPassed ? "fft-match-passed" : "prototype-failed",
+    validationLabel: matchPassed && sanityPassed && canonicalAberrationsPassed && canonicalApodizationPassed
+      ? "FFT, aberration and apodization gates passed"
       : "Prototype — FFT validation failed",
     gridSize: pupil.gridSize,
     samples,
@@ -291,12 +294,14 @@ const calculateCore = (gridSize) => {
     rmsAutocorrelationError,
     maxFftAutocorrelationDifference: Math.max(...fftAutocorrelationErrors),
     aberrationValidation,
+    apodizationValidation,
     elapsedMs: performance.now() - started,
     tolerance,
     validation: {
       autocorrelationReference: { maxError: maxAutocorrelationError, rmsError: rmsAutocorrelationError, passed: maxAutocorrelationError <= tolerance.maxError && rmsAutocorrelationError <= tolerance.rmsError },
       fftPipeline: { maxError, rmsError, passed: matchPassed && sanityPassed },
       canonicalAberrations: { passed: canonicalAberrationsPassed },
+      canonicalApodization: { passed: canonicalApodizationPassed },
       convergence: null
     },
     pipeline: {
@@ -456,7 +461,7 @@ const calculateLensComplexPupilMtf = (payload = {}) => {
   const referenceParity = calculateReferencePupilParity(pupil, cutoffFrequencyLpMm);
   return {
     status: zeroSanityPassed && rangeSanityPassed ? "opd-connected-worker-prototype" : "prototype-failed",
-    phase: "Phase 2 Step 4",
+    phase: "Production MTF Cutover — direct pupil rays",
     gridSize,
     radiusPx,
     wavelengthNm,
@@ -609,6 +614,157 @@ const calculateCanonicalAberrationValidation = () => {
   return canonicalAberrationValidationCache;
 };
 
+const buildCanonicalApodizationPupil = (profile = "clear") => {
+  const gridSize = 128;
+  const radiusPx = gridSize * PHYSICAL_LENS_PUPIL_RADIUS_FRACTION;
+  const center = (gridSize - 1) / 2;
+  const real = new Array(gridSize * gridSize).fill(0);
+  const imag = new Array(gridSize * gridSize).fill(0);
+  let pupilPixelCount = 0;
+  let pupilEnergy = 0;
+  let minimumPowerTransmission = Infinity;
+  let maximumPowerTransmission = -Infinity;
+  for (let y = 0; y < gridSize; y += 1) {
+    for (let x = 0; x < gridSize; x += 1) {
+      const pupilX = (x - center) / radiusPx;
+      const pupilY = (y - center) / radiusPx;
+      const radiusSquared = pupilX ** 2 + pupilY ** 2;
+      if (radiusSquared > 1) continue;
+      const powerTransmission = profile === "uniformLoss"
+        ? 0.64
+        : profile === "radial"
+          ? 1 - 0.55 * radiusSquared
+          : 1;
+      const fieldAmplitude = Math.sqrt(clamp(powerTransmission, 0, 1));
+      real[y * gridSize + x] = fieldAmplitude;
+      pupilPixelCount += 1;
+      pupilEnergy += fieldAmplitude ** 2;
+      minimumPowerTransmission = Math.min(minimumPowerTransmission, powerTransmission);
+      maximumPowerTransmission = Math.max(maximumPowerTransmission, powerTransmission);
+    }
+  }
+  return {
+    gridSize,
+    radiusPx,
+    real,
+    imag,
+    profile,
+    pupilPixelCount,
+    pupilEnergy,
+    meanPowerTransmission: pupilPixelCount ? pupilEnergy / pupilPixelCount : NaN,
+    minimumPowerTransmission,
+    maximumPowerTransmission
+  };
+};
+
+const calculateCanonicalApodizationValidation = () => {
+  if (canonicalApodizationValidationCache) return canonicalApodizationValidationCache;
+  const pupils = {
+    clear: buildCanonicalApodizationPupil("clear"),
+    uniformLoss: buildCanonicalApodizationPupil("uniformLoss"),
+    radial: buildCanonicalApodizationPupil("radial")
+  };
+  const results = Object.fromEntries(Object.entries(pupils).map(([key, pupil]) => [
+    key,
+    calculateLensComplexPupilMtf({
+      gridSize: pupil.gridSize,
+      radiusPx: pupil.radiusPx,
+      real: pupil.real,
+      imag: pupil.imag,
+      wavelengthNm: 587.6,
+      workingFNumber: 4,
+      sampleCount: 101,
+      includeArrays: false
+    })
+  ]));
+  const frequencies = [0.3, 0.5, 0.7];
+  const axes = ["sagittal", "tangential"];
+  const checkpoints = frequencies.flatMap((normalizedFrequency) => axes.map((axis) => {
+    const clearValue = canonicalMtfValueAt(results.clear, axis, normalizedFrequency);
+    const uniformLossValue = canonicalMtfValueAt(results.uniformLoss, axis, normalizedFrequency);
+    const radialValue = canonicalMtfValueAt(results.radial, axis, normalizedFrequency);
+    return {
+      normalizedFrequency,
+      axis,
+      clearValue,
+      uniformLossValue,
+      radialValue,
+      uniformLossDifference: Math.abs(uniformLossValue - clearValue),
+      radialDifference: radialValue - clearValue
+    };
+  }));
+  const uniformLossMaximumMtfDifference = Math.max(...checkpoints.map((item) => item.uniformLossDifference));
+  const uniformPowerRatio = pupils.uniformLoss.pupilEnergy / pupils.clear.pupilEnergy;
+  const minimumRadialLowFrequencyGain = Math.min(...axes.map((axis) => (
+    canonicalMtfValueAt(results.radial, axis, 0.3) - canonicalMtfValueAt(results.clear, axis, 0.3)
+  )));
+  const minimumRadialHighFrequencyLoss = Math.min(...axes.map((axis) => (
+    canonicalMtfValueAt(results.clear, axis, 0.7) - canonicalMtfValueAt(results.radial, axis, 0.7)
+  )));
+  const maximumRadialAxisDifference = Math.max(...frequencies.map((frequency) => Math.abs(
+    canonicalMtfValueAt(results.radial, "sagittal", frequency)
+      - canonicalMtfValueAt(results.radial, "tangential", frequency)
+  )));
+  const tolerances = {
+    maximumUniformLossMtfDifference: 0.000000001,
+    maximumUniformPowerRatioError: 0.000000001,
+    minimumRadialLowFrequencyGain: 0.02,
+    minimumRadialHighFrequencyLoss: 0.01,
+    maximumRadialAxisDifference: 0.002
+  };
+  const zeroAndRangePassed = Object.values(results).every((result) => (
+    result.validation?.zeroFrequency?.passed === true
+    && result.validation?.range?.passed === true
+  ));
+  const finiteCheckpointsPassed = checkpoints.every((item) => (
+    Number.isFinite(item.clearValue)
+    && Number.isFinite(item.uniformLossValue)
+    && Number.isFinite(item.radialValue)
+  ));
+  const passed = zeroAndRangePassed
+    && finiteCheckpointsPassed
+    && uniformLossMaximumMtfDifference <= tolerances.maximumUniformLossMtfDifference
+    && Math.abs(uniformPowerRatio - 0.64) <= tolerances.maximumUniformPowerRatioError
+    && minimumRadialLowFrequencyGain >= tolerances.minimumRadialLowFrequencyGain
+    && minimumRadialHighFrequencyLoss >= tolerances.minimumRadialHighFrequencyLoss
+    && maximumRadialAxisDifference <= tolerances.maximumRadialAxisDifference;
+  canonicalApodizationValidationCache = Object.freeze({
+    status: passed ? "passed" : "failed",
+    method: "deterministic clear, uniform-loss and radial power-transmission pupils with coherent amplitude sqrt(T)",
+    gridSize: 128,
+    wavelengthNm: 587.6,
+    workingFNumber: 4,
+    checkpoints,
+    profiles: {
+      clear: {
+        meanPowerTransmission: pupils.clear.meanPowerTransmission,
+        minimumPowerTransmission: pupils.clear.minimumPowerTransmission,
+        maximumPowerTransmission: pupils.clear.maximumPowerTransmission
+      },
+      uniformLoss: {
+        meanPowerTransmission: pupils.uniformLoss.meanPowerTransmission,
+        minimumPowerTransmission: pupils.uniformLoss.minimumPowerTransmission,
+        maximumPowerTransmission: pupils.uniformLoss.maximumPowerTransmission
+      },
+      radial: {
+        meanPowerTransmission: pupils.radial.meanPowerTransmission,
+        minimumPowerTransmission: pupils.radial.minimumPowerTransmission,
+        maximumPowerTransmission: pupils.radial.maximumPowerTransmission
+      }
+    },
+    tolerances,
+    diagnostics: {
+      zeroAndRangePassed,
+      uniformLossMaximumMtfDifference,
+      uniformPowerRatio,
+      minimumRadialLowFrequencyGain,
+      minimumRadialHighFrequencyLoss,
+      maximumRadialAxisDifference
+    }
+  });
+  return canonicalApodizationValidationCache;
+};
+
 globalThis.physicalMtfCore = Object.freeze({
   PHYSICAL_MTF_CORE_VERSION,
   PHYSICAL_LENS_PUPIL_RADIUS_FRACTION,
@@ -618,6 +774,7 @@ globalThis.physicalMtfCore = Object.freeze({
   calculateReferencePupilParity,
   calculateIdealCircularPupilValidation: calculateCore,
   calculateLensComplexPupilMtf,
-  calculateCanonicalAberrationValidation
+  calculateCanonicalAberrationValidation,
+  calculateCanonicalApodizationValidation
 });
 })();

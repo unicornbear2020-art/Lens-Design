@@ -1,9 +1,9 @@
 /* eslint-env worker */
 
-const PHYSICAL_MTF_WORKER_VERSION = "20260715-physical-mtf-focus-matrix-1";
+const PHYSICAL_MTF_WORKER_VERSION = "20260716-physical-mtf-direct-pupil-8";
 
 try {
-  importScripts("physical-mtf-core.js?v=20260715-physical-mtf-focus-matrix-1");
+  importScripts("physical-mtf-core.js?v=20260716-physical-mtf-direct-pupil-8");
 } catch (error) {
   self.physicalMtfCoreLoadError = error;
 }
@@ -20,6 +20,8 @@ self.onmessage = (event) => {
       ? core.calculateLensComplexPupilMtf(payload)
       : task === "canonical-aberration-validation"
         ? core.calculateCanonicalAberrationValidation()
+        : task === "canonical-apodization-validation"
+          ? core.calculateCanonicalApodizationValidation()
         : core.calculateIdealCircularPupilValidation(gridSize);
     self.postMessage({
       requestId,

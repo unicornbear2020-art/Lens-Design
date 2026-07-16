@@ -4344,8 +4344,8 @@ select {
 }
 
 .physical-mtf-focus-matrix-table .mtf-readout-row {
-  min-width: 760px;
-  grid-template-columns: minmax(138px, 1.3fr) minmax(108px, 1fr) repeat(4, minmax(82px, 0.72fr)) minmax(64px, 0.58fr);
+  min-width: 860px;
+  grid-template-columns: minmax(138px, 1.3fr) minmax(108px, 1fr) repeat(5, minmax(82px, 0.72fr)) minmax(64px, 0.58fr);
 }
 
 .mtf-readout-row span {
